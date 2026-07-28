@@ -351,7 +351,7 @@ require (
 	gitlab.com/phpboyscout/go/regexutil v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/repo v0.1.0 // indirect
 	gitlab.com/phpboyscout/go/signing v0.2.2
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.2.4
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.2.5
 	gitlab.com/phpboyscout/go/tls v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/transit v0.1.3 // indirect
 	gitlab.com/phpboyscout/go/transport v0.2.0 // indirect
