@@ -1040,6 +1040,8 @@ gitlab.com/phpboyscout/go/signing v0.2.2 h1:O1jYEfnKGfo+DwwJVp+axsL8Nwl/hahut8cL
 gitlab.com/phpboyscout/go/signing v0.2.2/go.mod h1:A7LzPcXHLvfJNy0OvUAiP+/+qnQc8Zp+Nl589CgXfEQ=
 gitlab.com/phpboyscout/go/signing-aws-kms v0.2.4 h1:G7BLbpTQ4bngcCkTX9JCqyyJVI2sE+ziMW6Av7OvzqA=
 gitlab.com/phpboyscout/go/signing-aws-kms v0.2.4/go.mod h1:vhJg+H87g2DjlpuKUIiLImglUMlKhDAXe9ZNQErtx7s=
+gitlab.com/phpboyscout/go/signing-cli v0.1.0 h1:TwaFrQMV/g47BNp71KskDuPdxEJUob2sVCq81kVu54U=
+gitlab.com/phpboyscout/go/signing-cli v0.1.0/go.mod h1:6cZV0wfpwfFyXa1Qi4MPpw7t3CB1xk5GHFNvAPKwnL0=
 gitlab.com/phpboyscout/go/tls v0.1.2 h1:jNBGuSSRo0H7FT26SBv9he+BuARy9bV6zvg2xJrxY0A=
 gitlab.com/phpboyscout/go/tls v0.1.2/go.mod h1:dROqaCyXYJWtc9Xa5AwyWtnDRyJkhzOLEN+rP4nwSug=
 gitlab.com/phpboyscout/go/transit v0.1.3 h1:bnJt1LUJI+3QSbeBdzsjeslXXvx0yKV6ar0Ey4NZ8IY=
