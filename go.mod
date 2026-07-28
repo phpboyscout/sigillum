@@ -349,8 +349,9 @@ require (
 	gitlab.com/phpboyscout/go/redact v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/repo v0.1.0 // indirect
-	gitlab.com/phpboyscout/go/signing v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.2.4 // indirect
+	gitlab.com/phpboyscout/go/signing v0.2.2
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.2.4
+	gitlab.com/phpboyscout/go/signing-cli v0.1.0
 	gitlab.com/phpboyscout/go/tls v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/transit v0.1.3 // indirect
 	gitlab.com/phpboyscout/go/transport v0.2.0 // indirect
@@ -405,3 +406,5 @@ require (
 	mvdan.cc/gofumpt v0.7.0 // indirect
 	mvdan.cc/unparam v0.0.0-20240528143540-8a5130ca722f // indirect
 )
+
+replace gitlab.com/phpboyscout/go/signing-cli => ../signing-cli

@@ -11,3 +11,4 @@
 #
 # Manage it with 'gtb ignore add|remove|list|check', or edit it by hand.
 # See https://gtb.phpboyscout.uk/how-to/configure-generator-ignore/
+pkg/cmd/root/cmd.go
