@@ -6,6 +6,8 @@ package root
 
 import (
 	"embed"
+	"os"
+
 	afero "github.com/spf13/afero"
 	gtbRoot "gitlab.com/phpboyscout/go-tool-base/pkg/cmd/root"
 	logger "gitlab.com/phpboyscout/go-tool-base/pkg/logger"
@@ -14,7 +16,6 @@ import (
 	version "gitlab.com/phpboyscout/go-tool-base/pkg/version"
 	errorhandling "gitlab.com/phpboyscout/go/errorhandling"
 	signingcli "gitlab.com/phpboyscout/go/signing-cli"
-	"os"
 )
 
 //go:embed assets/*
