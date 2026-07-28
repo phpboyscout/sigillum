@@ -98,11 +98,27 @@ The `sign` / `keys` commands are **not** present yet — they arrive in Phase 2.
 
 **`go/signing-cli` is a new, dedicated, tiny module** (decision below). It holds
 *only* the cobra command constructors and their flag wiring. It must **not**
-import gtb's `props` package; instead it declares its own narrow dependency
-surface (logger / config / filesystem — via an interface or functional
-options), which gtb's `Props` and sigillum's own container each satisfy through
-a small adapter. Because it depends only on `go/signing` (+ cobra), there is no
-path back to gtb or sigillum, so no module cycle is possible.
+import gtb's `props` package. Because it depends only on `go/signing` (+ cobra),
+there is no path back to gtb or sigillum, so no module cycle is possible.
+
+**The `Deps` seam — resolved (from the current gtb code).** The coupling turns
+out to be tiny: the command *logic* functions already take only
+`props.LoggerProvider`, and the sole logger methods called across `sign` and
+all of `keys` are `Info` and `Warn`. The only other gtb type in play is the
+`*setup.Command` return type (gtb's feature-middleware wrapper). So:
+
+- `go/signing-cli` declares its own narrow logger interface — a slog-shaped
+  subset, `Logger interface { Debug/Info/Warn/Error(msg string, args ...any) }`.
+  gtb's `logger.Logger` and sigillum's logger both satisfy it **structurally**;
+  no adapter, no gtb import.
+- Constructors take that `Logger` and return **plain `*cobra.Command`**, not
+  `*setup.Command`. The gtb-specific `setup.Wrap` stays **caller-side**:
+  - gtb: `setup.Wrap("", signingcli.NewCmdSign(p.GetLogger()))`;
+  - sigillum: attaches the returned `*cobra.Command` directly to its root.
+- `go/signing-cli` imports only cobra, pflag, `go/signing`, `go/signing-aws-kms`.
+
+This makes the extraction a near-mechanical move plus a return-type/param change,
+not a redesign.
 
 ### Command surface to share (as it exists in gtb today)
 
@@ -122,11 +138,11 @@ All five already call into `go/signing` / `go/signing/openpgpkey` /
 - **Phase 0 — bootstrap** (DONE, §2).
 - **Phase 1 — `go/signing-cli` module.** Create the repo (per the module
   extraction playbook: public, `<name>.go.phpboyscout.uk` docs, cicd at head).
-  Move the command builders out of gtb's `internal/cmd/{sign,keys}`,
-  decoupling them from `props.Props` behind a narrow `Deps` interface (or
-  options). Port the existing tests. This is the design-heavy phase and
-  warrants its own module spec (the Deps seam, flag compatibility, the
-  new-vs-KMS backend selection from #5).
+  Move the command builders out of gtb's `internal/cmd/{sign,keys}`, decoupling
+  them via the resolved `Deps` seam above (narrow `Logger` interface;
+  constructors return `*cobra.Command`; `setup.Wrap` moves caller-side). Port
+  the existing tests. The KMS-Ed25519 → prehashed-minisign sink from #5 lands
+  here (or in `go/signing`) as the follow-on; it is gated on the rekey.
 - **Phase 2 — sigillum attaches.** Depend on `go/signing-cli`; attach `sign`
   and `keys` to sigillum's root; provide sigillum's adapter for the `Deps`
   seam; add E2E/Gherkin coverage for the signing workflows.
