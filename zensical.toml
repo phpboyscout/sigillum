@@ -6,6 +6,8 @@ site_url = "https://gitlab.com/phpboyscout/sigillum"
 copyright = ""
 
 [project.theme]
+logo = "images/branding/logo_transparent.svg"
+favicon = "images/branding/favicon.svg"
 language = "en"
 features = [
     "announce.dismiss",

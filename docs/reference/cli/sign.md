@@ -43,7 +43,7 @@ additional flags on `sign`, notably:
 
 | Flag | Description |
 |------|-------------|
-| `--kms-region` | AWS region the KMS key lives in. |
+| `--kms-region` | AWS region the KMS key lives in (default `eu-west-2`). |
 
 > Run `sigillum sign --help` for the complete, authoritative flag set, including
 > all backend-contributed flags.
