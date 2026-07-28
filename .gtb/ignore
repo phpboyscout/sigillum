@@ -1,0 +1,13 @@
+# .gtb/ignore — mark generated files hands-off for 'gtb regenerate'.
+#
+# One pattern per line. Patterns are evaluated top-to-bottom; a later rule wins,
+# and a leading '!' re-includes a file an earlier rule excluded.
+#
+#   justfile                      a filename, matched in any directory
+#   *.yml                         a glob, matched in any directory
+#   .github/**                    everything under a directory
+#   .github/workflows/ci.yml      an exact path
+#   !.github/workflows/release.yml  keep this one managed by the generator
+#
+# Manage it with 'gtb ignore add|remove|list|check', or edit it by hand.
+# See https://gtb.phpboyscout.uk/how-to/configure-generator-ignore/
