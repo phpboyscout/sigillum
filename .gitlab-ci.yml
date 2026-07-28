@@ -84,3 +84,30 @@ variables:
 
 default:
   tags: [saas-linux-medium-amd64]
+
+# Release signing (OIDC). The goreleaser `signs:` block calls
+# `go run ./cmd/sigillum sign --backend aws-kms`, which the aws-kms backend
+# drives via GitLab->AWS web-identity OIDC — no aws-cli or assume-role call.
+# sigillum signs with the SHARED v2 release-signing key (same trust root as
+# go-tool-base); the v2 signer role trusts this project's tag pipelines via
+# ci_subject_filters in infra/src/main.signing-kms.tf.
+#
+# DORMANT until infra MR (sigillum -> v2 role) is applied: a v* tag pipeline
+# cut before then will fail the sign step (no assumable role). Apply the infra
+# change first, then cut the release.
+goreleaser:
+  id_tokens:
+    AWS_WEB_IDENTITY_TOKEN:
+      # Must equal the IAM OIDC provider's client_id_list entry
+      # ("sts.amazonaws.com") — checked before the role trust policy. The v2
+      # role's oidc_audience is matched to this.
+      aud: sts.amazonaws.com
+  variables:
+    AWS_REGION: eu-west-2
+    AWS_ROLE_ARN: arn:aws:iam::060730976733:role/gtb-release-signing-v2-signer
+    AWS_ROLE_SESSION_NAME: sigillum-release-${CI_COMMIT_TAG}
+    # In variables: (not just an export) because GitLab runs each script entry
+    # in its own shell.
+    AWS_WEB_IDENTITY_TOKEN_FILE: /tmp/oidc-token
+  before_script:
+    - echo "$AWS_WEB_IDENTITY_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"

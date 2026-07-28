@@ -7,7 +7,8 @@ before:
     - go generate ./...
 
 builds:
-  - main: cmd/sigillum/main.go
+  - id: sigillum
+    main: cmd/sigillum/main.go
     env:
       - CGO_ENABLED=0
     goos:
@@ -22,6 +23,21 @@ builds:
       - -X gitlab.com/phpboyscout/sigillum/internal/version.version={{.Version}}
       - -X gitlab.com/phpboyscout/sigillum/internal/version.commit={{.Commit}}
       - -X gitlab.com/phpboyscout/sigillum/internal/version.date={{.Date}}
+
+# macOS notarization — gated on the Apple credentials (root-group CI vars,
+# inherited and exposed on the protected v* tag). Skips cleanly when absent.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "APPLE_DEV_CERT" }}'
+      ids:
+        - sigillum
+      sign:
+        certificate: "{{.Env.APPLE_DEV_CERT}}"
+        password: "{{.Env.APPLE_DEV_CERT_PASSWORD}}"
+      notarize:
+        issuer_id: "{{.Env.APPLE_NOTARY_ISSUER_ID}}"
+        key_id: "{{.Env.APPLE_NOTARY_KEY_ID}}"
+        key: "{{.Env.APPLE_NOTARY_KEY}}"
 
 archives:
   - formats: [ "tar.gz" ]
@@ -55,3 +71,33 @@ gitlab_urls:
   api: https://gitlab.com/api/v4/
   download: https://gitlab.com/
   skip_tls_verify: false
+
+# Release signing: gtb enable signing wired this. The signature over
+# checksums.txt is what the self-updater's embedded trust anchor verifies.
+# gtb is called directly (no shim); AWS credentials come from the CI OIDC
+# context, and goreleaser runs with --skip=sign when there isn't one.
+signs:
+  # sigillum dogfoods its own sign command (backends blank-imported in
+  # cmd/sigillum/signing.go). `go run` builds a throwaway signer at release
+  # time; the AWS OIDC env from the tag pipeline drives the aws-kms backend.
+  - id: checksums
+    cmd: go
+    args:
+      - "run"
+      - "./cmd/sigillum"
+      - "--ci"
+      - "sign"
+      - "--backend"
+      - "aws-kms"
+      - "--kms-region"
+      - "eu-west-2"
+      - "--key-id"
+      - "alias/gtb-release-signing-v2"
+      - "--public-key"
+      - "internal/trustkeys/keys/signing-key-v2.asc"
+      - "--output"
+      - "${signature}"
+      - "${artifact}"
+    artifacts: checksum
+    signature: "${artifact}.sig"
+    output: true

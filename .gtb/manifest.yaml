@@ -8,6 +8,13 @@ properties:
       enabled: true
     - name: mcp
       enabled: false
+  signing:
+    enabled: true
+    key_source: embedded
+    backend: aws-kms
+    key_id: alias/gtb-release-signing-v2
+    kms_region: eu-west-2
+    public_key: internal/trustkeys/keys/signing-key-v2.asc
   docs_layout: diataxis
 release_source:
   type: gitlab
@@ -21,7 +28,7 @@ hashes:
   .gitlab-ci.yml: 211ea51e3af100a7b24e9244d96f2b9edcf62c6355bbc0d970ca86dd93432845
   .gitlab/CODEOWNERS: 6384f3b0fa79ff53d5428c8499b4af97bd5c35328a3b7058df34164b2e875f2f
   .golangci.yaml: b41c089be6a30fbd149cf43812e2b08a6c8c6420de9d63545420539d0e256ea4
-  .goreleaser.yaml: 0b9ff56566ce05280b29da18d9a579cdb6cdb4345267f795aa7888b005955395
+  .goreleaser.yaml: f09a0f674178b06c8eef3119b6f8583b6ec54853245281392706c1a58e92a053
   .mockery.yml: e2ada0fc97ec0a6f64c091ba6fb9f4a3308a678082588745ea23e9d4682bff15
   .pre-commit-config.yaml: 1dbbf5621e83f9665e0e88df4641c942b45a79ace7e21b04135d2ac5ebab679c
   CHANGELOG.md: 8c4b2e8ee1835afd7bbf7be9e4b48423ffbc7cc1a40bbcacc9692f04d5c61c6d
