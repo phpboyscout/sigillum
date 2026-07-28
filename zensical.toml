@@ -2,7 +2,7 @@
 site_name = "sigillum"
 site_description = "Standalone artefact signing and verification CLI for the phpboyscout ecosystem"
 site_author = "phpboyscout"
-site_url = "https://gitlab.com/phpboyscout/sigillum"
+site_url = "https://sigillum.phpboyscout.uk"
 copyright = ""
 
 [project.theme]
