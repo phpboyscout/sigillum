@@ -136,27 +136,36 @@ All five already call into `go/signing` / `go/signing/openpgpkey` /
   users. (Extraction cut-over ⇒ `feat`, not `refactor`, so releaser-pleaser
   cuts a release — see the ecosystem convention.)
 
-## 5. Open decisions
-
-Resolved:
+## 5. Decisions (all resolved 2026-07-28)
 
 - **Name** — `sigillum` (wax-seal theme, market-checked). [#5 D-4]
 - **`sign`/`keys` command home** — a dedicated tiny `go/signing-cli` module
   (not gtb `pkg/`, not duplicated), props-decoupled.
-
-Needing Matt's input (carried from the #5 spec; block Phase 1 design, not
-Phase 0):
-
-- **D-2 — minisign variant.** Standardise producers on the prehashed **"ED"**
-  format (BLAKE2b-512 digest then Ed25519 over the 64-byte digest — within
-  KMS's 4096-byte Sign limit, so HSM custody is preserved). *Recommended.*
-- **D-3 — rtb-update.** Have rtb-update accept both legacy "Ed" and prehashed
-  "ED", and drop the separate manifest, so one artefact serves both rtb-update
-  and cargo-binstall.
+- **D-2 — minisign format: prehashed "ED".** Producers emit the prehashed
+  **"ED"** form (`ed25519(BLAKE2b-512(<file>))` — a 64-byte digest, within
+  KMS's 4096-byte RAW Sign limit, so HSM custody is preserved) and never pure
+  "Ed". "ED" is also the form cargo-binstall requires. Two KMS Sign calls per
+  artefact (main signature over the digest + the minisign global signature).
+- **D-3 — rtb-update: "ED"-only, clean break, drop the manifest.**
+  `verify.rs` accepts only prehashed "ED" (legacy pure-"Ed" and raw-64-byte
+  acceptance removed); the separate manifest goes away, so a single
+  self-describing `.sig` serves both rtb-update and cargo-binstall.
+  **Sequencing:** an "ED"-only producer switch means already-deployed
+  "Ed"-only binaries cannot self-update across the cutover. This is coordinated
+  with the **Friday rekey**, which is *itself* a hard trust-root cutover
+  (deployed binaries pin the old public keys and cannot verify new-key
+  signatures regardless of Ed/ED). Doing Ed→ED in the same rotation therefore
+  adds **no incremental breakage** — one clean break, not two. The ED-capable
+  rtb-update ships as part of the rekeyed release set; anyone on a pre-rekey
+  binary re-establishes trust and reinstalls once, as the rekey already
+  requires.
 - **D-5 — key rotation.** Held; Matt completes the prod rebuild/rekey himself
-  (targeted for the Friday window). sigillum work does not depend on it.
-- **D-6 — default algorithm.** Support both Ed25519 and RSA in the standalone
-  tool; default preference Ed25519. Confirm the default.
+  (Friday window). Now also the coordination point for the D-3 cutover.
+- **D-6 — key-generation algorithm: no implicit default.** `keys generate`
+  requires an explicit `--algorithm ed25519|rsa` (or config equivalent) and
+  errors, listing valid choices, when unset — no silent default, an
+  informed-choice posture appropriate to a signing tool. (Signing with an
+  existing key needs no choice; the algorithm is fixed by the key.)
 
 ## 6. Acceptance criteria
 
