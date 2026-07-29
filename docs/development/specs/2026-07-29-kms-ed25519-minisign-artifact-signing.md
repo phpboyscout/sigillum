@@ -339,6 +339,90 @@ Because the `.minisig` is self-describing and per-artefact, rtb-update needs no
 manifest path for artefacts (D-3). Its independent SHA-256 `.sum` check is
 retained as defence-in-depth.
 
+### 5.4 Key identity and scope
+
+*(Resolved 2026-07-29. §6.7 mints against this; §6.8 pins it; §6.9 publishes it.)*
+
+**minisign has almost no identity surface, and that is the starting point.** The
+OpenPGP convention is not decorative — the email *is* the lookup key, since WKD
+resolves `hu/<zbase32(sha1(local-part))>` and the composite resolver enforces
+that a cert only counts under an identity if a UID names that email. minisign has
+none of that machinery. Its entire structural surface is:
+
+| Field | Signed? | Where |
+|---|---|---|
+| `key_id`, 8 bytes | — | both the `.pub` and every `.minisig` |
+| untrusted comment | **no** | one free-text line in each file |
+| trusted comment | **yes** | free text, **per-signature**, covered by the global signature |
+
+Nothing resolves an identity and nothing enforces one. **Identity here is a
+naming and audit concern, not a verification one** — what actually binds a
+signature to a project is *which key signed it*. Design accordingly, and do not
+build anything that implies a lookup that does not exist.
+
+**Scope: one artefact-signing key per project**, following infra's D-0010-D
+domain separation. The containment argument is stronger here than for OpenPGP:
+cargo-binstall pins exactly one `pubkey` per crate and has no dual-anchor
+cross-check, so a single shared artefact key would mean compromising any one
+project's signing role forges installable binaries for **every** project, with no
+second source to catch it. Each project therefore gets its own KMS Ed25519 key
+and OIDC grant, exactly as the OpenPGP path already does.
+
+**Machine identity: the derived `key_id`** (§4.1). Deterministic, stateless, and
+already golden-tested — it is the join key between a published public key and any
+signature made under it.
+
+**Human identity: structured and deliberately not an email.**
+
+```
+keys.phpboyscout.uk/minisign/<project>/v<N>.pub
+
+untrusted comment: phpboyscout <project> artefact signing v<N> (minisign key <KEYID>)
+RWRWR1qnVGNHTAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4
+```
+
+An email-shaped identifier would imply WKD machinery that does not exist for
+minisign, so the convention names the **project** and the **generation** instead.
+Generations are `v1`, `v2`, … incremented on rotation — not because minisign
+requires it (there is no frozen-bucket constraint), but so the registry and the
+publication path stay unambiguous across a rotation.
+
+The `keys.json` entry is the authoritative registry binding all of it together:
+
+```json
+{ "id": "56475AA75463474C", "project": "rtb-cli-bin", "generation": 1,
+  "algorithm": "minisign-ED", "purpose": "artefact", "status": "active",
+  "valid_from": "2026-08-01", "pubkey": "RWRWR1qn…" }
+```
+
+**Trusted comment: extend minisign's default.** It is the only *signed*
+per-artefact metadata, so it is the one place identity can be recorded
+tamper-evidently:
+
+```
+timestamp:1785326400	file:rtb_1.2.3_linux_amd64.tar.gz	hashed	project:rtb-cli-bin	key:56475AA75463474C
+```
+
+minisign's conventional fields are preserved and ours appended, so anything
+parsing the standard format still finds what it expects. Note the `key:` field
+**duplicates** the `key_id` already present in the signature body — the body is
+authoritative and is what `minisign-verify` checks against the public key; the
+comment copy is informational, for grep and forensic review. Both are covered by
+the same key, so they cannot disagree without the signature failing anyway.
+
+**Size constraint.** The global signature's KMS message is
+`64-byte signature ‖ trusted comment`, so the comment must stay well under the
+4096-byte cap. `ErrMessageTooLarge` already guards this, but it rules out
+anything expansive — keep the trusted comment to short structured fields.
+
+**Implementation consequence.** `go/signing` v0.3.0's `minisign.Options` has no
+`Project` field, and its default trusted comment stops at `hashed`. This needs an
+**additive** option plus a default-format change, which alters the golden
+fixtures — so they must be regenerated **and re-verified against the real
+`minisign-verify`** (`testdata/conformance/`), not merely updated to match the
+new output. Nothing has been published yet (§8, OQ-1), so the format is still
+free to change; after the first publish it is not.
+
 ## 6. Work breakdown
 
 Ordered by dependency. With §7's gate withdrawn, **every step below is
@@ -453,7 +537,10 @@ end-to-end test that a published `.minisig` verifies under both a
 `ed25519-dalek` + BLAKE2b-512 check.
 
 **Order matters here.** The public key must be final before the first crate
-version carrying it is published, because that pin is immutable (OQ-2).
+version carrying it is published, because that pin is immutable (OQ-2). Mint
+**one key per project** under the §5.4 naming, following infra's
+`mint-a-new-release-signing-key.md` — these are first-ever keys for the minisign
+path, so there is no frozen-bucket or overlap complexity to manage.
 
 ### 6.8 cargo-binstall distribution
 
@@ -581,14 +668,10 @@ Generation must preserve the runbook's staging discipline: output is compared
 against production for byte-identity on every pre-existing file before deploy, so
 add-only is verified rather than assumed.
 
-**Open — one key or one per project?** infra's D-0010-D gives each project its
-own signing key for blast-radius containment
-(`mint-a-new-release-signing-key.md`: *"a shared release key would let any
-project's tag pipeline mint signatures that every other project's verifiers
-trust"*). This spec has so far assumed a single artefact-signing key. Whether the
-minisign path follows the per-project convention — and what replaces the
-`<project>-release@phpboyscout.uk` identity convention, given minisign keys carry
-no email — needs deciding before §6.7 mints anything.
+Key scope, naming and the publication path are settled in **§5.4** — one key per
+project per D-0010-D, published at
+`keys.phpboyscout.uk/minisign/<project>/v<N>.pub` under a structured, non-email
+identity.
 
 ## 7. Sequencing — no gate remains (WITHDRAWN 2026-07-29)
 
@@ -693,9 +776,14 @@ D-3's decision stands unchanged and is now simply cheaper than it looked.
 - [ ] sigillum has E2E coverage for the signing workflows (from zero today).
 - [ ] `rtb-update` verifies a sigillum-produced `.minisig`; the `ED`-only removal
       lands per §7's sequencing.
-- [ ] The `key_id` derivation and public-key encoding are final **before** the
-      first crate version carrying a `pubkey` is published — they are immutable
-      thereafter (OQ-2).
+- [ ] The `key_id` derivation, public-key encoding **and trusted-comment format**
+      are final before the first crate version carrying a `pubkey` is published —
+      immutable thereafter (OQ-2, §5.4).
+- [ ] Golden fixtures regenerated for the extended trusted comment and
+      **re-verified against the real `minisign-verify`**, not merely updated to
+      match the new output (§5.4).
+- [ ] Each project has its own artefact-signing key and OIDC grant (§5.4,
+      D-0010-D); no key signs for more than one project.
 - [ ] One `.minisig` per artefact serves both consumers: cargo-binstall's `file`
       template and rtb-update's asset resolver point at the same file.
 - [ ] Public keys are published add-only and retained indefinitely, so signatures
