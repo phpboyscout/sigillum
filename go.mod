@@ -14,7 +14,7 @@ require (
 	github.com/spf13/afero v1.15.0
 	gitlab.com/phpboyscout/go-tool-base v0.33.0
 	gitlab.com/phpboyscout/go/credentials v0.2.2
-	gitlab.com/phpboyscout/go/errorhandling v0.1.0
+	gitlab.com/phpboyscout/go/errorhandling v0.1.1
 	gitlab.com/phpboyscout/go/signing-cli v0.1.0
 )
 
@@ -56,20 +56,20 @@ require (
 	github.com/ashanbrown/forbidigo v1.6.0 // indirect
 	github.com/ashanbrown/makezero v1.2.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.42.1 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.32.30 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.29 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.30 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.30 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.30 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.31 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.43.0 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.32.31 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.30 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.31 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.31 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.31 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.32 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.13 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.30 // indirect
-	github.com/aws/aws-sdk-go-v2/service/kms v1.54.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.4.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.32.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.37.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.44.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.31 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kms v1.55.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.5.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.33.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.45.0 // indirect
 	github.com/aws/smithy-go v1.27.3 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -350,8 +350,8 @@ require (
 	gitlab.com/phpboyscout/go/redact v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/repo v0.1.0 // indirect
-	gitlab.com/phpboyscout/go/signing v0.2.2
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.2.5
+	gitlab.com/phpboyscout/go/signing v0.4.0
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.2.6
 	gitlab.com/phpboyscout/go/tls v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/transit v0.1.3 // indirect
 	gitlab.com/phpboyscout/go/transport v0.2.0 // indirect
