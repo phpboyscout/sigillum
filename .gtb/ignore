@@ -12,3 +12,10 @@
 # Manage it with 'gtb ignore add|remove|list|check', or edit it by hand.
 # See https://gtb.phpboyscout.uk/how-to/configure-generator-ignore/
 cmd/sigillum/main.go
+.goreleaser.yaml
+.gitlab-ci.yml
+zensical.toml
+README.md
+CHANGELOG.md
+go.mod
+docs/**
