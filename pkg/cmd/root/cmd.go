@@ -27,7 +27,7 @@ func NewCmdRoot(v version.Info) (*setup.Command, *props.Props) {
 		Logger: l,
 		Tool: props.Tool{
 			Description: "Standalone artefact signing and verification CLI for the phpboyscout ecosystem",
-			Features:    props.SetFeatures(props.Disable(props.McpCmd), props.Enable(props.ConfigCmd)),
+			Features:    props.SetFeatures(props.Disable(props.InitCmd), props.Disable(props.McpCmd), props.Enable(props.ConfigCmd)),
 			Name:        "sigillum",
 			ReleaseSource: props.ReleaseSource{
 				Host:  "gitlab.com",

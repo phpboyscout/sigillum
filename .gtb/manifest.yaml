@@ -8,6 +8,8 @@ properties:
       enabled: true
     - name: mcp
       enabled: false
+    - name: init
+      enabled: false
   signing:
     enabled: true
     key_source: embedded
