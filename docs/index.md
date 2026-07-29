@@ -1,32 +1,67 @@
-# sigillum
+---
+title: sigillum
+description: Sign and verify release artefacts from the command line, with the private key never leaving your KMS.
+tags: [overview, introduction, signing]
+hide:
+  - navigation
+---
 
-**sigillum** is a standalone, pure command-line tool for **signing and
-verifying release artefacts** in the phpboyscout ecosystem. It exposes the
-ecosystem's `sign` and `keys` commands as first-class, top-level commands so
-any release pipeline — Go or not, gtb-built or not — can produce and publish
-OpenPGP signatures without pulling in a whole application framework.
+<div class="hero">
+  <div class="hero-mark">
+    <img src="images/branding/logo_transparent.svg" alt="">
+  </div>
+  <div class="hero-body">
+    <h1 class="hero-title">sigillum</h1>
+    <p class="hero-tagline">Sign a release. Nothing else.</p>
+    <p class="hero-description">
+      A standalone command-line tool for signing and verifying release artefacts
+      with OpenPGP. The private key never leaves your KMS, HSM or PEM file, the
+      output is an ordinary detached signature every OpenPGP implementation
+      accepts, and nothing about it cares what language your project is written in.
+    </p>
+    <div class="install-box">
+      <span class="install-command">go install gitlab.com/phpboyscout/sigillum/cmd/sigillum@latest</span>
+      <button class="install-copy" type="button" title="Copy to clipboard">copy</button>
+    </div>
+    <div class="hero-buttons">
+      <a href="getting-started/" class="btn btn-primary">Get started</a>
+      <a href="how-to/" class="btn btn-secondary">How-to guides</a>
+    </div>
+  </div>
+</div>
 
-The command surface is identical to `gtb sign` / `gtb keys`; sigillum simply
-makes those commands the *whole* tool.
+<div class="cap-grid">
+  <div class="cap">
+    <h3>Sign</h3>
+    <p>Turn any file into an ASCII-armored detached OpenPGP signature. The key stays in the backend; only a digest is ever sent to it.</p>
+  </div>
+  <div class="cap">
+    <h3>Mint</h3>
+    <p>Build a real OpenPGP public key from a signer you already have, including an AWS KMS key that cannot export its private half.</p>
+  </div>
+  <div class="cap">
+    <h3>Generate</h3>
+    <p>Create a fresh Ed25519 or RSA keypair locally, when a hosted key is more ceremony than the job needs.</p>
+  </div>
+  <div class="cap">
+    <h3>Publish</h3>
+    <p>Lay out a Web Key Directory tree, so verifiers fetch your key from your own domain rather than from whoever hosts your code.</p>
+  </div>
+</div>
 
-## What it does
+## Why a separate tool
 
-- **Sign** a file into an ASCII-armored OpenPGP **detached** signature using a
-  configured backend — the private key never leaves the HSM/KMS or the local
-  PEM file.
-- **Mint** an OpenPGP public key from an existing signer (e.g. an AWS KMS key).
-- **Generate** a fresh keypair locally (Ed25519 or RSA).
-- **Publish** a Web Key Directory (WKD) tree from your public keys, giving
-  verifiers an externally-served trust anchor.
+The signing commands began life inside [go-tool-base](https://gtb.phpboyscout.uk),
+which is both a library and a CLI and could therefore carry both. That works
+until something wants the *commands* without the framework: it ends up depending
+on the whole of gtb, which depends on the signing module, and the dependency
+graph stops being a graph.
 
-## Install
-
-```bash
-go install gitlab.com/phpboyscout/sigillum/cmd/sigillum@latest
-```
-
-Or download a released binary from the
-[GitLab Releases](https://gitlab.com/phpboyscout/sigillum/-/releases) page.
+sigillum is the leaf that resolves it — a pure CLI over
+[`go/signing`](https://signing.go.phpboyscout.uk), depending on the framework and
+depended on by nothing. The command surface is identical to `gtb sign` and
+`gtb keys`; sigillum simply makes those commands the *whole* tool, so a release
+pipeline that is not Go, and was never built with gtb, can still use them.
 
 ## Sign a file in one command
 
@@ -39,10 +74,9 @@ sigillum sign \
     checksums.txt
 ```
 
-This writes `checksums.txt.sig` — an armored OpenPGP detached signature that
-`gpg --verify` (and every other modern OpenPGP implementation) accepts. Swap
-`--backend aws-kms` for `--backend local --key-id ./release.pem` to sign with an
-on-disk key instead.
+That writes `checksums.txt.sig`, an armored detached signature that `gpg --verify`
+(and every other modern OpenPGP implementation) accepts. Swap `--backend aws-kms`
+for `--backend local --key-id ./release.pem` to sign with an on-disk key instead.
 
 ## Architecture at a glance
 
