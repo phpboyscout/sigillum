@@ -415,13 +415,51 @@ the same key, so they cannot disagree without the signature failing anyway.
 4096-byte cap. `ErrMessageTooLarge` already guards this, but it rules out
 anything expansive — keep the trusted comment to short structured fields.
 
-**Implementation consequence.** `go/signing` v0.3.0's `minisign.Options` has no
-`Project` field, and its default trusted comment stops at `hashed`. This needs an
-**additive** option plus a default-format change, which alters the golden
-fixtures — so they must be regenerated **and re-verified against the real
-`minisign-verify`** (`testdata/conformance/`), not merely updated to match the
-new output. Nothing has been published yet (§8, OQ-1), so the format is still
-free to change; after the first publish it is not.
+#### Validated, not assumed
+
+Extending a format that two external implementations parse is exactly the kind
+of change worth proving before committing to. A spike on 2026-07-29 signed every
+variant under consideration with the released v0.3.0 — `Options.TrustedComment`
+was already free text, so the proposed format needed no code change to test —
+and verified each against **both** `minisign-verify` (the crate cargo-binstall
+uses, at `allow_legacy = false`) and jedisct1's own Rust `minisign` crate:
+
+| Variant tested | Both verifiers |
+|---|---|
+| baseline (minisign's default) | pass |
+| extended (`…hashed\tproject:…\tkey:…`) | pass |
+| our fields *before* minisign's | pass |
+| non-tab separator | pass |
+| unicode | pass |
+| 3966-byte comment | pass |
+| empty | pass |
+
+**Neither implementation parses the trusted comment**, and cargo-binstall touches
+it in exactly one place — `signature.trusted_comment().into()`, for informational
+display (`crates/binstalk-fetchers/src/signing.rs`). It is opaque free text end
+to end, so extending it is safe.
+
+**The spike also found a gap unrelated to the question asked.** The reference C
+implementation caps comments — `COMMENTMAXBYTES` 1024 (untrusted),
+`TRUSTEDCOMMENTMAXBYTES` 8192 (trusted) — and **neither Rust implementation
+enforces them**, which is why the 3966-byte case passed. An over-long comment
+would therefore have passed every test we have, passed cargo-binstall, and then
+failed against upstream `minisign -V`. `go/signing` now rejects both limits at
+signing time (`ErrCommentTooLong`). Note the trusted-comment limit is not the
+binding one in practice: the global signature's message is
+`signature ‖ trusted comment` and an HSM caps its message at 4096 bytes, so a
+KMS-backed signer runs out of room first.
+
+**Implementation status.** `minisign.Options` gained an additive `Project` field.
+When it is unset the output is **byte-identical to before**, so — better than
+this spec first predicted — the existing golden fixture did *not* move and its
+conformance test was untouched. A second fixture covers the extended form and was
+verified against the real `minisign-verify` before being committed; that run also
+confirmed a tampered `project:` field is **rejected**, proving the appended data
+is genuinely covered by the global signature rather than free-floating text.
+
+Remaining: `go/signing-cli`'s `sign` needs a `--project` flag to pass the value
+through, which requires a released `go/signing` carrying `Options.Project`.
 
 ## 6. Work breakdown
 
@@ -779,9 +817,13 @@ D-3's decision stands unchanged and is now simply cheaper than it looked.
 - [ ] The `key_id` derivation, public-key encoding **and trusted-comment format**
       are final before the first crate version carrying a `pubkey` is published —
       immutable thereafter (OQ-2, §5.4).
-- [ ] Golden fixtures regenerated for the extended trusted comment and
-      **re-verified against the real `minisign-verify`**, not merely updated to
-      match the new output (§5.4).
+- [x] The extended trusted comment is proven safe against both external
+      implementations, and its golden fixture **verified against the real
+      `minisign-verify`** rather than merely recorded (§5.4).
+- [x] Comment lengths are validated against the reference implementation's
+      limits, which no Rust verifier enforces (§5.4).
+- [ ] `sign --project` passes the value through (needs a released `go/signing`
+      carrying `Options.Project`).
 - [ ] Each project has its own artefact-signing key and OIDC grant (§5.4,
       D-0010-D); no key signs for more than one project.
 - [ ] One `.minisig` per artefact serves both consumers: cargo-binstall's `file`
