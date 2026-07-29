@@ -1,7 +1,7 @@
 ---
 title: "KMS-Ed25519 minisign artefact signing"
 description: "Implementation spec for the capability sigillum was created to deliver: per-artefact minisign signatures over release binaries, verifiable by cargo-binstall (install-time) and rtb-update (self-update), produced by a KMS-held Ed25519 key with full HSM custody. The design is settled in go-tool-base's 2026-07-28-ed25519-kms-signing.md design spike; nothing has been implemented. minisign's prehashed 'ED' variant is ed25519(BLAKE2b-512(file)) — ordinary Ed25519 over a 64-byte digest computed outside the signer — so the KMS Sign 4096-byte message cap never binds and no software key is needed. This spec resolves the details the spike left open (minisign key_id derivation for a KMS-held key, public-key encoding, the crypto.Signer contract for a digest-as-message signer, trusted-comment determinism), assigns the work across go/signing, go/signing-aws-kms, go/signing-cli, sigillum, rust/cli's rtb-update and terraform-aws-signing-kms, and corrects the D-3 cutover sequencing now that the v2 rekey has published and the dual-sign window is open rather than closed."
-status: DRAFT
+status: IN PROGRESS
 date: 2026-07-29
 tags:
   - specification
@@ -30,12 +30,15 @@ Date
 :   2026-07-29
 
 Status
-:   DRAFT — implementation spec, needs review before work starts. The
-    *design* is settled (go-tool-base `2026-07-28-ed25519-kms-signing.md`,
-    decisions D-1..D-6 all resolved 2026-07-28); this spec turns it into
-    assigned, testable work and resolves four details the spike deferred
-    (§4). Two open questions in §8 need maintainer answers before the
-    cutover step (§6.5) is scheduled — neither blocks the Go work.
+:   IN PROGRESS — reviewed and approved 2026-07-29. The *design* is settled
+    (go-tool-base `2026-07-28-ed25519-kms-signing.md`, decisions D-1..D-6 all
+    resolved 2026-07-28); this spec turns it into assigned, testable work and
+    resolves four details the spike deferred (§4).
+
+    Work is proceeding on §6.1–6.4, which are unblocked regardless of how the
+    open questions land. The §8 open questions remain **unanswered** — OQ-1
+    gates only the `ED`-only *removal* in §6.5 (§7), and OQ-2/OQ-3 are scope
+    calls that can be taken any time before §6.7.
 
 Related
 :   go-tool-base `docs/development/specs/2026-07-28-ed25519-kms-signing.md`
