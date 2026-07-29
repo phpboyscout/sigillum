@@ -35,10 +35,14 @@ Status
     resolved 2026-07-28); this spec turns it into assigned, testable work and
     resolves four details the spike deferred (§4).
 
-    Work is proceeding on §6.1–6.4, which are unblocked regardless of how the
-    open questions land. The §8 open questions remain **unanswered** — OQ-1
-    gates only the `ED`-only *removal* in §6.5 (§7), and OQ-2/OQ-3 are scope
-    calls that can be taken any time before §6.7.
+    **§6.1–6.3 are implemented and merged** (2026-07-29): the minisign
+    assembler in `go/signing` v0.3.0, the KMS Ed25519 branch in
+    `go/signing-aws-kms`, and the CLI surface in `go/signing-cli`.
+
+    **OQ-1 is resolved (§8) and it removes the schedule dependency entirely.**
+    No release has ever published an artefact signature of any kind, so D-3's
+    `ED`-only break has nothing to break. §7's rekey gate is withdrawn — the
+    remaining work is unblocked in full.
 
 Related
 :   go-tool-base `docs/development/specs/2026-07-28-ed25519-kms-signing.md`
@@ -327,7 +331,18 @@ retained as defence-in-depth.
 
 ## 6. Work breakdown
 
-Ordered by dependency. Steps 1–4 are pure Go and unblocked today.
+Ordered by dependency. With §7's gate withdrawn, **every step below is
+unblocked**; §6.1–6.3 are done.
+
+| § | Work | State |
+|---|---|---|
+| 6.1 | minisign assembler in `go/signing` | **DONE** — v0.3.0 |
+| 6.2 | Ed25519 branch in `go/signing-aws-kms` | **DONE** |
+| 6.3 | `sign --format minisign` + `keys minisign` | **DONE** |
+| 6.4 | sigillum E2E + docs | pending |
+| 6.5 | `rtb-update` verifies `ED` | pending |
+| 6.6 | terraform `ECC_NIST_EDWARDS25519` | pending |
+| 6.7 | provision, publish, wire the pipelines | pending |
 
 ### 6.1 `go/signing` — the minisign assembler *(new sub-package)*
 
@@ -340,8 +355,13 @@ A `minisign` sub-package, backend-agnostic, driven by any `crypto.Signer` whose
   cargo-binstall pins;
 - `.minisig` assembly (§5.2) with pinnable trusted-comment timestamp (§4.4);
 - a **verifier** for the `ED` variant, including the global-signature check —
-  needed for our own conformance tests and useful to `go/signing/verify`;
-- a raw-64-byte `.sig` sink (trivial, and the spike calls for it).
+  needed for our own conformance tests and useful to `go/signing/verify`.
+
+**No raw-64-byte `.sig` sink** *(decided 2026-07-29, superseding the spike)*. It
+would have no supported consumer — D-3 removes raw-64-byte acceptance from
+rtb-update — and it is pure Ed25519 over the whole file, which KMS physically
+cannot produce (>4096 bytes), making it software-key-only and so ruled out by the
+custody model. Building it would ship a sink producing files nothing verifies.
 
 Promote `golang.org/x/crypto` to a direct dependency. Keep the OpenPGP path
 untouched.
@@ -390,16 +410,18 @@ The commands arrive automatically via `go/signing-cli`. What sigillum owes:
   with the `[package.metadata.binstall.signing]` snippet; update the existing
   `docs/how-to/sign-a-release-artefact.md` and the `sign` reference page.
 
-### 6.5 `rust/cli` — `rtb-update` accepts `ED` *(sequencing-sensitive, see §7)*
+### 6.5 `rust/cli` — `rtb-update` verifies `ED` *(unblocked — §7 gate withdrawn)*
 
 `crates/rtb-update/src/verify.rs`: accept the `ED` tag, compute BLAKE2b-512
 before `vk.verify`, add the `blake2` dependency. Per D-3 the end state is
 **`ED`-only** — legacy pure-`Ed` and raw-64-byte acceptance removed, per-artefact
-manifest dropped. Update the module docs (they currently document `Ed`-only as
-deliberate) and rust-tool-base's `docs/how-to/secure-releases.md`, which still
-describes *"an Ed25519 detached signature over the archive."*
+manifest dropped.
 
-**The code change is unblocked; landing the `ED`-only *removal* is not.** See §7.
+Because nothing has ever been published (§8, OQ-1), this goes straight to the end
+state: **no accept-both transition step**, and no coordination with the rekey.
+Update the module docs (they currently document `Ed`-only as deliberate) and
+rust-tool-base's `docs/how-to/secure-releases.md`, which still describes *"an
+Ed25519 detached signature over the archive."*
 
 ### 6.6 `iac/terraform-aws-signing-kms` — allow the key spec
 
@@ -418,57 +440,65 @@ end-to-end test that a published `.minisig` verifies under both a
 `minisign-verify` (`allow_legacy = false`) check and an
 `ed25519-dalek` + BLAKE2b-512 check.
 
-## 7. Sequencing — a correction to D-3
+## 7. Sequencing — no gate remains (WITHDRAWN 2026-07-29)
 
-**D-3's stated justification no longer holds as written, and the cutover needs a
-different coordination point.**
+An earlier revision of this section argued that D-3's `ED`-only break had to be
+deferred to the rekey's B3 window closure. **OQ-1 (§8) has since been settled
+empirically, and it removes the premise that argument rested on.**
 
-D-3 chose an `ED`-only clean break on the reasoning that it *"rides the Friday
-rekey"*, which is *"itself a hard trust-root cutover"*, so `Ed`→`ED` adds *"no
-incremental breakage — one clean break, not two."* That argument depends on both
-breaks landing **simultaneously**.
+The reasoning was: D-3 justified an `ED`-only clean break by *"riding the Friday
+rekey"* so that `Ed`→`ED` adds *"no incremental breakage — one clean break, not
+two"*, which requires both breaks to land simultaneously. With the v2 keys
+already published and the dual-sign window open, they would not — so switching
+producers to `ED`-only would land a second break on binaries mid-migration.
 
-As of 2026-07-29 the v2 keys are **published** and what remains is decommissioning
-the old keys and accounts. In the rekey spec's terms that places us **inside** the
-dual-sign window (B2b/B3): pipelines currently sign v1+v2, and in-field binaries
-are migrating onto v2-trusting builds. The window's entire purpose is that old
-binaries can still self-update during it. Switching producers to `ED`-only *now*
-would break exactly the population the window exists to protect — landing a
-second break mid-migration, which is the outcome D-3 set out to avoid.
+**That population does not exist.** No release has ever published an artefact
+signature of any kind (§8, OQ-1), and rtb-update's self-update fails closed when
+`update_public_keys` is empty — which it always has been. There is no deployed
+binary that can verify an artefact signature today, so there is nothing for a
+cutover to break.
 
-**Revised sequencing** (the decision D-3 made is kept; only its timing moves):
+**Consequently:**
 
-- **Unblocked now:** §6.1–6.4 (all Go), §6.6 (terraform), and the *additive* half
-  of §6.5 — teach rtb-update to **accept both** `Ed` and `ED`. Accept-both is
-  strictly backwards-compatible and can ship immediately.
-- **Unblocked now:** minting the KMS Ed25519 key (§6.7). It is a **new key of a
-  new type** for a **new signature path** — additive, touching neither the v1 nor
-  v2 RSA keys nor any existing signature, so the rekey's D-5 hold does not apply
-  to it. Worth confirming against the live key state before the terraform apply.
-- **Gated on rekey completion:** the `ED`-only *removal* (dropping pure-`Ed` and
-  raw-64-byte acceptance). Its coordination point is the rekey spec's **B3
-  window closure** — *"when closed, switch pipelines to v2-only."* Do `Ed`→`ED`
-  in the same step, so it remains one break rather than two.
+- **All remaining work is unblocked**, including §6.5's `ED`-only removal. There
+  is no need to ship an accept-both transition step, and no coordination with the
+  rekey's B3 closure.
+- **The artefact path starts from a clean slate.** `ED`-only can be the first and
+  only form ever published, so no legacy acceptance is inherited into the
+  verifier.
+- **The rekey remains relevant only to the OpenPGP manifest path**, which this
+  spec does not change.
 
-This preserves D-3's intent exactly. It also means the artefact capability can be
-built, tested, shipped and used **before** the cutover, since accept-both makes
-the new `.minisig` verifiable by every rtb-update built from that point on.
-
-**OQ-1 (§8) may collapse this entirely.** If nothing has ever been published with
-a pure-`Ed` signature, there is no in-field population to protect and the
-`ED`-only removal can land immediately with the rest of the work.
+D-3's decision stands unchanged and is now simply cheaper than it looked.
 
 ## 8. Open questions
 
 - **OQ-1 — Has any release ever shipped a pure-`Ed` `.minisig` or a raw-64-byte
-  `.sig`?** rtb-update's verifier exists, and rust-tool-base's
-  `secure-releases.md` documents the producer contract, but **no CI configuration
-  in `rust/cli` or `rust-tool-base` was found that emits a signature asset**, and
-  no `update_public_keys` value is populated in-tree. If nothing was ever
-  published, D-3's "clean break" breaks nothing, §7's gate disappears, and the
-  `ED`-only removal lands with everything else. *Confirm by checking the actual
-  published release assets.* This is the single highest-leverage answer here —
-  it decides whether this work has a scheduling dependency at all.
+  `.sig`? RESOLVED (2026-07-29) — no. Nothing has ever been published.**
+
+  Checked across every distribution channel, over all 99 projects in the
+  `phpboyscout` group:
+
+  | Evidence | Result |
+  |---|---|
+  | GitLab release assets, all projects (808 asset links) | **zero** `.minisig`; **zero** `.sig` other than `checksums.txt.sig`; **zero** `.sum` |
+  | `rust-tool-base` releases (82 of them) | **zero** asset links — source-only crate tags |
+  | GitLab package registry for `rust-tool-base`, `rust/cli`, `rust/app` | no packages |
+  | `[package.metadata.binstall]` in the published `rtb-cli-bin` v0.8.0 | **absent** — the only cargo-binstall references are CI *using* it to install `cargo-semver-checks` |
+  | `update_public_keys` populated anywhere | **never** — only type definitions and docs |
+
+  The crates *are* published to crates.io (`rtb-cli-bin` 0.8.0, `rtb-update`
+  0.7.1 and others), but with no binstall metadata cargo-binstall builds from
+  source rather than fetching a signed binary. And rtb-update's
+  `preflight_required_fields` returns `NoPublicKey` when `update_public_keys` is
+  empty — it **fails closed**, so signed self-update has never been operable.
+
+  Every existing signature in the wild is a `checksums.txt.sig` on the OpenPGP
+  manifest path, which this spec does not touch.
+
+  **Consequence:** §7's rekey gate is withdrawn, no accept-both transition step
+  is needed, and `ED`-only can be the first and only artefact signature form
+  ever published.
 
 - **OQ-2 — Is cargo-binstall a served target now, or later?** The spike's own
   scope moved on this twice. Serving it costs only the published `pubkey` and the
@@ -476,6 +506,11 @@ a pure-`Ed` signature, there is no in-field population to protect and the
   public-key encoding as a compatibility surface (§4.2) and means a future
   `key_id` or encoding change is a breaking change for installed users. Cheap to
   include now; expensive to retrofit the guarantee later.
+
+  OQ-1's evidence sharpens this: `rtb-cli-bin` **is** published to crates.io with
+  **no** `[package.metadata.binstall]`, so cargo-binstall currently builds it from
+  source. Adding the metadata in §6.7 is what makes it fetch a signed binary
+  instead — so this is a live choice about §6.7's scope, not a hypothetical.
 
 - **OQ-3 — Does `keys generate --algorithm ed25519` need a minisign output
   mode?** Today it emits an armored OpenPGP public half and a software private
