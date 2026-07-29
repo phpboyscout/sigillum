@@ -39,10 +39,14 @@ Status
     assembler in `go/signing` v0.3.0, the KMS Ed25519 branch in
     `go/signing-aws-kms`, and the CLI surface in `go/signing-cli`.
 
-    **OQ-1 is resolved (§8) and it removes the schedule dependency entirely.**
-    No release has ever published an artefact signature of any kind, so D-3's
-    `ED`-only break has nothing to break. §7's rekey gate is withdrawn — the
-    remaining work is unblocked in full.
+    **OQ-1 and OQ-2 are resolved (§8).** No release has ever published an
+    artefact signature of any kind, so D-3's `ED`-only break has nothing to
+    break and §7's rekey gate is withdrawn — the remaining work is unblocked in
+    full. cargo-binstall **is** a served target: distributing signed binaries to
+    Rust users is the goal of the programme, which adds §6.8 and freezes the
+    public-key encoding as a permanent compatibility surface.
+
+    Only OQ-3 remains open, and it is a small scope call.
 
 Related
 :   go-tool-base `docs/development/specs/2026-07-28-ed25519-kms-signing.md`
@@ -343,6 +347,7 @@ unblocked**; §6.1–6.3 are done.
 | 6.5 | `rtb-update` verifies `ED` | pending |
 | 6.6 | terraform `ECC_NIST_EDWARDS25519` | pending |
 | 6.7 | provision, publish, wire the pipelines | pending |
+| 6.8 | cargo-binstall distribution (crate metadata + hosted artefacts) | pending |
 
 ### 6.1 `go/signing` — the minisign assembler *(new sub-package)*
 
@@ -435,10 +440,52 @@ Confirm the OIDC signer role's `kms:Sign` grant is algorithm-agnostic.
 
 Mint the artefact-signing KMS Ed25519 key; publish its minisign public key;
 wire `.minisig` emission into the release pipelines; pin the key in
-cargo-binstall metadata and rtb-update's `update_public_keys`; add the
+cargo-binstall metadata (§6.8) and rtb-update's `update_public_keys`; add the
 end-to-end test that a published `.minisig` verifies under both a
 `minisign-verify` (`allow_legacy = false`) check and an
 `ed25519-dalek` + BLAKE2b-512 check.
+
+**Order matters here.** The public key must be final before the first crate
+version carrying it is published, because that pin is immutable (OQ-2).
+
+### 6.8 cargo-binstall distribution
+
+Serving cargo-binstall (OQ-2) is a distribution change as well as a signing one,
+and the mechanism is easy to picture wrongly:
+
+> **crates.io hosts source, not binaries.** Publishing a crate does not publish a
+> compiled artefact. cargo-binstall reads `[package.metadata.binstall]` from the
+> *published crate*, which templates a **URL pointing at wherever the prebuilt
+> archives and their signatures are actually hosted** — for us, GitLab release
+> assets or the generic package registry. So "publishing signed binaries to
+> crates.io" is, concretely: **binaries and `.minisig` files go to GitLab; the
+> crate on crates.io carries the metadata that points at them.**
+
+The work is therefore:
+
+1. **Host the artefacts.** Publish each target's archive and its `<archive>.minisig`
+   at a stable, templatable URL. The existing release pipeline already publishes
+   archives; this adds the signature beside each one.
+2. **Add `[package.metadata.binstall]`** to each binary crate (`rtb-cli-bin`
+   today) — `pkg-url`, `pkg-fmt`, `bin-dir`, and a `signing` table carrying
+   `algorithm = "minisign"` and the `pubkey` from `keys minisign`. Point the
+   signature `file` template at the published `.minisig` so **one file serves
+   cargo-binstall and rtb-update both** (§2).
+3. **Publish the crate version** carrying that metadata. From this point the
+   `pubkey` is pinned for that version forever.
+
+**Two consequences to confirm before the first publish**, since both are
+operational rather than cryptographic and neither is settled by this spec:
+
+- **Key rotation.** Versions published under the old `pubkey` keep pinning it.
+  Rotating the artefact key does not retroactively change them, so either the old
+  public key stays valid for those versions' artefacts, or those versions stop
+  being binstall-installable. Decide which before the key is minted, because it
+  shapes how long a retired artefact key must remain published.
+- **Failure behaviour.** Confirm empirically what cargo-binstall does when
+  signature verification fails — whether it falls back to building from source or
+  fails hard. That determines the blast radius of a signing mistake, and it should
+  be observed rather than assumed.
 
 ## 7. Sequencing — no gate remains (WITHDRAWN 2026-07-29)
 
@@ -500,17 +547,18 @@ D-3's decision stands unchanged and is now simply cheaper than it looked.
   is needed, and `ED`-only can be the first and only artefact signature form
   ever published.
 
-- **OQ-2 — Is cargo-binstall a served target now, or later?** The spike's own
-  scope moved on this twice. Serving it costs only the published `pubkey` and the
-  `file` template — the signature is identical either way — but it fixes the
-  public-key encoding as a compatibility surface (§4.2) and means a future
-  `key_id` or encoding change is a breaking change for installed users. Cheap to
-  include now; expensive to retrofit the guarantee later.
+- **OQ-2 — Is cargo-binstall a served target? RESOLVED (2026-07-29) — yes.**
+  Distributing signed binaries to Rust users via cargo-binstall is the stated
+  goal of this programme, not an optional extra. It is therefore a first-class
+  target from the first published signature, and §6.7 carries the work (§6.8).
 
-  OQ-1's evidence sharpens this: `rtb-cli-bin` **is** published to crates.io with
-  **no** `[package.metadata.binstall]`, so cargo-binstall currently builds it from
-  source. Adding the metadata in §6.7 is what makes it fetch a signed binary
-  instead — so this is a live choice about §6.7's scope, not a hypothetical.
+  **This makes the public-key encoding a permanent compatibility surface.** A
+  crates.io version is immutable, so the `pubkey` string baked into a published
+  crate is pinned forever for that version. Both the `key_id` derivation (§4.1)
+  and the public-key encoding (§4.2) are frozen the moment the first crate
+  version carrying a `pubkey` is published — after that, changing either breaks
+  `cargo binstall` for every version already out there. Get them right before the
+  first publish; they cannot be retrofitted.
 
 - **OQ-3 — Does `keys generate --algorithm ed25519` need a minisign output
   mode?** Today it emits an armored OpenPGP public half and a software private
@@ -542,5 +590,10 @@ D-3's decision stands unchanged and is now simply cheaper than it looked.
 - [ ] sigillum has E2E coverage for the signing workflows (from zero today).
 - [ ] `rtb-update` verifies a sigillum-produced `.minisig`; the `ED`-only removal
       lands per §7's sequencing.
+- [ ] The `key_id` derivation and public-key encoding are final **before** the
+      first crate version carrying a `pubkey` is published — they are immutable
+      thereafter (OQ-2).
+- [ ] One `.minisig` per artefact serves both consumers: cargo-binstall's `file`
+      template and rtb-update's asset resolver point at the same file.
 - [ ] A published artefact is verified end-to-end by a real `cargo binstall` and
       a real `rtb-update` self-update.
