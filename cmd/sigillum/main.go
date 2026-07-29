@@ -11,6 +11,8 @@
 package main
 
 import (
+	"github.com/spf13/cobra"
+
 	gtbRoot "gitlab.com/phpboyscout/go-tool-base/pkg/cmd/root"
 	setup "gitlab.com/phpboyscout/go-tool-base/pkg/setup"
 	signingcli "gitlab.com/phpboyscout/go/signing-cli"
@@ -31,9 +33,24 @@ func main() {
 	// Attached here — not in the generated root — so `gtb enable signing` and
 	// other root re-renders never drop it.
 	rootCmd.Register(
-		setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())),
-		setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())),
+		setup.Wrap("", skipConfig(signingcli.NewCmdSign(p.GetLogger()))),
+		setup.Wrap("", skipConfig(signingcli.NewCmdKeys(p.GetLogger()))),
 	)
 
 	gtbRoot.Execute(rootCmd, p)
+}
+
+// skipConfig stamps cmd and every descendant so the root bootstrap relaxes its
+// missing-config gate for them. The signing commands take all input via flags
+// and a backend — they never need a config file — but sigillum enables the
+// `init` feature, which otherwise makes config mandatory and breaks the
+// release-CI signing step (`go run ./cmd/sigillum sign ...`, no config present).
+func skipConfig(cmd *cobra.Command) *cobra.Command {
+	setup.SkipConfigCheck(cmd)
+
+	for _, sub := range cmd.Commands() {
+		skipConfig(sub)
+	}
+
+	return cmd
 }
