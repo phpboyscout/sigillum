@@ -25,26 +25,26 @@ version:
   gtb: v0.33.1-0.20260728135435-fc2b1bd1decb+dirty
 hashes:
   .gitignore: 660975e0ad0d5136feb10221a14835d0d6a0bf86788a08f8c97d4f9cbd06c453
-  .gitlab-ci.yml: 211ea51e3af100a7b24e9244d96f2b9edcf62c6355bbc0d970ca86dd93432845
+  .gitlab-ci.yml: b4c2873817c3b1aa28b46cf76202fe9da85b082c52ea6623ef4b8941f7ecdda7
   .gitlab/CODEOWNERS: 6384f3b0fa79ff53d5428c8499b4af97bd5c35328a3b7058df34164b2e875f2f
   .golangci.yaml: b41c089be6a30fbd149cf43812e2b08a6c8c6420de9d63545420539d0e256ea4
-  .goreleaser.yaml: f09a0f674178b06c8eef3119b6f8583b6ec54853245281392706c1a58e92a053
+  .goreleaser.yaml: 29edede866c86cea0291dc7dc9e07c71ca16c4d855b6fba6809d26c2212e07cc
   .mockery.yml: e2ada0fc97ec0a6f64c091ba6fb9f4a3308a678082588745ea23e9d4682bff15
   .pre-commit-config.yaml: 1dbbf5621e83f9665e0e88df4641c942b45a79ace7e21b04135d2ac5ebab679c
-  CHANGELOG.md: 8c4b2e8ee1835afd7bbf7be9e4b48423ffbc7cc1a40bbcacc9692f04d5c61c6d
-  README.md: 9cacf67971183d324787732af77dca7a918de22eebddc1357274ba5dd8c4e5c0
-  docs/explanation/components/index.md: ef73b7794c3276f71924f385b583be1cfb3a57c3a9e210cbd5cec91cfe640b4b
-  docs/explanation/concepts/index.md: d6fc4d0b7c49ca21bfbae58a0e5f5148ce555d9a35b5dcede2b96af3788ed1d2
-  docs/explanation/index.md: 0199c73a20a00952ab0b87a4e7e452f5c3f7fb19ed8e9ef9c2f90b81332e1c58
-  docs/getting-started.md: 1575ede17e9cf18be2fe16af2dba181b36968d0855e5630b7a5161ed170fd92d
-  docs/how-to/index.md: 7aa6afc5acc70b5e96888794fa7a71048c4b41ae1bf4abe16057904331e473f8
-  docs/index.md: e378bc16e7cc45c1878e9dab9438f3cd4f880809e3244870d3c3780f63bd2893
-  docs/reference/cli/index.md: 0dd5bc744f245d8770371dd29351bdcd60f89909222d231d1e0b70986079c17e
-  docs/reference/config/index.md: 3ce624fc9d598f4e6c309eb6a0b586731b4b382b83803201d5f90170d004bf6d
+  CHANGELOG.md: e490286ada2303e57e1157d7b03b5ca245ea5b44d8884d42b19391f80e2ab48a
+  README.md: d9f5b0bca77546cdbde8252339a191cd011d4f4ac3cb824017fa9aff549d7a12
+  docs/explanation/components/index.md: 7e1427d20c235eb76f9514996a79180bbfa820034eecced13e0deefdfb894dd9
+  docs/explanation/concepts/index.md: 0a3b2608855a7524b5e7ef21655385a26e3725bfb0b967b73406cc94bdf6739e
+  docs/explanation/index.md: e3862079f2ff3bd7d5a88bf255a41a34550145ec5d9c8581634ced1eb8562e38
+  docs/getting-started.md: 9cac9b48f6d779cd69d8dc4300bd19bd7725fe8c7d16f49ee334150b1d6ab2c5
+  docs/how-to/index.md: 8c44977b6c11f6fc54e8672205307091faad355b1190f25851da1041e544d074
+  docs/index.md: 559afa033df9d26928733a342ed2d6a9b3cd17fb7403ee0aa427684657f9b092
+  docs/reference/cli/index.md: 585f002f5880cd59c3e0c288c1e6270c8a18f64b5c156e735433999ffd7d5b2a
+  docs/reference/config/index.md: ffe949851fe69297c8e8ec774ed8c1e6b15236cf01ce38e9c3666aee90d34ae7
   docs/reference/index.md: 154c3c04dc21141048c0d01f693bc419ad2a969b03012f85cb24d53c655fb96b
   docs/tutorials/index.md: 8cd0fbd5ff19c692961fc1f5f0425c40bc1a87a740b8638e08a9e4ba1edf44fa
-  go.mod: bfec6a63f3abb94e8fde53c9bcff701cdbc3447cc7b8c75b932195021e295374
+  go.mod: 3d0c8c693089a9bd8fab151d3e693607b8485fedb0d79fa46432ff02bb9c7ff2
   justfile: 6886294c05073799f9efd2ff6f3d4e24e35c0eced7677977d8036f06d6c72d3c
   pkg/cmd/root/assets/init/config.yaml: 93df4d1e86bfa4be31b5761ca0adf65adc8ea399686a60a3a776305478b64c15
   renovate.json5: ee382029c06673485816d302f4627e8e02b9ecb97b781c0a149e9ac17f6f3cd4
-  zensical.toml: ccfdf1d9cd12b307dedb01cb7c3e0d13bebc2e49dfbcff9f27bd6952e8e17470
+  zensical.toml: 218748b58234af73c4a0b8feab5555da0260facb1782ee247e8722c0e01ef70a
