@@ -55,7 +55,13 @@ Related
     [`2026-07-28-sigillum-bootstrap.md`](2026-07-28-sigillum-bootstrap.md)
     (this repo — records the completed extraction and carries D-2..D-6),
     infra `docs/development/specs/2026-07-24-prod-rebuild-and-rekey.md`
-    (the trust-root rekey this cutover must coordinate with — §6.5),
+    (the trust-root rekey — no longer a gate, see §7),
+    infra `docs/development/specs/2026-07-27-cloudflare-dns-stack.md`
+    (the DNS stack the `keys.phpboyscout.uk` CNAME joins — §6.9),
+    infra `docs/how-to/rotate-release-signing-keys.md` and
+    `docs/how-to/mint-a-new-release-signing-key.md`
+    (**the** key-lifecycle runbooks — this spec defers to them entirely and
+    covers only public-key publication, §6.9),
     `rust/cli` `crates/rtb-update/src/verify.rs` (consumer contract),
     rust-tool-base `docs/how-to/secure-releases.md` (producer contract),
     cargo-binstall `SIGNING.md` (the other consumer contract),
@@ -348,6 +354,7 @@ unblocked**; §6.1–6.3 are done.
 | 6.6 | terraform `ECC_NIST_EDWARDS25519` | pending |
 | 6.7 | provision, publish, wire the pipelines | pending |
 | 6.8 | cargo-binstall distribution (crate metadata + hosted artefacts) | pending |
+| 6.9 | publishing the public keys (indefinite retention, keys site) | pending |
 
 ### 6.1 `go/signing` — the minisign assembler *(new sub-package)*
 
@@ -474,18 +481,114 @@ The work is therefore:
 3. **Publish the crate version** carrying that metadata. From this point the
    `pubkey` is pinned for that version forever.
 
-**Two consequences to confirm before the first publish**, since both are
-operational rather than cryptographic and neither is settled by this spec:
+**Failure behaviour — still to confirm.** cargo-binstall's `SIGNING.md` does not
+say what happens when signature verification fails: whether it falls back to
+building from source or fails hard. That sets the blast radius of a signing
+mistake, so **observe it, do not assume it**, before the first signed publish.
 
-- **Key rotation.** Versions published under the old `pubkey` keep pinning it.
-  Rotating the artefact key does not retroactively change them, so either the old
-  public key stays valid for those versions' artefacts, or those versions stop
-  being binstall-installable. Decide which before the key is minted, because it
-  shapes how long a retired artefact key must remain published.
-- **Failure behaviour.** Confirm empirically what cargo-binstall does when
-  signature verification fails — whether it falls back to building from source or
-  fails hard. That determines the blast radius of a signing mistake, and it should
-  be observed rather than assumed.
+### 6.9 Publishing the public keys
+
+**Private-key rotation is out of scope here — an established process already
+covers it.** infra's
+[`rotate-release-signing-keys.md`](https://gitlab.com/phpboyscout/infra/-/blob/main/docs/how-to/rotate-release-signing-keys.md)
+is the runbook, executed in full on 2026-07-24 for the AWS account move. Nothing
+in this spec replaces or amends it. The artefact-signing key is a **first-ever
+key for the minisign path** — nothing in the field pins it yet — so the
+applicable runbook is the simpler
+[`mint-a-new-release-signing-key.md`](https://gitlab.com/phpboyscout/infra/-/blob/main/docs/how-to/mint-a-new-release-signing-key.md).
+
+What this section covers is the **public** half: where it is published, and why
+it is kept forever.
+
+#### Public keys are retained indefinitely — the existing add-only principle
+
+The rotation runbook's governing rule is *"never modify a published `hu/` bucket
+— add-only, forever"*, resting on *"shipped binaries are immutable, so you never
+change what they see."* The artefact path is the same situation reached by a
+different route: a crates.io version is immutable, so the `pubkey` literal inside
+it is pinned for that version permanently, and rtb-update's `update_public_keys`
+is compiled into the binary. **Neither consumer ever fetches a key** —
+cargo-binstall's `pubkey` is an inline string (`SIGNING.md`: *"must be the public
+key"*), not a URL.
+
+So the same rule applies, and the keys site is where it is honoured: **published
+public keys are added, never modified, never removed.** A retired key's public
+half stays up permanently so that signatures made under it remain checkable long
+after the private half is destroyed — which the 2026-07-24 rotation did to the v1
+keys by closing their account.
+
+Two corollaries specific to this path:
+
+- **Published archives and their `.minisig` files are equally immutable and
+  retained indefinitely** — never deleted, never re-signed, never republished
+  under a different key. A crate version points at a specific artefact URL, so a
+  cleanup job trimming old release assets would silently break `cargo binstall`
+  for every version referencing them.
+- **rtb-update's overlap is the `Vec`, not a dual-sign window.**
+  `update_public_keys` is `Vec<[u8; 32]>` with any-one-verifies semantics, so
+  binaries shipped trusting `{old, new}` ahead of a rotation can verify releases
+  signed by either. This is the minisign analogue of the runbook's dual-trust
+  verifier releases (B2b) and avoids needing to emit two `.minisig` files per
+  artefact. cargo-binstall needs no overlap at all: each crate version is
+  self-consistent.
+
+**Compromise, not rotation, is the hard case.** A crates.io version cannot be
+amended, so a compromised artefact key stays pinned in every already-published
+version permanently; `cargo yank` is the only lever and it does not remove the
+version. Response: yank, publish new versions under a new key, and announce on
+the keys site — the only channel still updatable once versions are frozen.
+
+#### Where it is published
+
+The **existing independently-deployed keys site** — the Cloudflare Pages project
+already serving `openpgpkey.phpboyscout.uk`, deployed by hand with `wrangler` and
+holding no CI credentials. That independence is the point: a compromised release
+pipeline cannot quietly alter what the site says a key is.
+
+This is **not** a verification input — nothing fetches from it — but it provides
+three things pinning cannot: **discovery** (the current key, without trusting a
+crate to self-report), **audit** (confirming a pinned `pubkey` really is ours),
+and **revocation announcement**.
+
+**Layout.** One Pages project, a second CNAME: `keys.phpboyscout.uk` alongside
+`openpgpkey.phpboyscout.uk`. WKD cannot move — the advanced method's URL is fixed
+at `openpgpkey.<domain>/.well-known/openpgpkey/<domain>/hu/<hash>` and gpg would
+not find it elsewhere — so the RFC tree stays exactly where it is while
+`keys.phpboyscout.uk` serves the new paths on the same origin. `keys` is a
+first-level name, so Universal SSL covers it under the proxied-depth rule in
+infra's `2026-07-27-cloudflare-dns-stack.md`.
+
+**minisign keys are not WKD-publishable, and the tooling must not pretend
+otherwise.** A WKD bucket is `hu/<zbase32(sha1(local-part))>` holding binary
+OpenPGP packets, keyed by email. A minisign key is neither an OpenPGP key nor
+bound to an email, so it cannot occupy a `hu/` file. It is published as a plain
+file at a stable path instead.
+
+**Tooling.** `keys wkd` today emits only the RFC tree; the site's `index.html` is
+hand-maintained. Extend the signing-cli surface to emit the **whole publishable
+site** in one pass — the WKD tree unchanged, the minisign public-key files at
+stable paths, a machine-readable `keys.json` manifest (identifier, algorithm,
+purpose, status `active`/`retired`/`revoked`, valid-from, public key), and the
+human-readable index.
+
+The manifest makes the audit property mechanical rather than an eyeball
+comparison: CI or anyone can assert a crate's pinned `pubkey` matches the
+published one — precisely the check that catches a compromised pipeline. It
+remains an **audit and discovery** surface, never a trust input; consumers verify
+against their compiled-in pin, not against `keys.json`.
+
+Generation must preserve the runbook's staging discipline: output is compared
+against production for byte-identity on every pre-existing file before deploy, so
+add-only is verified rather than assumed.
+
+**Open — one key or one per project?** infra's D-0010-D gives each project its
+own signing key for blast-radius containment
+(`mint-a-new-release-signing-key.md`: *"a shared release key would let any
+project's tag pipeline mint signatures that every other project's verifiers
+trust"*). This spec has so far assumed a single artefact-signing key. Whether the
+minisign path follows the per-project convention — and what replaces the
+`<project>-release@phpboyscout.uk` identity convention, given minisign keys carry
+no email — needs deciding before §6.7 mints anything.
 
 ## 7. Sequencing — no gate remains (WITHDRAWN 2026-07-29)
 
@@ -595,5 +698,16 @@ D-3's decision stands unchanged and is now simply cheaper than it looked.
       thereafter (OQ-2).
 - [ ] One `.minisig` per artefact serves both consumers: cargo-binstall's `file`
       template and rtb-update's asset resolver point at the same file.
+- [ ] Public keys are published add-only and retained indefinitely, so signatures
+      stay checkable after the private half is destroyed (§6.9).
+- [ ] Published archives and their `.minisig` files are immutable and retained
+      indefinitely — no cleanup job trims release assets (§6.9). This is what
+      keeps older crate versions installable.
+- [ ] The keys site publishes the artefact public key and a `keys.json` manifest,
+      deployed independently of any CI, and an audit check asserts a crate's
+      pinned `pubkey` matches the published one.
+- [ ] Site generation is verified byte-identical against production for every
+      pre-existing file before deploy, per the rotation runbook's staging
+      discipline.
 - [ ] A published artefact is verified end-to-end by a real `cargo binstall` and
       a real `rtb-update` self-update.
