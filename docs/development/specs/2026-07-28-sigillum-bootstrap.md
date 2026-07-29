@@ -1,7 +1,7 @@
 ---
 title: "Bootstrap sigillum: a standalone signing & verification CLI over go/signing"
 description: "sigillum is a pure CLI — a gtb-generated application that exposes the phpboyscout ecosystem's artefact signing and verification commands (sign, keys) as first-class top-level commands. The real logic already lives in gitlab.com/phpboyscout/go/signing and its backend modules; today the cobra command builders are gtb-internal (internal/cmd/sign, internal/cmd/keys) and coupled to gtb's Props container. This spec records the completed repo bootstrap and defines the roadmap: extract the command builders into a new tiny gitlab.com/phpboyscout/go/signing-cli module (props-decoupled), attach them in sigillum, and re-attach them in gtb — dropping gtb's internal copies. That removes duplication and the module-cycle risk, since go/signing-cli depends only on go/signing + cobra, never on gtb or sigillum."
-status: DRAFT
+status: IMPLEMENTED
 date: 2026-07-28
 tags:
   - specification
@@ -26,15 +26,21 @@ Date
 :   2026-07-28
 
 Status
-:   DRAFT. Phase 0 (repo bootstrap) is **done** and verified; the remaining
-    phases and the open decisions below need review before implementation
-    starts.
+:   IMPLEMENTED (2026-07-29) — all four phases are done and verified on
+    `main` across the three repos; the only outstanding acceptance criterion
+    is sigillum's E2E coverage (§6), which moves to the implementation spec
+    that follows this one. The **capability** this extraction was performed
+    to enable — KMS-Ed25519 minisign artefact signing — is specified
+    separately in
+    [`2026-07-29-kms-ed25519-minisign-artifact-signing.md`](2026-07-29-kms-ed25519-minisign-artifact-signing.md).
 
 Related
 :   go-tool-base spec `2026-07-28-ed25519-kms-signing.md` (the #5 design spike —
     KMS-custody-preserving signing; carries decisions D-2..D-6 this project
-    consumes; currently on gtb branch `docs/ed25519-kms-signing-spec`, not yet
-    merged),
+    consumes; **merged to gtb `main` in `c958c890`**),
+    [`2026-07-29-kms-ed25519-minisign-artifact-signing.md`](2026-07-29-kms-ed25519-minisign-artifact-signing.md)
+    (this repo — the implementation spec that delivers D-2..D-6, and the owner
+    of that design going forward),
     `gitlab.com/phpboyscout/go/signing` and `go/signing-aws-kms` (the logic
     these commands drive)
 
@@ -77,7 +83,8 @@ Completed and verified on 2026-07-28:
   scaffolded commands (`init`, `update`, `docs`, `doctor`, `changelog`,
   `config`, `version`). Repo git-initialised; scaffold committed.
 
-The `sign` / `keys` commands are **not** present yet — they arrive in Phase 2.
+The `sign` / `keys` commands were **not** present at bootstrap — they arrived in
+Phase 2 (see §4, all phases now complete).
 
 ## 3. Target architecture
 
@@ -135,18 +142,26 @@ All five already call into `go/signing` / `go/signing/openpgpkey` /
 
 ## 4. Roadmap
 
+**All four phases are complete as of 2026-07-29** — `go/signing-cli` v0.1.0,
+sigillum v0.2.1, and gtb's re-attachment (merged in `cb73d1cf`, with
+`internal/cmd/{sign,keys}` deleted). The KMS-Ed25519 → prehashed-minisign sink
+referenced in Phase 1 was correctly deferred and now has its own spec
+([`2026-07-29-kms-ed25519-minisign-artifact-signing.md`](2026-07-29-kms-ed25519-minisign-artifact-signing.md)),
+which also revises that spec's rekey gating.
+
 - **Phase 0 — bootstrap** (DONE, §2).
-- **Phase 1 — `go/signing-cli` module.** Create the repo (per the module
+- **Phase 1 — `go/signing-cli` module** (DONE — v0.1.0). Create the repo (per the module
   extraction playbook: public, `<name>.go.phpboyscout.uk` docs, cicd at head).
   Move the command builders out of gtb's `internal/cmd/{sign,keys}`, decoupling
   them via the resolved `Deps` seam above (narrow `Logger` interface;
   constructors return `*cobra.Command`; `setup.Wrap` moves caller-side). Port
   the existing tests. The KMS-Ed25519 → prehashed-minisign sink from #5 lands
   here (or in `go/signing`) as the follow-on; it is gated on the rekey.
-- **Phase 2 — sigillum attaches.** Depend on `go/signing-cli`; attach `sign`
+- **Phase 2 — sigillum attaches** (DONE — v0.2.1; E2E coverage still
+  outstanding). Depend on `go/signing-cli`; attach `sign`
   and `keys` to sigillum's root; provide sigillum's adapter for the `Deps`
   seam; add E2E/Gherkin coverage for the signing workflows.
-- **Phase 3 — gtb re-attaches.** Replace gtb's `internal/cmd/{sign,keys}` with
+- **Phase 3 — gtb re-attaches** (DONE — `cb73d1cf` on gtb `main`). Replace gtb's `internal/cmd/{sign,keys}` with
   `go/signing-cli` attachments through a Props→Deps adapter; delete the
   internal command packages; keep gtb's behaviour byte-compatible for its
   users. (Extraction cut-over ⇒ `feat`, not `refactor`, so releaser-pleaser
@@ -187,11 +202,15 @@ All five already call into `go/signing` / `go/signing/openpgpkey` /
 
 - [x] sigillum generated from the current generator, all pins/deps at head,
       builds and runs.
-- [ ] `go/signing-cli` exists, props-decoupled, with the five commands and
-      their ported tests green; docs microsite live.
-- [ ] sigillum exposes `sign` and `keys` at the top level, delegating entirely
-      to `go/signing`, with E2E coverage.
-- [ ] gtb re-attaches the shared commands and deletes
+- [x] `go/signing-cli` exists, props-decoupled, with the five commands and
+      their ported tests green; docs microsite live. *(v0.1.0)*
+- [x] sigillum exposes `sign` and `keys` at the top level, delegating entirely
+      to `go/signing`. *(v0.2.1)*
+- [ ] **…with E2E coverage.** Outstanding — sigillum has no test files. Carried
+      into the implementation spec (§6.4 there).
+- [x] gtb re-attaches the shared commands and deletes
       `internal/cmd/{sign,keys}` with no user-visible behaviour change.
-- [ ] No module cycle: `go mod graph` shows `go/signing-cli` depending on
-      `go/signing` only (never gtb or sigillum).
+      *(`cb73d1cf`)*
+- [x] No module cycle: `go/signing-cli`'s `go.mod` requires `go/signing` only —
+      no gtb, no sigillum, and not even a backend module (backends are
+      blank-imported by the host binary).
