@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.2.1](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.2.1)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.2.0...v0.2.1)
+
+### Bug Fixes
+
+- **release**: make sigillum stateless — disable the init feature ([3680176](https://gitlab.com/phpboyscout/sigillum/-/commit/36801762378fb956f989511aee525d009348c5d7))
+- **release**: skip the config gate for the sign/keys commands ([5990a2d](https://gitlab.com/phpboyscout/sigillum/-/commit/5990a2d5129990a57d922f8d24a6850b0a2e6acf))
+
 ## [v0.2.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.2.0)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.1.0...v0.2.0)
