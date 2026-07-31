@@ -12,7 +12,7 @@ tool (
 
 require (
 	github.com/spf13/afero v1.15.0
-	gitlab.com/phpboyscout/go-tool-base v0.33.0
+	gitlab.com/phpboyscout/go-tool-base v0.34.0
 	gitlab.com/phpboyscout/go/credentials v0.2.2
 	gitlab.com/phpboyscout/go/errorhandling v0.1.1
 	gitlab.com/phpboyscout/go/signing-cli v0.1.0
@@ -328,34 +328,34 @@ require (
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	gitlab.com/bosi/decorder v0.4.2 // indirect
 	gitlab.com/gitlab-org/api/client-go/v2 v2.52.0 // indirect
-	gitlab.com/phpboyscout/go/aferobilly v0.1.0 // indirect
+	gitlab.com/phpboyscout/go/aferobilly v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/authn v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/browser v0.1.1 // indirect
-	gitlab.com/phpboyscout/go/changelog v0.1.2 // indirect
-	gitlab.com/phpboyscout/go/chat v0.1.2 // indirect
-	gitlab.com/phpboyscout/go/chat-anthropic v0.1.2 // indirect
-	gitlab.com/phpboyscout/go/chat-gemini v0.1.3 // indirect
-	gitlab.com/phpboyscout/go/chat-openai v0.1.4 // indirect
-	gitlab.com/phpboyscout/go/config v0.10.0 // indirect
-	gitlab.com/phpboyscout/go/config-afero v0.1.2 // indirect
+	gitlab.com/phpboyscout/go/changelog v0.1.3 // indirect
+	gitlab.com/phpboyscout/go/chat v0.2.0 // indirect
+	gitlab.com/phpboyscout/go/chat-anthropic v0.2.0 // indirect
+	gitlab.com/phpboyscout/go/chat-gemini v0.2.0 // indirect
+	gitlab.com/phpboyscout/go/chat-openai v0.2.0 // indirect
+	gitlab.com/phpboyscout/go/config v0.12.0 // indirect
+	gitlab.com/phpboyscout/go/config-afero v0.1.3 // indirect
 	gitlab.com/phpboyscout/go/controls v0.1.4 // indirect
-	gitlab.com/phpboyscout/go/forge v0.3.0 // indirect
-	gitlab.com/phpboyscout/go/forge-bitbucket v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/forge-gitea v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/forge-github v0.2.3 // indirect
-	gitlab.com/phpboyscout/go/forge-gitlab v0.2.3 // indirect
-	gitlab.com/phpboyscout/go/httpclient v0.1.3 // indirect
-	gitlab.com/phpboyscout/go/observability v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/output v0.1.1 // indirect
+	gitlab.com/phpboyscout/go/forge v0.4.0 // indirect
+	gitlab.com/phpboyscout/go/forge-bitbucket v0.3.0 // indirect
+	gitlab.com/phpboyscout/go/forge-gitea v0.3.0 // indirect
+	gitlab.com/phpboyscout/go/forge-github v0.3.0 // indirect
+	gitlab.com/phpboyscout/go/forge-gitlab v0.3.0 // indirect
+	gitlab.com/phpboyscout/go/httpclient v0.1.4 // indirect
+	gitlab.com/phpboyscout/go/observability v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/output v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/redact v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.1.1 // indirect
-	gitlab.com/phpboyscout/go/repo v0.1.0 // indirect
+	gitlab.com/phpboyscout/go/repo v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/signing v0.4.0
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.2.6
 	gitlab.com/phpboyscout/go/tls v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/transit v0.1.3 // indirect
-	gitlab.com/phpboyscout/go/transport v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/workspace v0.1.0 // indirect
+	gitlab.com/phpboyscout/go/transport v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/workspace v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/yamldoc v0.1.4 // indirect
 	go-simpler.org/musttag v0.13.0 // indirect
 	go-simpler.org/sloglint v0.9.0 // indirect

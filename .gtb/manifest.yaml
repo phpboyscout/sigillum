@@ -18,6 +18,18 @@ properties:
     kms_region: eu-west-2
     public_key: internal/trustkeys/keys/signing-key-v2.asc
   docs_layout: diataxis
+  external_commands:
+    - module: gitlab.com/phpboyscout/go/signing-cli
+      version: v0.1.0
+      attach:
+        - constructor: NewCmdSign
+          args:
+            - logger
+          wrap: true
+        - constructor: NewCmdKeys
+          args:
+            - logger
+          wrap: true
 release_source:
   type: gitlab
   host: gitlab.com
