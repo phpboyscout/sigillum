@@ -4,6 +4,8 @@ package root
 
 import (
 	"embed"
+	"os"
+
 	afero "github.com/spf13/afero"
 	gtbRoot "gitlab.com/phpboyscout/go-tool-base/pkg/cmd/root"
 	logger "gitlab.com/phpboyscout/go-tool-base/pkg/logger"
@@ -11,8 +13,9 @@ import (
 	setup "gitlab.com/phpboyscout/go-tool-base/pkg/setup"
 	version "gitlab.com/phpboyscout/go-tool-base/pkg/version"
 	errorhandling "gitlab.com/phpboyscout/go/errorhandling"
+	signingcli "gitlab.com/phpboyscout/go/signing-cli"
+
 	trustkeys "gitlab.com/phpboyscout/sigillum/internal/trustkeys"
-	"os"
 )
 
 //go:embed assets/*
@@ -43,7 +46,7 @@ func NewCmdRoot(v version.Info) (*setup.Command, *props.Props) {
 
 	p.ErrorHandler = errorhandling.New(logger.ToSlog(l), p.Tool.Help)
 
-	rootCmd := gtbRoot.NewCmdRoot(p)
+	rootCmd := gtbRoot.NewCmdRoot(p, setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())), setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())))
 
 	return rootCmd, p
 }
