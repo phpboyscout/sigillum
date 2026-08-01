@@ -22,7 +22,7 @@
 #   • Pipelines must succeed (so the MR gates actually block merge).
 #
 # The phpboyscout/cicd components are version-pinned below. Renovate keeps the
-# pins current via the cicd preset extended in renovate.json5 — driven by the
+# pins current via the cicd preset extended in renovate.json — driven by the
 # group-wide autodiscover bot in phpboyscout/cicd, so this repo needs neither a
 # renovate-self include nor its own pipeline schedule. Bump deliberately
 # through the Renovate MRs rather than floating the tags.

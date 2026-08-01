@@ -1,0 +1,10 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "gitlab>phpboyscout/cicd:go",
+    "gitlab>phpboyscout/cicd:application"
+  ],
+  "pre-commit": {
+    "enabled": true
+  }
+}
