@@ -31,8 +31,8 @@ include:
   # Quality gates — MR-only by default. Toolchain images are left at the
   # component defaults; let Renovate/cicd carry the toolchain rather than
   # pinning point-in-time overrides here.
-  - component: gitlab.com/phpboyscout/cicd/go-lint@v0.34.0
-  - component: gitlab.com/phpboyscout/cicd/go-test@v0.34.0
+  - component: gitlab.com/phpboyscout/cicd/go-lint@v0.34.1
+  - component: gitlab.com/phpboyscout/cicd/go-test@v0.34.1
     inputs:
       # The Godog suite in test/e2e drives the BUILT binary — the only
       # place sigillum's own risk lives, since it is a thin shell over
@@ -40,11 +40,11 @@ include:
       # value lands on.
       enable_e2e: true
       e2e_timeout: "10m"
-  - component: gitlab.com/phpboyscout/cicd/go-security@v0.34.0
+  - component: gitlab.com/phpboyscout/cicd/go-security@v0.34.1
 
   # Release — tag-gated goreleaser + default-branch zensical-pages deploy.
-  - component: gitlab.com/phpboyscout/cicd/goreleaser@v0.34.0
-  - component: gitlab.com/phpboyscout/cicd/zensical-pages@v0.34.0
+  - component: gitlab.com/phpboyscout/cicd/goreleaser@v0.34.1
+  - component: gitlab.com/phpboyscout/cicd/zensical-pages@v0.34.1
 
   # Release MR machinery — the phpboyscout wrapper, NOT apricote's component
   # directly. The wrapper leads its rules with a schedule-never guard (the
