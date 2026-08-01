@@ -39,6 +39,10 @@ test-race:
 test-integration:
     INT_TEST=1 go test ./... -v
 
+# Run the Godog behaviour suite (drives the built binary)
+test-e2e:
+    INT_TEST_E2E=1 go test ./test/e2e/... -v -timeout 10m
+
 # Generate HTML coverage report and open it
 coverage:
     go test ./... -coverprofile=coverage.out

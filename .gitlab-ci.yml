@@ -34,7 +34,12 @@ include:
   - component: gitlab.com/phpboyscout/cicd/go-lint@v0.34.0
   - component: gitlab.com/phpboyscout/cicd/go-test@v0.34.0
     inputs:
-      enable_e2e: false
+      # The Godog suite in test/e2e drives the BUILT binary — the only
+      # place sigillum's own risk lives, since it is a thin shell over
+      # go/signing-cli. A library-level test cannot see which stream a
+      # value lands on.
+      enable_e2e: true
+      e2e_timeout: "10m"
   - component: gitlab.com/phpboyscout/cicd/go-security@v0.34.0
 
   # Release — tag-gated goreleaser + default-branch zensical-pages deploy.
