@@ -15,7 +15,7 @@ require (
 	gitlab.com/phpboyscout/go-tool-base v0.34.0
 	gitlab.com/phpboyscout/go/credentials v0.2.2
 	gitlab.com/phpboyscout/go/errorhandling v0.1.1
-	gitlab.com/phpboyscout/go/signing-cli v0.3.0
+	gitlab.com/phpboyscout/go/signing-cli v0.4.1
 )
 
 require (

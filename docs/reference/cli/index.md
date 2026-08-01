@@ -8,8 +8,8 @@ sigillum's reason to exist is two top-level commands, attached from
 
 | Command | Purpose |
 |---------|---------|
-| [`sign`](sign.md) | Produce an ASCII-armored OpenPGP detached signature over a file using a configured backend. |
-| [`keys`](keys.md) | Manage OpenPGP keys for release-binary signing (`generate`, `mint`, `wkd`). |
+| [`sign`](sign.md) | Produce a detached signature over a file — armored OpenPGP for manifests, or minisign for release artefacts. |
+| [`keys`](keys.md) | Manage signing keys (`generate`, `mint`, `wkd`, `minisign`, `publish`). |
 
 The scaffolded framework built-ins (`init`, `update`, `docs`, `doctor`,
 `changelog`, `config`, `version`) are also present; run `sigillum --help` for

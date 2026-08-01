@@ -1,15 +1,25 @@
 ---
 title: sign command
-description: Reference for `sigillum sign` — produce an ASCII-armored OpenPGP detached signature over a file using a configured backend.
+description: Reference for `sigillum sign` — produce a detached signature over a file using a configured backend, as armored OpenPGP or as minisign.
 date: 2026-07-28
-tags: [reference, commands, sign, signing, openpgp]
+tags: [reference, commands, sign, signing, openpgp, minisign]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
 ---
 
 # `sign` Command
 
-`sigillum sign <input-file>` produces an ASCII-armored OpenPGP **detached**
-signature for a single file using a configured signing backend. See
+`sigillum sign <input-file>` produces a **detached** signature for a single file
+using a configured signing backend, in one of two formats:
+
+| `--format` | Output | For |
+|---|---|---|
+| `openpgp` (default) | `<input>.sig` | checksum manifests, verified by gtb-derived tools |
+| `minisign` | `<input>.minisig` | release artefacts, verified by cargo-binstall and rtb-update |
+
+`--format minisign` needs an **Ed25519** key and takes no `--public-key` — a
+minisign signature carries its own key identifier, so the identity comes from
+the signer. `--project` records the signing project in the signature's *signed*
+trusted comment. See
 [Sign a release artefact](../../how-to/sign-a-release-artefact.md) for the full
 procedure and [Architecture](../../explanation/components/index.md) for the
 backend model.

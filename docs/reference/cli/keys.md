@@ -1,14 +1,15 @@
 ---
 title: keys command
-description: Reference for `sigillum keys` — generate, mint, and publish OpenPGP keys for release-binary signing.
+description: Reference for `sigillum keys` — generate, mint and publish the OpenPGP and minisign keys used for release-binary signing.
 date: 2026-07-28
-tags: [reference, commands, keys, signing, openpgp]
+tags: [reference, commands, keys, signing, openpgp, minisign]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
 ---
 
 # `keys` Command
 
-`sigillum keys` manages OpenPGP keys used for release-binary signing. See
+`sigillum keys` manages the keys used for release-binary signing — OpenPGP for
+checksum manifests, minisign for the artefacts themselves. See
 [Generate or mint a signing key](../../how-to/generate-or-mint-a-signing-key.md)
 and [Publish a WKD tree](../../how-to/publish-a-wkd-tree.md) for the operational
 procedures.
@@ -26,6 +27,17 @@ sigillum keys <subcommand> [flags]
 | `generate` | Generate a fresh keypair locally (Ed25519 or RSA) and emit both halves. |
 | `mint` | Mint an ASCII-armored public key from an existing signer (e.g. a KMS key). |
 | `wkd <public-key.asc>…` | Build a Web Key Directory tree from one or more public keys. |
+| `minisign` | Emit the minisign public key for an Ed25519 signer — the string release consumers pin. |
+| `publish <public-key.pub>` | Stage a minisign public key into a keys site, with a machine-readable manifest. |
+
+The two families serve different verifiers. OpenPGP keys are published over WKD
+and verify checksum manifests; minisign keys are published as plain files and
+verify release artefacts for cargo-binstall and rtb-update, neither of which
+parses OpenPGP.
+
+Full flag detail for every subcommand lives upstream in
+[`go/signing-cli`](https://signing-cli.go.phpboyscout.uk/reference/keys/); run
+`sigillum keys <subcommand> --help` for the authoritative set.
 
 ### `keys generate`
 
