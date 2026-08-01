@@ -3,7 +3,6 @@
 #   merge_request_event → lint, test, security        (the merge gate)
 #   tag v*.*.*          → goreleaser, pages docs       (the release fan-out)
 #   default branch      → releaser-pleaser, zensical-pages deploy
-#   schedule            → renovate
 #
 # Quality gates live exclusively at the MR level — pushing to the default
 # branch runs nothing except releaser-pleaser (which itself opens an MR that
@@ -22,10 +21,11 @@
 #     on the default branch).
 #   • Pipelines must succeed (so the MR gates actually block merge).
 #
-# The phpboyscout/cicd components are version-pinned below; Renovate (also via
-# this pipeline) keeps the pins current via the cicd preset extended in
-# renovate.json5. Bump deliberately through the Renovate MRs rather than
-# floating the tags.
+# The phpboyscout/cicd components are version-pinned below. Renovate keeps the
+# pins current via the cicd preset extended in renovate.json5 — driven by the
+# group-wide autodiscover bot in phpboyscout/cicd, so this repo needs neither a
+# renovate-self include nor its own pipeline schedule. Bump deliberately
+# through the Renovate MRs rather than floating the tags.
 
 include:
   # Quality gates — MR-only by default. Toolchain images are left at the
@@ -46,20 +46,18 @@ include:
   - component: gitlab.com/phpboyscout/cicd/goreleaser@v0.34.0
   - component: gitlab.com/phpboyscout/cicd/zensical-pages@v0.34.0
 
-  # Release MR machinery (external). Referenced $CI_SERVER_FQDN-relative so it
-  # resolves on whichever GitLab instance hosts this project.
-  - component: $CI_SERVER_FQDN/apricote/releaser-pleaser/run@v0.9.0
+  # Release MR machinery — the phpboyscout wrapper, NOT apricote's component
+  # directly. The wrapper leads its rules with a schedule-never guard (the
+  # upstream component gates only on the branch name, so it also fires on
+  # scheduled pipelines running against the default branch), and it adds
+  # releaser-pleaser:verify, which keeps the Release MR squashing on merge so
+  # the tag cannot land on a commit that is not on the release branch.
+  # See phpboyscout/cicd issue #7 and wiki spec 0061.
+  - component: gitlab.com/phpboyscout/cicd/releaser-pleaser@v0.34.1
     inputs:
       token: $RELEASER_PLEASER_TOKEN
       branch: main
       stage: release
-
-  # Scheduled Renovate run — wires its own schedule gate
-  # ($RENOVATE_TASK=scan); the cicd preset (extended in renovate.json5)
-  # carries the custom manager that auto-bumps the component pins above.
-  - component: gitlab.com/phpboyscout/cicd/renovate-self@v0.34.0
-    inputs:
-      repositories: '["phpboyscout/sigillum"]'
 
 stages:
   - lint
@@ -67,7 +65,6 @@ stages:
   - security
   - release
   - pages
-  - renovate
 
 # Pipeline-source gating: MR pipelines are primary; tag pipelines run the
 # release fan-out; default-branch pipelines exist only so releaser-pleaser can
@@ -86,9 +83,6 @@ workflow:
 variables:
   # releaser-pleaser + goreleaser walk the full commit history.
   GIT_DEPTH: "0"
-
-default:
-  tags: [saas-linux-medium-amd64]
 
 # Release signing (OIDC). The goreleaser `signs:` block calls
 # `go run ./cmd/sigillum sign --backend aws-kms`, which the aws-kms backend
