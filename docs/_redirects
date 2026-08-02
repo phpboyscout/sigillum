@@ -1,0 +1,14 @@
+# Redirects for pages that have moved.
+#
+# This file is copied verbatim to the site root by the zensical build (it is an
+# ordinary docs_dir asset, not a plugin output) and read from there by GitLab
+# Pages. Zensical has no redirects plugin — it implements search, offline, mike
+# and mkdocstrings only — so this file is the whole mechanism.
+#
+# Format: <from> <to> <status>. Paths are site-root-relative.
+# Verify after a build with: zensical build && cat site/_redirects
+
+# 2026-08-02: "Getting Started" was a tutorial filed outside the four Diátaxis
+# quadrants. It moved into tutorials/ and gained a name that says what it does.
+/getting-started /tutorials/sign-and-verify-your-first-release/ 301
+/getting-started/ /tutorials/sign-and-verify-your-first-release/ 301
