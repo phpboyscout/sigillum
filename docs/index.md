@@ -14,17 +14,17 @@ hide:
     <h1 class="hero-title">sigillum</h1>
     <p class="hero-tagline">Sign a release. Nothing else.</p>
     <p class="hero-description">
-      A standalone command-line tool for signing and verifying release artefacts
-      with OpenPGP. The private key never leaves your KMS, HSM or PEM file, the
-      output is an ordinary detached signature every OpenPGP implementation
-      accepts, and nothing about it cares what language your project is written in.
+      A standalone command-line tool for signing release artefacts, as OpenPGP or
+      as minisign. The private key never leaves your KMS, HSM or PEM file, the
+      output is an ordinary detached signature the standard tools accept, and
+      nothing about it cares what language your project is written in.
     </p>
     <div class="install-box">
       <span class="install-command">go install gitlab.com/phpboyscout/sigillum/cmd/sigillum@latest</span>
       <button class="install-copy" type="button" title="Copy to clipboard">copy</button>
     </div>
     <div class="hero-buttons">
-      <a href="getting-started/" class="btn btn-primary">Get started</a>
+      <a href="tutorials/sign-and-verify-your-first-release/" class="btn btn-primary">Get started</a>
       <a href="how-to/" class="btn btn-secondary">How-to guides</a>
     </div>
   </div>
@@ -33,7 +33,7 @@ hide:
 <div class="cap-grid">
   <div class="cap">
     <h3>Sign</h3>
-    <p>Turn any file into an ASCII-armored detached OpenPGP signature. The key stays in the backend; only a digest is ever sent to it.</p>
+    <p>Turn any file into a detached signature — armored OpenPGP for checksum manifests, minisign for release artefacts. The key stays in the backend; only a digest is ever sent to it.</p>
   </div>
   <div class="cap">
     <h3>Mint</h3>
@@ -45,7 +45,7 @@ hide:
   </div>
   <div class="cap">
     <h3>Publish</h3>
-    <p>Lay out a Web Key Directory tree, so verifiers fetch your key from your own domain rather than from whoever hosts your code.</p>
+    <p>Lay out a Web Key Directory tree and a minisign keys site, so verifiers fetch your keys from your own domain rather than from whoever hosts your code.</p>
   </div>
 </div>
 
@@ -78,6 +78,14 @@ That writes `checksums.txt.sig`, an armored detached signature that `gpg --verif
 (and every other modern OpenPGP implementation) accepts. Swap `--backend aws-kms`
 for `--backend local --key-id ./release.pem` to sign with an on-disk key instead.
 
+## How do I verify a signature?
+
+Not with sigillum — it signs, and there is no `sigillum verify`. Use
+`gpg --verify` for OpenPGP signatures and `minisign -Vm` for `.minisig` artefact
+signatures, or let the consumers do it: cargo-binstall and rtb-update both
+verify before installing. The reasoning, and the rest of the limits, are in
+[What sigillum does not do](explanation/what-sigillum-does-not-do.md).
+
 ## Architecture at a glance
 
 sigillum is deliberately thin. All real work lives upstream; sigillum wires the
@@ -109,10 +117,13 @@ the backend model works.
 
 The documentation follows the [Diátaxis](https://diataxis.fr/) framework:
 
-- **[Getting Started](getting-started.md)** — install, generate a key, sign a
-  file, and verify it.
-- **[How-to guides](how-to/index.md)** — sign a release artefact, generate or
-  mint a signing key, publish a WKD tree.
-- **[Reference](reference/index.md)** — every command, flag, and argument.
-- **[Explanation](explanation/index.md)** — the architecture and the reasoning
-  behind it.
+- **[Tutorials](tutorials/index.md)** — install, generate a key, sign a file and
+  verify it, start to finish.
+- **[How-to guides](how-to/index.md)** — sign a release artefact, sign an
+  artefact for Rust consumers, generate or mint a signing key, publish a WKD
+  tree.
+- **[Reference](reference/index.md)** — every command, flag, default,
+  configuration key and failure mode.
+- **[Explanation](explanation/index.md)** — the architecture, the reasoning
+  behind it, and [what sigillum does not
+  do](explanation/what-sigillum-does-not-do.md).

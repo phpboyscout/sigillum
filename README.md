@@ -1,13 +1,17 @@
 # sigillum
 
-**Standalone artefact signing and verification CLI for the phpboyscout
-ecosystem.**
+**Standalone artefact signing CLI for the phpboyscout ecosystem.**
 
 `sigillum` is a small, single-purpose command-line tool that produces and
-publishes OpenPGP signatures over release artefacts. It exposes the ecosystem's
-`sign` and `keys` commands as first-class, **top-level** commands — the same
-command surface as `gtb sign` / `gtb keys`, but as a purpose-built utility you
-can drop into any release pipeline, Go or not.
+publishes signatures over release artefacts — OpenPGP for checksum manifests,
+minisign for the artefacts themselves. It exposes the ecosystem's `sign` and
+`keys` commands as first-class, **top-level** commands — the same command
+surface as `gtb sign` / `gtb keys`, but as a purpose-built utility you can drop
+into any release pipeline, Go or not.
+
+The binary's own description string still reads "signing and verification CLI",
+which the command surface does not bear out: there is no verify command. See
+[What it does not do](#what-it-does-not-do).
 
 It is built on [gtb](https://gitlab.com/phpboyscout/go-tool-base), but its reason
 to exist is signing: any non-Go / non-gtb pipeline can install one small binary
@@ -15,18 +19,32 @@ and sign, with no framework build required.
 
 ## What it does
 
-- **`sigillum sign <input-file>`** — produce an ASCII-armored OpenPGP **detached**
-  signature over a file using a configured backend. The private key never leaves
-  the HSM/KMS or the local PEM file.
+- **`sigillum sign <input-file>`** — produce a **detached** signature over a
+  file using a configured backend: armored OpenPGP (`--format openpgp`, the
+  default) for checksum manifests, or minisign (`--format minisign`) for release
+  artefacts. The private key never leaves the HSM/KMS or the local PEM file.
 - **`sigillum keys generate`** — generate a fresh keypair locally (Ed25519 or
   RSA) and emit both halves.
 - **`sigillum keys mint`** — mint an ASCII-armored OpenPGP public key from an
   existing signer (e.g. an AWS KMS key).
 - **`sigillum keys wkd`** — generate a Web Key Directory tree from your public
   keys for external trust-anchor publication.
+- **`sigillum keys minisign`** — emit the minisign public key release consumers
+  pin (cargo-binstall, rtb-update).
+- **`sigillum keys publish`** — stage a minisign public key into a static keys
+  site with a machine-readable `keys.json` manifest.
 
-Signatures verify under `gpg --verify`, any modern OpenPGP implementation, and
-the in-tool verifier in `gitlab.com/phpboyscout/go/signing/verify`.
+## What it does not do
+
+**There is no `sigillum verify`.** sigillum signs; verification happens
+elsewhere — `gpg --verify` for OpenPGP output, `minisign -Vm` (or the consumers
+themselves) for `.minisig` output, and the Go library
+`gitlab.com/phpboyscout/go/signing/verify` for tools checking their own
+downloads during self-update.
+
+The OpenPGP and minisign paths also need **different key algorithms** — RSA and
+Ed25519 respectively — and one key cannot serve both. The full list of limits is
+in [`docs/explanation/what-sigillum-does-not-do.md`](docs/explanation/what-sigillum-does-not-do.md).
 
 ## Architecture
 
@@ -93,13 +111,17 @@ alias/…`) and CI/OIDC integration, see
 The documentation site source lives in [`docs/`](docs/) and follows the
 [Diátaxis](https://diataxis.fr/) framework:
 
-- **[Getting Started](docs/getting-started.md)** — install, generate a key, sign,
-  and verify.
-- **[How-to guides](docs/how-to/index.md)** — sign a release artefact, generate
-  or mint a key, publish a WKD tree.
-- **[CLI reference](docs/reference/cli/index.md)** — every command and flag.
-- **[Explanation](docs/explanation/index.md)** — the architecture and its
-  rationale.
+- **[Tutorials](docs/tutorials/index.md)** — install, generate a key, sign, and
+  verify.
+- **[How-to guides](docs/how-to/index.md)** — sign a release artefact, sign an
+  artefact for Rust consumers, generate or mint a key, publish a WKD tree.
+- **[CLI reference](docs/reference/cli/index.md)** — every command, flag,
+  default and failure mode.
+- **[Configuration reference](docs/reference/config/index.md)** — the keys the
+  framework reads, and the ones that do not exist.
+- **[Explanation](docs/explanation/index.md)** — the architecture, its
+  rationale, and
+  [what sigillum does not do](docs/explanation/what-sigillum-does-not-do.md).
 
 Serve the site locally with `just docs-serve`.
 
