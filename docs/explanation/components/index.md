@@ -19,7 +19,8 @@ sigillum  (this repo — a gtb-generated pure CLI)
    │  attaches the commands to its root; blank-imports the backends
    │
    ├─ gitlab.com/phpboyscout/go/signing-cli
-   │     the cobra command builders: sign, keys {generate, mint, wkd}
+   │     the cobra command builders: sign,
+   │     keys {generate, mint, wkd, minisign, publish}
    │     depends only on go/signing + cobra/pflag — no gtb, no sigillum
    │        │
    │        └─ gitlab.com/phpboyscout/go/signing

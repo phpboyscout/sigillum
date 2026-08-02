@@ -16,9 +16,15 @@ gtb — a framework that is deliberately both a library and a CLI. That was fine
 while gtb was the only consumer, but it meant you could only get a `sign` /
 `keys` command surface by building a whole gtb application.
 
-sigillum exists to remove that constraint. Its entire reason to be is
-signing and verification, so it makes `sign` and `keys` the **whole tool**,
-exposed as top-level commands rather than sub-commands of a larger app.
+sigillum exists to remove that constraint. Its entire reason to be is signing,
+so it makes `sign` and `keys` the **whole tool**, exposed as top-level commands
+rather than sub-commands of a larger app.
+
+Signing, note, and not verifying: there is no `sigillum verify`. The
+verification half of `go/signing` is linked in — sigillum's own `update` command
+uses it to check the release it downloads — but it is not exposed as a command.
+[What sigillum does not do](../what-sigillum-does-not-do.md) covers why, and
+what to use instead.
 
 The practical payoff is for **non-Go and non-gtb release pipelines**. A Rust
 project, a shell-driven release, or any CI job that just needs to produce and
