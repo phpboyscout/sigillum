@@ -47,10 +47,14 @@ A successful run logs each `hu/` bucket's hash and every file written.
 
 ### Flags
 
-- `--domain` (required) — the DNS domain serving the WKD endpoint.
-- `--email` (required, repeatable) — the address(es) to publish. Each `--email`
+- `--domain` (required) — the DNS domain serving the WKD endpoint. It is the
+  **only** required flag.
+- `--email` (optional, repeatable) — the address(es) to publish. Each `--email`
   gets its own `hu/<hash>` bucket; keys are written in lexicographic fingerprint
-  order so the output is reproducible across deploys.
+  order so the output is reproducible across deploys. **Leave it off** and every
+  distinct email found across the input keys is published, which is usually what
+  you want. A `--email` that matches no input key is an error:
+  `no input key matched --email security@example.org`.
 - `--output` (default `./wkd-staging`) — the staging directory.
 - `--method` (default `advanced`) — the URL layout: `advanced` (served from
   `openpgpkey.<domain>`) or `direct` (served from `<domain>`).
@@ -98,8 +102,17 @@ When you mint a new key, re-run `keys wkd` against the new public-key file set
 (plus any keys you keep serving) and redeploy. The tree is fully reproducible
 from the `.asc` files, so there is no manual surgery on the host.
 
+## What WKD does not cover
+
+WKD publishes **OpenPGP** keys. The minisign public keys that cargo-binstall and
+rtb-update pin are not OpenPGP and have no WKD representation — they are
+published as plain files by
+[`keys publish`](sign-an-artefact-for-rust-consumers.md#publish-the-public-key),
+which writes into the same staging directory so one deploy covers both.
+
 ## Related
 
 - [Generate or mint a signing key](generate-or-mint-a-signing-key.md)
 - [Sign a release artefact](sign-a-release-artefact.md)
+- [Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md)
 - [`keys` command reference](../reference/cli/keys.md)

@@ -45,12 +45,34 @@ sigillum keys generate \
 Notes:
 
 - `--algorithm` accepts `ed25519` or `rsa` and has **no default** — omitting it
-  is an error that lists the valid choices.
+  fails with `required flag(s) "algorithm" not set`.
 - `--rsa-bits` (default `4096`; `2048`/`3072`/`4096` accepted) applies only to
   RSA and is ignored for Ed25519.
 - `--private-output` defaults are derived from `--output`: `.asc` → `.priv.asc`
   for Ed25519, `.asc` → `.pem` for RSA. The RSA `.pem` is exactly what the
   `local` signing backend consumes.
+
+### The Ed25519 private half is not a PEM by default
+
+`--algorithm ed25519` writes its private half as an **armored OpenPGP
+secret-key block** (`.priv.asc`) — the same wire format `gpg
+--export-secret-keys` produces. The `local` signing backend cannot read that; it
+reads PEM, and pointing `--key-id` at a `.priv.asc` fails with `no PEM block
+found in file`.
+
+Add `--private-format pem` when the key needs to sign locally:
+
+```bash
+sigillum keys generate \
+    --algorithm ed25519 --private-format pem \
+    --name "Artefact Signer" --email release@example.org \
+    --output artefact.asc --private-output artefact.pem
+```
+
+That writes an unencrypted PKCS#8 PEM, and it is what makes
+[minisign artefact signing](sign-an-artefact-for-rust-consumers.md) possible
+without an HSM. `--private-format openpgp` is refused for RSA, whose private
+half is always PKCS#1 PEM.
 - `--created <rfc3339>` pins the creation timestamp for a reproducible key
   (the timestamp folds into the fingerprint).
 - `keys generate` refuses to overwrite existing output; pass `--force` to
@@ -61,6 +83,13 @@ Notes:
 Use `keys mint` when the private key already lives in AWS KMS (production) or as
 a local PEM file. Minting bridges "a `crypto.Signer` somewhere" to "a valid
 OpenPGP public key on disk" — it does **not** generate a private key.
+
+`keys mint` is **RSA-only**, because it builds an OpenPGP entity. Pointing it at
+an Ed25519 key fails with `minting armored public key: got ed25519.PublicKey:
+unsupported key type: only RSA is supported`. The minisign equivalent for an
+Ed25519 key is
+[`keys minisign`](sign-an-artefact-for-rust-consumers.md#emit-the-public-key-consumers-pin),
+which emits a minisign public key rather than an OpenPGP one.
 
 ### AWS KMS (production)
 
@@ -134,4 +163,8 @@ them refuses to proceed if they disagree.
 
 - [Sign a release artefact](sign-a-release-artefact.md)
 - [Publish a WKD tree](publish-a-wkd-tree.md)
-- [`keys` command reference](../reference/cli/keys.md)
+- [Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md)
+  — the Ed25519/minisign counterpart to everything on this page
+- [`keys` command reference](../reference/cli/keys.md) — every flag, default and
+  failure mode
+- [What sigillum does not do](../explanation/what-sigillum-does-not-do.md)

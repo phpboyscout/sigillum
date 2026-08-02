@@ -17,9 +17,14 @@ sigillum ships two backends: **`aws-kms`** (production, the key stays in KMS) an
 **`local`** (development / air-gapped, an on-disk PEM key). This guide covers
 both, plus verification.
 
+This guide covers the **OpenPGP** lane only, which is RSA-only. For the minisign
+lane that cargo-binstall and rtb-update verify, see
+[Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md).
+
 ## Prerequisites
 
-- sigillum installed (see [Getting Started](../getting-started.md)).
+- sigillum installed (see
+  [Sign and verify your first release](../tutorials/sign-and-verify-your-first-release.md)).
 - The **public-key file** (`release.asc`) that corresponds to the signing key,
   already produced by [`keys mint`](generate-or-mint-a-signing-key.md) or
   `keys generate`. `sigillum sign` reads the signing identity (creation time,
@@ -86,10 +91,16 @@ sigillum sign \
     checksums.txt
 ```
 
-The `local` backend accepts unencrypted PKCS#1 and PKCS#8 PEM private keys — it
-does not decrypt encrypted PEMs. Protect the key file with filesystem-level
-encryption (LUKS, `age`) or use the `aws-kms` backend so the key never leaves
-the HSM.
+The `local` backend accepts unencrypted PKCS#1 and PKCS#8 PEM private keys
+holding either an **RSA** or an **Ed25519** key — but only the RSA ones are
+usable here, because OpenPGP signing is RSA-only. An Ed25519 PEM fails with
+`computing signature: DetachSign: ed25519.PublicKey: unsupported key type: only
+RSA is supported`; that key belongs to the
+[minisign lane](sign-an-artefact-for-rust-consumers.md).
+
+The backend does not decrypt encrypted PEMs, and rejects ECDSA outright. Protect
+the key file with filesystem-level encryption (LUKS, `age`) or use the `aws-kms`
+backend so the key never leaves the HSM.
 
 ## Dual-sign during key rotation (`--append`)
 
@@ -164,5 +175,8 @@ install one small binary and sign, with no framework build required.
 
 - [Generate or mint a signing key](generate-or-mint-a-signing-key.md)
 - [Publish a WKD tree](publish-a-wkd-tree.md)
-- [`sign` command reference](../reference/cli/sign.md)
+- [Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md)
+- [`sign` command reference](../reference/cli/sign.md) — every flag, default and
+  refused combination
 - [Architecture](../explanation/components/index.md)
+- [What sigillum does not do](../explanation/what-sigillum-does-not-do.md)
