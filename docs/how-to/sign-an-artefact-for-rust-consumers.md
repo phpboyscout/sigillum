@@ -207,9 +207,9 @@ makes it usable as a check that a staging directory still matches production. A
 key already published at the same path with **different** bytes is refused:
 
 ```
-a different key is already published at this path: keys-staging/minisign/mytool/v1.pub
-already holds a different key — published keys are add-only; publish a new
-generation instead
+keys-staging/minisign/mytool/v1.pub already holds a different key — published
+keys are add-only; publish a new generation instead: a different key is already
+published at this path
 ```
 
 Consumers pin these keys. Changing one under them is exactly what must never

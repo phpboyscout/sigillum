@@ -299,7 +299,7 @@ the key material is compared.
 | Situation | Result |
 |---|---|
 | Same path, identical bytes | No-op, logged `new=false`. Safe to re-run as a check that staging still matches production. |
-| Same path, different bytes | `a different key is already published at this path: … already holds a different key — published keys are add-only; publish a new generation instead` |
+| Same path, different bytes | `… already holds a different key — published keys are add-only; publish a new generation instead: a different key is already published at this path` |
 | Same project + generation in the manifest, different `pubkey` | `… records a different key for mytool generation 1` |
 | Same project + generation, same `pubkey` | The entry is replaced, so `--status` can move from `active` to `retired`. |
 
