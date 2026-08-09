@@ -59,11 +59,21 @@ include:
       branch: main
       stage: release
 
+  # Announce releases to the Discord announcements channel. Minor and
+  # major cuts only by default; the webhook comes from the
+  # DISCORD_RELEASE_WEBHOOK group variable, which is protected and so
+  # reaches this job because `v*` is a protected tag here.
+  - component: gitlab.com/phpboyscout/cicd/discord-release@v0.35.0
+    inputs:
+      # Headline project: patch releases are news here too.
+      announce_patches: true
+
 stages:
   - lint
   - test
   - security
   - release
+  - notify
   - pages
 
 # Pipeline-source gating: MR pipelines are primary; tag pipelines run the
