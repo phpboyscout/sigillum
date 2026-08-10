@@ -13,8 +13,8 @@ tool (
 require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
-	gitlab.com/phpboyscout/go-tool-base v0.36.0
-	gitlab.com/phpboyscout/go/credentials v0.3.0
+	gitlab.com/phpboyscout/go-tool-base v0.36.1
+	gitlab.com/phpboyscout/go/credentials v0.3.1
 	gitlab.com/phpboyscout/go/errorhandling v0.3.0
 	gitlab.com/phpboyscout/go/signing-cli v0.5.0
 )
@@ -363,8 +363,8 @@ require (
 	gitlab.com/phpboyscout/go/redact v0.2.0 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.2.0 // indirect
 	gitlab.com/phpboyscout/go/repo v0.2.1 // indirect
-	gitlab.com/phpboyscout/go/signing v0.6.1
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.4.1
+	gitlab.com/phpboyscout/go/signing v0.6.2
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.4.2
 	gitlab.com/phpboyscout/go/tls v0.2.0 // indirect
 	gitlab.com/phpboyscout/go/transit v0.2.1 // indirect
 	gitlab.com/phpboyscout/go/transport v0.5.2 // indirect
