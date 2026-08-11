@@ -98,15 +98,36 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 
 // checkFlags refuses the arguments that cannot produce a certificate, and
 // returns the creation time the rest of the run needs.
+//
+// Every missing flag is named, in a fixed order.
+//
+// A map literal was ranged over before, and Go randomises map iteration order,
+// so with more than one flag missing the operator was told about a different
+// one on each run. That makes support reproducible only by luck, and any test
+// asserting a message flaky by construction rather than by accident.
+//
+// Reporting all of them rather than the first is the same argument taken one
+// step further: three omissions should cost one round trip, not three.
 func checkFlags(opts *CertificateOptions) (time.Time, error) {
-	for name, value := range map[string]string{
-		"--user-id":     opts.UserId,
-		"--certify-key": opts.CertifyKey,
-		"--encrypt-key": opts.EncryptKey,
-	} {
-		if value == "" {
-			return time.Time{}, fmt.Errorf("%w: %s", ErrMissingFlag, name)
+	required := []struct {
+		name  string
+		value string
+	}{
+		{"--user-id", opts.UserId},
+		{"--certify-key", opts.CertifyKey},
+		{"--encrypt-key", opts.EncryptKey},
+	}
+
+	var missing []string
+
+	for _, flag := range required {
+		if flag.value == "" {
+			missing = append(missing, flag.name)
 		}
+	}
+
+	if len(missing) > 0 {
+		return time.Time{}, fmt.Errorf("%w: %s", ErrMissingFlag, strings.Join(missing, ", "))
 	}
 
 	return creationTime(opts.Created)
