@@ -31,8 +31,22 @@ func Open(path string) (*os.File, error) {
 // Writer is a file being written, which replaces its destination only once
 // the caller says the content is complete.
 type Writer struct {
-	tmp   *os.File
+	tmp   tempFile
 	final string
+}
+
+// tempFile is the part of *os.File this package uses.
+//
+// An interface rather than the concrete type so a test can observe that Commit
+// syncs before it renames. That is not a property any test can establish by
+// crashing the machine, and it is the one property the package exists to
+// provide — so it has to be observable some other way.
+type tempFile interface {
+	io.Writer
+
+	Name() string
+	Sync() error
+	Close() error
 }
 
 // Create prepares to write path, without disturbing whatever is already there.
@@ -80,6 +94,18 @@ func (w *Writer) Write(p []byte) (int, error) {
 
 // Commit closes the temporary file and moves it into place.
 func (w *Writer) Commit() error {
+	// Before the rename, and this is the whole guarantee. Rename is atomic with
+	// respect to the directory entry, not to the data behind it: without the
+	// sync a crash can leave the new name pointing at a file whose contents
+	// never reached the disk, which is a zero-length or partial report where a
+	// complete one used to be.
+	if err := w.tmp.Sync(); err != nil {
+		_ = w.tmp.Close()
+		_ = os.Remove(w.tmp.Name())
+
+		return fmt.Errorf("flushing %s: %w", w.final, err)
+	}
+
 	if err := w.tmp.Close(); err != nil {
 		_ = os.Remove(w.tmp.Name())
 
