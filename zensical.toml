@@ -54,3 +54,44 @@ toggle.name = "Switch to dark mode"
 scheme = "slate"
 toggle.icon = "lucide/moon"
 toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/gitlab"
+link = "https://gitlab.com/phpboyscout/sigillum"
+
+[[project.extra.social]]
+icon = "fontawesome/solid/globe"
+link = "https://phpboyscout.uk"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/phpboyscout"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/dev"
+link = "https://dev.to/phpboyscout"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/instagram"
+link = "https://www.instagram.com/matt.cockayne/"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/tiktok"
+link = "https://www.tiktok.com/@phpboyscout"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/youtube"
+link = "https://www.youtube.com/@phpboyscout"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/linkedin"
+link = "https://www.linkedin.com/in/matthewcockayne/"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/discord"
+link = "https://discord.gg/mQzGbmGyzZ"
+
+[[project.extra.social]]
+icon = "fontawesome/solid/book"
+link = "https://phpboyscout.uk/topics/signing/"
+name = "Signing your releases — the guide on the blog"
