@@ -24,7 +24,7 @@ Two KMS keys, because an agreement key cannot sign its own binding signature:
 The full provisioning steps, including the reader/certifier role split, are in
 the provider's [Provision the keys][prov] guide.
 
-[prov]: https://encryption-aws-kms.go.phpboyscout.uk/how-to/provision-the-keys/
+[prov]: https://encryption.go.phpboyscout.uk/how-to/provision-kms-keys/
 
 ## 1. Assemble the certificate
 
