@@ -311,3 +311,97 @@ func (f *syncSpyFile) Sync() error {
 
 	return f.File.Sync()
 }
+
+// TestFollowSymlinksIsOptIn covers the destination decision as settled: refuse a
+// symbolic link by default, write through it when the caller asks.
+//
+// Neither answer is right for every caller. Following is what the commands did
+// before content was staged and renamed, and it is what a managed symlink
+// expects — replacing the link detaches every other path pointing at the
+// target. Against that, a link at the destination is not necessarily one the
+// operator made: anyone who can write to the destination directory can plant
+// one, and following it then chooses where a decrypted report lands.
+//
+// So the caller decides and the default is the safe half.
+func TestFollowSymlinksIsOptIn(t *testing.T) {
+	t.Parallel()
+
+	fsys := opfileafero.Wrap(afero.NewOsFs())
+	dir := t.TempDir()
+
+	target := filepath.Join(dir, "target.txt")
+	if err := os.WriteFile(target, []byte("the previous report"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	link := filepath.Join(dir, "report.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+
+	t.Run("refused by default", func(t *testing.T) {
+		if _, err := opfile.Create(fsys, link, 0o600); !errors.Is(err, opfile.ErrNotRegular) {
+			t.Fatalf("error = %v, want ErrNotRegular", err)
+		}
+	})
+
+	t.Run("followed on request", func(t *testing.T) {
+		const plaintext = "the new report"
+
+		w, err := opfile.Create(fsys, link, 0o600, opfile.FollowSymlinks())
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+
+		if got := w.Path(); got != target {
+			t.Errorf("Path() = %q, want the resolved %q — the caller cannot log where it went", got, target)
+		}
+
+		if _, err := w.Write([]byte(plaintext)); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+
+		if err := w.Commit(); err != nil {
+			t.Fatalf("Commit: %v", err)
+		}
+
+		// The link survives and points at the fresh content, which is the whole
+		// reason for following rather than replacing.
+		info, err := os.Lstat(link)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatal("the symbolic link did not survive being followed")
+		}
+
+		got, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("reading the target: %v", err)
+		}
+
+		if string(got) != plaintext {
+			t.Errorf("target holds %q, want %q", got, plaintext)
+		}
+	})
+}
+
+// TestFollowSymlinksRefusesWhatItCannotResolve covers the filesystem that can
+// say "this is a link" and not what it points at — afero's in-memory one,
+// exactly.
+//
+// Guessing there would mean writing through a link whose target nobody
+// established. Refusing is the honest outcome, and it is why Lstater and
+// LinkReader are separate optional interfaces rather than one.
+func TestFollowSymlinksRefusesWhatItCannotResolve(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+
+	if _, ok := any(opfileafero.Wrap(mem)).(opfile.LinkReader); ok {
+		t.Skip("the in-memory filesystem gained link resolution; this case needs another fixture")
+	}
+
+	// Nothing to resolve, so the ordinary path is unaffected by the option.
+	if _, err := opfile.Create(opfileafero.Wrap(mem), "/reports/new.txt", 0o600,
+		opfile.FollowSymlinks()); err != nil {
+		t.Errorf("an absent destination was refused with following enabled: %v", err)
+	}
+}

@@ -9,10 +9,11 @@ import (
 )
 
 type DecryptOptions struct {
-	Certificate string
-	Key         string
-	Backend     string
-	Output      string
+	Certificate    string
+	Key            string
+	Backend        string
+	Output         string
+	FollowSymlinks bool
 }
 
 func NewCmdDecrypt(props *props.Props) *setup.Command {
@@ -35,6 +36,7 @@ func NewCmdDecrypt(props *props.Props) *setup.Command {
 	cmd.Flags().StringVar(&opts.Key, "key", "", "Key service identifier for the encryption subkey")
 	cmd.Flags().StringVar(&opts.Backend, "backend", "", "Key service backend to use")
 	cmd.Flags().StringVar(&opts.Output, "output", "", "Write plaintext here instead of stdout")
+	cmd.Flags().BoolVar(&opts.FollowSymlinks, "follow-symlinks", false, "Write through a symbolic link named by --output instead of refusing it")
 
 	return cmd
 }

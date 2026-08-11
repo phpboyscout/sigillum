@@ -80,7 +80,7 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output)
+	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output, opts.FollowSymlinks)
 	if err != nil {
 		return err
 	}
@@ -279,7 +279,7 @@ type destination struct {
 // A published certificate is the thing correspondents encrypt to, so replacing
 // a good one with a half-written file would be worse than writing nothing.
 // Abandon is safe to call after commit, so it can be deferred unconditionally.
-func openOutput(fsys opfile.FS, path string) (destination, error) {
+func openOutput(fsys opfile.FS, path string, followSymlinks bool) (destination, error) {
 	if path == "" || path == "-" {
 		return destination{
 			w:       os.Stdout,
@@ -292,7 +292,12 @@ func openOutput(fsys opfile.FS, path string) (destination, error) {
 	// published.
 	const certificateMode = 0o644
 
-	w, err := opfile.Create(fsys, path, certificateMode)
+	var opts []opfile.Option
+	if followSymlinks {
+		opts = append(opts, opfile.FollowSymlinks())
+	}
+
+	w, err := opfile.Create(fsys, path, certificateMode, opts...)
 	if err != nil {
 		return destination{}, err
 	}

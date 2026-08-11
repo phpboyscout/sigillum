@@ -32,7 +32,7 @@ func TestOpenOutputAbandonLeavesNothingBehind(t *testing.T) {
 	dir := "/reports"
 	path := filepath.Join(dir, "report.txt")
 
-	out, err := openOutput(opfileafero.Wrap(mem), path)
+	out, err := openOutput(opfileafero.Wrap(mem), path, false)
 	if err != nil {
 		t.Fatalf("openOutput: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestOpenOutputAbandonAfterCommitIsSafe(t *testing.T) {
 	dir := "/reports"
 	path := filepath.Join(dir, "report.txt")
 
-	out, err := openOutput(opfileafero.Wrap(mem), path)
+	out, err := openOutput(opfileafero.Wrap(mem), path, false)
 	if err != nil {
 		t.Fatalf("openOutput: %v", err)
 	}

@@ -68,7 +68,7 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 
 	defer closeMsg()
 
-	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output)
+	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output, opts.FollowSymlinks)
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ type destination struct {
 // The commit is what makes a failed decryption harmless: nothing replaces the
 // operator's file until the plaintext is complete. Abandon is safe to call
 // after commit, so it can be deferred unconditionally.
-func openOutput(fsys opfile.FS, path string) (destination, error) {
+func openOutput(fsys opfile.FS, path string, followSymlinks bool) (destination, error) {
 	if path == "" || path == "-" {
 		return destination{
 			w:       os.Stdout,
@@ -242,7 +242,12 @@ func openOutput(fsys opfile.FS, path string) (destination, error) {
 	// having encrypted it.
 	const plaintextMode = 0o600
 
-	w, err := opfile.Create(fsys, path, plaintextMode)
+	var opts []opfile.Option
+	if followSymlinks {
+		opts = append(opts, opfile.FollowSymlinks())
+	}
+
+	w, err := opfile.Create(fsys, path, plaintextMode, opts...)
 	if err != nil {
 		return destination{}, err
 	}

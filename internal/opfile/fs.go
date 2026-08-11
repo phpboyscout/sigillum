@@ -69,6 +69,17 @@ type File interface {
 	Close() error
 }
 
+// LinkReader optionally resolves a symbolic link.
+//
+// Separate from [Lstater] because they are different capabilities: a filesystem
+// may be able to say "this is a link" without being able to say what it points
+// at. Only a caller who has opted into following needs the second, so a
+// filesystem that cannot resolve simply does not have the method and following
+// is refused rather than guessed at.
+type LinkReader interface {
+	Readlink(name string) (string, error)
+}
+
 // Lstater optionally reports on a path without following a symbolic link.
 //
 // Optional because a filesystem with no notion of links cannot honour it, and
@@ -106,6 +117,7 @@ func (osFS) Stat(name string) (fs.FileInfo, error)  { return os.Stat(name) }
 func (osFS) Rename(oldpath, newpath string) error   { return os.Rename(oldpath, newpath) }
 func (osFS) Remove(name string) error               { return os.Remove(name) }
 func (osFS) Lstat(name string) (fs.FileInfo, error) { return os.Lstat(name) }
+func (osFS) Readlink(name string) (string, error)   { return os.Readlink(name) }
 
 // stage creates a uniquely named file beside the destination.
 //

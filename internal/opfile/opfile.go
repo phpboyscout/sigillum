@@ -38,6 +38,41 @@ import (
 // ErrNotRegular means the destination exists and is not an ordinary file.
 var ErrNotRegular = errors.New("destination is not a regular file")
 
+// ErrUnresolvableLink means following was asked for and the filesystem cannot
+// say what a link points at.
+var ErrUnresolvableLink = errors.New("symbolic link cannot be resolved")
+
+// Option adjusts how a destination is prepared.
+type Option func(*options)
+
+type options struct{ followSymlinks bool }
+
+// FollowSymlinks writes through a symbolic link named as the destination,
+// replacing what it points at and leaving the link itself in place.
+//
+// Off by default, and the default is the safe half of a genuine trade-off
+// rather than a considered preference for one workflow over another.
+//
+// Following is what the commands did before content was staged and renamed,
+// and it is what a dotfile-style managed symlink expects: replacing the link
+// would detach every other path pointing at the target. go/config takes that
+// position for configuration files, and this package's own Open says a path the
+// operator typed is an instruction rather than untrusted input.
+//
+// Against that, a symbolic link at the destination is not necessarily one the
+// operator made. Anyone who can write to the destination *directory* can plant
+// one, and following it then decides where the content lands — which for a
+// decrypted vulnerability report written into a shared directory is the classic
+// symlink-planting problem.
+//
+// Neither answer is right for every caller, so the caller chooses and the
+// default refuses. Where following is enabled, the resolved path is reported
+// back so it can be logged: the failure mode of following is silence, and that
+// part is cheap to remove.
+func FollowSymlinks() Option {
+	return func(o *options) { o.followSymlinks = true }
+}
+
 // Open reads a file the operator named.
 //
 // The path is cleaned before use. It is not otherwise constrained: an operator
@@ -87,10 +122,14 @@ type Writer struct {
 //
 // The temporary file is created in the destination's own directory so the
 // rename is within one filesystem, and therefore atomic.
-func Create(fsys FS, path string, mode fs.FileMode) (*Writer, error) {
-	final := filepath.Clean(path)
+func Create(fsys FS, path string, mode fs.FileMode, opts ...Option) (*Writer, error) {
+	var cfg options
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 
-	if err := checkDestination(fsys, final); err != nil {
+	final, err := resolveDestination(fsys, filepath.Clean(path), cfg)
+	if err != nil {
 		return nil, err
 	}
 
@@ -110,7 +149,8 @@ func Create(fsys FS, path string, mode fs.FileMode) (*Writer, error) {
 	return &Writer{fsys: fsys, tmp: tmp, tmpPath: tmpPath, final: final}, nil
 }
 
-// checkDestination refuses a path that exists and is not an ordinary file.
+// resolveDestination decides what path will actually be written, refusing a
+// destination that cannot be replaced atomically.
 //
 // Replacing atomically means renaming over the directory entry rather than
 // writing through it, so a symbolic link, a FIFO or a device node named as the
@@ -120,24 +160,66 @@ func Create(fsys FS, path string, mode fs.FileMode) (*Writer, error) {
 // feeding another process, would find the plaintext sitting on local disk
 // instead, with nothing having said so.
 //
-// Refused rather than followed, because following reintroduces the write-through
-// behaviour the atomic replace exists to remove. Piping is already served by
+// A symbolic link is the one case the caller can decide: see [FollowSymlinks].
+// Everything else — a FIFO, a device, a directory — cannot be replaced by a
+// rename at all, so it is refused regardless. Piping is already served by
 // stdout, which is the default and what "-" selects.
-func checkDestination(fsys FS, path string) error {
-	info, err := lstat(fsys, path)
+func resolveDestination(fsys FS, path string, cfg options) (string, error) {
+	// Bounded, because a link may point at another and eventually at itself.
+	const maxHops = 8
 
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		// Nothing there: the ordinary case.
-		return nil
-	case err != nil:
-		return fmt.Errorf("inspecting %s: %w", path, err)
-	case info.Mode().IsRegular():
-		return nil
+	for range maxHops {
+		info, err := lstat(fsys, path)
+
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			// Nothing there: the ordinary case.
+			return path, nil
+		case err != nil:
+			return "", fmt.Errorf("inspecting %s: %w", path, err)
+		case info.Mode().IsRegular():
+			return path, nil
+		case info.Mode()&os.ModeSymlink == 0:
+			// A FIFO, device or directory cannot be replaced by a rename
+			// whatever the caller asked for, so following does not arise.
+			return "", fmt.Errorf("%w: %s is %s; this command replaces its destination atomically "+
+				"and cannot write through it — write to stdout and pipe instead",
+				ErrNotRegular, path, describe(info.Mode()))
+		case !cfg.followSymlinks:
+			return "", fmt.Errorf("%w: %s is %s; replacing it atomically would remove the link. "+
+				"Pass --follow-symlinks to write through it, or name the file it points at",
+				ErrNotRegular, path, describe(info.Mode()))
+		}
+
+		target, err := readlink(fsys, path)
+		if err != nil {
+			return "", err
+		}
+
+		// A relative target is relative to the link's own directory.
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+
+		path = filepath.Clean(target)
 	}
 
-	return fmt.Errorf("%w: %s is %s; this command replaces its destination atomically and would "+
-		"remove it — write to stdout and pipe instead", ErrNotRegular, path, describe(info.Mode()))
+	return "", fmt.Errorf("%w: %s leads through more than %d links", ErrUnresolvableLink, path, maxHops)
+}
+
+// readlink resolves one hop, where the filesystem can.
+func readlink(fsys FS, path string) (string, error) {
+	reader, ok := fsys.(LinkReader)
+	if !ok {
+		return "", fmt.Errorf("%w: %s, and this filesystem cannot resolve links", ErrUnresolvableLink, path)
+	}
+
+	target, err := reader.Readlink(path)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s: %w", ErrUnresolvableLink, path, err)
+	}
+
+	return target, nil
 }
 
 // lstat reports on the path itself rather than what it points at, where the
@@ -171,6 +253,13 @@ func describe(mode fs.FileMode) string {
 		return "not a regular file"
 	}
 }
+
+// Path is the file that will actually be replaced.
+//
+// The same path the caller named, unless following a symbolic link resolved it
+// elsewhere — which is worth logging, because the failure mode of following is
+// that nobody knows where the content went.
+func (w *Writer) Path() string { return w.final }
 
 // Write sends bytes to the temporary file.
 func (w *Writer) Write(p []byte) (int, error) {

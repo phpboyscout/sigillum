@@ -9,13 +9,14 @@ import (
 )
 
 type CertificateOptions struct {
-	UserId     string
-	CertifyKey string
-	EncryptKey string
-	Backend    string
-	Created    string
-	Armor      bool
-	Output     string
+	UserId         string
+	CertifyKey     string
+	EncryptKey     string
+	Backend        string
+	Created        string
+	Armor          bool
+	Output         string
+	FollowSymlinks bool
 }
 
 func NewCmdCertificate(props *props.Props) *setup.Command {
@@ -41,6 +42,7 @@ func NewCmdCertificate(props *props.Props) *setup.Command {
 	cmd.Flags().StringVar(&opts.Created, "created", "", "Key creation time as RFC 3339; must not change between runs")
 	cmd.Flags().BoolVar(&opts.Armor, "armor", false, "Emit ASCII armour instead of binary")
 	cmd.Flags().StringVar(&opts.Output, "output", "", "Write the certificate here instead of stdout")
+	cmd.Flags().BoolVar(&opts.FollowSymlinks, "follow-symlinks", false, "Write through a symbolic link named by --output instead of refusing it")
 
 	return cmd
 }

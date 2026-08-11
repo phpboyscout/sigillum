@@ -67,7 +67,7 @@ commands:
     description: Decrypt an OpenPGP message addressed to a KMS-backed certificate
     long_description: Decrypt an OpenPGP message addressed to a KMS-backed certificate
     hashes:
-      cmd.go: bfb316a86f6906ac7e5162c8f407649c33339a373b5a58a26e07c3958ea2dac5
+      cmd.go: ccc66182ca899212acb4c4de5d501ee59b828933d4cbf11b77ada0d966f85fd2
     protected: false
     flags:
       - name: certificate
@@ -82,11 +82,14 @@ commands:
       - name: output
         type: string
         description: Write plaintext here instead of stdout
+      - name: follow-symlinks
+        type: bool
+        description: Write through a symbolic link named by --output instead of refusing it
   - name: certificate
     description: Assemble and emit an OpenPGP certificate backed by key-service keys
     long_description: Assemble and emit an OpenPGP certificate backed by key-service keys
     hashes:
-      cmd.go: 22f694c956d9eb7b2e17abc23bc4a5b6b201ac0bee9cea40ee5194a4cd4f83e5
+      cmd.go: 62a7d4b39383d3d619431c0430be4823782f9eec57b67d9a15783b20ec6d367e
     protected: true
     flags:
       - name: user-id
@@ -110,3 +113,6 @@ commands:
       - name: output
         type: string
         description: Write the certificate here instead of stdout
+      - name: follow-symlinks
+        type: bool
+        description: Write through a symbolic link named by --output instead of refusing it
