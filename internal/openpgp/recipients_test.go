@@ -436,3 +436,64 @@ func repeatFirstPKESK(t *testing.T, message []byte, count int) []byte {
 
 	return append(out, pkt.Rest...)
 }
+
+// TestDecryptClassifiesACorruptArmouredMessage covers the commonest real input
+// problem: a truncated or mangled armoured paste.
+//
+// The CLI reference documents this row as "malformed message", and a caller
+// distinguishing it from a size or addressing failure needs errors.Is to agree.
+// The base64 failure surfaces from reading the decoded block, where nothing had
+// attached the sentinel.
+func TestDecryptClassifiesACorruptArmouredMessage(t *testing.T) {
+	t.Parallel()
+
+	ours, deriver := testCertificate(t)
+
+	armoured := encryptTo(t, ours, "a report that did not survive the paste", true)
+
+	// Corrupt the base64 payload, leaving the armour frame intact — which is
+	// what a truncated copy out of a ticket looks like.
+	corrupt := bytes.Replace(armoured, []byte("\n\n"), []byte("\n\n!!!!\n"), 1)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(corrupt), io.Discard)
+	if !errors.Is(err, openpgp.ErrMalformedMessage) {
+		t.Fatalf("error = %v, want ErrMalformedMessage", err)
+	}
+}
+
+// TestDecryptIsNotHijackedByAnEmbeddedArmourHeader covers a binary message
+// carrying the armour header somewhere after its start.
+//
+// armor.Decode skips leading garbage, so it finds a header anywhere. A binary
+// message that contains one — which an attacker composing the message chooses
+// freely — was dearmoured from their marker instead of read as packets, so the
+// operator got a base64 error where their report should have been.
+func TestDecryptIsNotHijackedByAnEmbeddedArmourHeader(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a binary report that happens to contain an armour header"
+
+	ours, deriver := testCertificate(t)
+
+	message := encryptTo(t, ours, plaintext, false)
+	message = append(message, "\n-----BEGIN PGP MESSAGE-----\n\nZm9v\n-----END PGP MESSAGE-----\n"...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("decrypting a binary message containing an armour header: %v", err)
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+}

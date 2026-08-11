@@ -2,6 +2,7 @@ package openpgp
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -31,8 +32,13 @@ func readMessage(message io.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	if block, decodeErr := armor.Decode(bytes.NewReader(raw)); decodeErr == nil {
-		if raw, err = readBounded(block.Body, "dearmoured message"); err != nil {
+	if looksArmoured(raw) {
+		block, decodeErr := armor.Decode(bytes.NewReader(raw))
+		if decodeErr != nil {
+			return nil, fmt.Errorf("%w: dearmouring: %w", ErrMalformedMessage, decodeErr)
+		}
+
+		if raw, err = dearmoured(block.Body, "message"); err != nil {
 			return nil, err
 		}
 	}
@@ -42,6 +48,50 @@ func readMessage(message io.Reader) ([]byte, error) {
 	}
 
 	return raw, nil
+}
+
+// armourPrefix opens every armoured block, RFC 9580 §6.2.
+var armourPrefix = []byte("-----BEGIN ")
+
+// looksArmoured reports whether the input begins an armoured block, and is
+// checked before reaching for a decoder.
+//
+// go-crypto's armor.Decode skips leading garbage: it reads line by line through
+// the whole input hunting for the header. Two consequences, and the second is
+// the one that matters.
+//
+// For binary input — the documented "fetched from an API" case — it is a full
+// line-splitting scan of up to 128 MiB before it fails and the raw bytes are
+// used anyway.
+//
+// Worse, an attacker composing a binary message can embed the header inside the
+// encrypted-data packet. Decode then succeeds on somebody else's choice of
+// where the message starts, the real packets are discarded, and the operator is
+// handed a base64 error instead of their report. Anchoring the check at the
+// front removes the choice.
+func looksArmoured(raw []byte) bool {
+	return bytes.HasPrefix(bytes.TrimLeft(raw, " \t\r\n"), armourPrefix)
+}
+
+// dearmoured reads the decoded body of an armoured block, classifying a failure
+// as a malformed message.
+//
+// The classification is the point. A truncated or mangled armoured paste is the
+// commonest real input problem, and the CLI reference documents it as
+// "malformed message" — but the base64 error surfaces from reading the block,
+// where nothing had attached the sentinel, so errors.Is said otherwise. A size
+// failure keeps its own sentinel: too large is not malformed.
+func dearmoured(body io.Reader, what string) ([]byte, error) {
+	raw, err := readBounded(body, "dearmoured "+what)
+	if err == nil {
+		return raw, nil
+	}
+
+	if errors.Is(err, ErrTooLarge) {
+		return nil, err
+	}
+
+	return nil, fmt.Errorf("%w: %w", ErrMalformedMessage, err)
 }
 
 // maxMessage bounds the ciphertext this will hold.
@@ -160,10 +210,26 @@ func copyAuthenticated(body io.ReadCloser, out io.Writer) error {
 // be sending a link, not an attachment.
 const maxPlaintext = 64 << 20
 
+// maxCompressionDepth bounds how many nested compressed packets are followed.
+//
+// maxPlaintext bounds the literal data, but nothing bounded the descent to
+// reach it. Each level holds a live flate or zlib reader with its own 32 KiB
+// window, and every one of them stays alive because the next is read through
+// it — so a few megabytes of ciphertext, well inside maxMessage, nests to
+// hundreds of thousands of levels and exhausts memory before a single literal
+// octet is read. That is precisely the out-of-memory kill the plaintext bound
+// claims to prevent, reached without ever producing plaintext.
+//
+// Two is past generous: one level is what a sender produces, and go-crypto's
+// own high-level reader refuses beyond one or two.
+const maxCompressionDepth = 2
+
 // copyLiteral walks the packets inside the encrypted data — compressed or not —
 // and writes the literal contents to out, refusing anything over maxPlaintext.
 func copyLiteral(body io.Reader, out io.Writer) error {
 	reader := packet.NewReader(body)
+
+	depth := 0
 
 	for {
 		p, err := reader.Next()
@@ -174,6 +240,12 @@ func copyLiteral(body io.Reader, out io.Writer) error {
 
 		switch typed := p.(type) {
 		case *packet.Compressed:
+			depth++
+			if depth > maxCompressionDepth {
+				return fmt.Errorf("%w: message nests compressed packets more than %d deep",
+					ErrMalformedMessage, maxCompressionDepth)
+			}
+
 			reader = packet.NewReader(typed.Body)
 		case *packet.LiteralData:
 			// One octet beyond the limit is read deliberately, so hitting it

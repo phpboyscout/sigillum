@@ -75,8 +75,14 @@ func ReadRecipient(r io.Reader) (Recipient, error) {
 		return Recipient{}, err
 	}
 
-	if block, decodeErr := armor.Decode(bytes.NewReader(raw)); decodeErr == nil {
-		if raw, err = readBounded(block.Body, "dearmoured certificate"); err != nil {
+	if looksArmoured(raw) {
+		block, decodeErr := armor.Decode(bytes.NewReader(raw))
+		if decodeErr != nil {
+			return Recipient{}, fmt.Errorf("%w: dearmouring the certificate: %w",
+				ErrMalformedMessage, decodeErr)
+		}
+
+		if raw, err = dearmoured(block.Body, "certificate"); err != nil {
 			return Recipient{}, err
 		}
 	}
