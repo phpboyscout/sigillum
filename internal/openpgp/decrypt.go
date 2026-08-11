@@ -105,37 +105,79 @@ func Decrypt(
 		return fmt.Errorf("%w: no key service supplied", encryption.ErrMalformed)
 	}
 
-	pkesk, rest, err := addressedToUs(message, recipient)
+	candidates, rest, err := addressedToUs(message, recipient)
 	if err != nil {
 		return err
 	}
 
+	for i, pkesk := range candidates {
+		// Each attempt is one key-service call, and for a hidden recipient it
+		// is a guess. A message may carry any number of wildcard packets, so
+		// without a ceiling anyone who can write to the published address can
+		// bill us for as many derivations as they care to append.
+		if i >= maxDerivations {
+			return fmt.Errorf("%w: gave up after trying %d of %d candidate session-key packets",
+				ErrNotAddressed, maxDerivations, len(candidates))
+		}
+
+		cipherID, sessionKey, err := unwrap(ctx, deriver, recipient, pkesk)
+
+		switch {
+		case err == nil:
+			return decryptBody(rest, packet.CipherFunction(cipherID), sessionKey, out)
+
+		// The unwrap failing means this packet was not ours: a hidden
+		// recipient names nobody, so trying it is the only way to find out.
+		// Any other failure is about the message or the key service and would
+		// recur identically on the next candidate.
+		case errors.Is(err, encryption.ErrIntegrity), errors.Is(err, encryption.ErrChecksum):
+			continue
+
+		default:
+			return err
+		}
+	}
+
+	return fmt.Errorf("%w: none of the %d candidate session-key packets unwrapped",
+		ErrNotAddressed, len(candidates))
+}
+
+// maxDerivations bounds how many session-key packets Decrypt will try.
+//
+// Generous against real messages -- a report copied to a coordinating body and
+// a colleague carries a handful -- and small enough that a crafted message
+// cannot turn one inbound report into an unbounded run of billed key-service
+// calls.
+const maxDerivations = 8
+
+// unwrap recovers the session key from one candidate packet.
+func unwrap(
+	ctx context.Context,
+	deriver SecretDeriver,
+	recipient Recipient,
+	pkesk encryption.PKESK,
+) (cipherID byte, sessionKey []byte, err error) {
 	secret, err := deriver.DeriveSharedSecret(ctx, pkesk.EphemeralPoint)
 	if err != nil {
-		return fmt.Errorf("deriving the shared secret: %w", err)
+		return 0, nil, fmt.Errorf("deriving the shared secret: %w", err)
 	}
 
 	params := recipient.KDF
 	params.CoordinateBytes = deriver.CoordinateBytes()
 
-	cipherID, sessionKey, err := encryption.SessionKey(encryption.Message{
+	return encryption.SessionKey(encryption.Message{
 		Version:      pkesk.Version,
 		SharedSecret: secret,
 		WrappedKey:   pkesk.WrappedKey,
 	}, params)
-	if err != nil {
-		return err
-	}
-
-	return decryptBody(rest, packet.CipherFunction(cipherID), sessionKey, out)
 }
 
 // wildcardKeyID is the all-zero key id RFC 9580 §5.1 reserves for a recipient
 // the sender chose not to name.
 var wildcardKeyID [8]byte
 
-// addressedToUs finds the session-key packet meant for this certificate and
-// returns it with the encrypted data that follows.
+// addressedToUs returns the session-key packets worth trying, in the order to
+// try them, with the encrypted data that follows.
 //
 // A message carries one PKESK per recipient, so ours is first only when we are
 // the only one. A reporter who copies in a colleague, a coordinating body or
@@ -145,21 +187,21 @@ var wildcardKeyID [8]byte
 //
 // The whole sequence is read before any key-service call, so a message that is
 // genuinely not ours still costs nothing.
-func addressedToUs(message io.Reader, recipient Recipient) (encryption.PKESK, []byte, error) {
+func addressedToUs(message io.Reader, recipient Recipient) ([]encryption.PKESK, []byte, error) {
 	raw, err := readMessage(message)
 	if err != nil {
-		return encryption.PKESK{}, nil, err
+		return nil, nil, err
 	}
 
 	var (
-		named   [][8]byte
-		hidden  []encryption.PKESK
-		body    []byte
-		matched bool
-		ours    encryption.PKESK
+		named      [][8]byte
+		hidden     []encryption.PKESK
+		matched    bool
+		unreadable int
+		ours       encryption.PKESK
 	)
 
-	body = raw
+	body := raw
 
 	for len(body) > 0 {
 		pkt, err := encryption.ParsePacket(body)
@@ -175,7 +217,15 @@ func addressedToUs(message io.Reader, recipient Recipient) (encryption.PKESK, []
 
 		pkesk, err := encryption.ParsePKESK(pkt.Body)
 		if err != nil {
-			return encryption.PKESK{}, nil, err
+			// A co-recipient's packet we cannot read is not a reason to refuse
+			// the message. RSA is still the most common key type and parses as
+			// unsupported here, as does a version 6 packet from a modern
+			// sender — so propagating this would fail a report over somebody
+			// else's key while ours sat in the very next packet.
+			unreadable++
+			body = pkt.Rest
+
+			continue
 		}
 
 		switch {
@@ -193,34 +243,61 @@ func addressedToUs(message io.Reader, recipient Recipient) (encryption.PKESK, []
 		body = pkt.Rest
 	}
 
-	return chooseRecipient(ours, matched, hidden, named, body, recipient)
+	return chooseRecipients(candidateSet{
+		ours:       ours,
+		matched:    matched,
+		hidden:     hidden,
+		named:      named,
+		unreadable: unreadable,
+	}, body, recipient)
 }
 
-// chooseRecipient decides which session-key packet to use, once the sequence
-// has been read.
+// candidateSet is what one pass over the session-key packets found.
+type candidateSet struct {
+	ours    encryption.PKESK
+	matched bool
+	hidden  []encryption.PKESK
+	named   [][8]byte
+
+	// unreadable counts packets that are session-key packets but not ones this
+	// package can parse — a co-recipient on RSA, or a v6 sender. They cannot
+	// be ours, but they say the message was addressed to somebody.
+	unreadable int
+}
+
+// chooseRecipients orders the packets worth trying, once the sequence has been
+// read.
 //
-// Order matters: a packet naming us is preferred over a hidden one, because a
-// named match is certain and a hidden one is a guess that costs a key-service
-// call to disprove.
-func chooseRecipient(
-	ours encryption.PKESK,
-	matched bool,
-	hidden []encryption.PKESK,
-	named [][8]byte,
-	body []byte,
-	recipient Recipient,
-) (encryption.PKESK, []byte, error) {
+// A packet naming us comes first, because a named match is certain where a
+// hidden one is a guess that costs a key-service call to disprove. Every hidden
+// packet follows, in the order the sender wrote them: taking only the first
+// means two hidden recipients with ours second fail with a checksum error on a
+// message that is genuinely ours.
+func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]encryption.PKESK, []byte, error) {
+	candidates := make([]encryption.PKESK, 0, len(c.hidden)+1)
+
+	if c.matched {
+		candidates = append(candidates, c.ours)
+	}
+
+	candidates = append(candidates, c.hidden...)
+
 	switch {
-	case matched:
-		return ours, body, nil
-	case len(hidden) > 0:
-		return hidden[0], body, nil
-	case len(named) == 0:
-		return encryption.PKESK{}, nil, fmt.Errorf(
+	case len(candidates) > 0:
+		return candidates, body, nil
+
+	case len(c.named) == 0 && c.unreadable == 0:
+		return nil, nil, fmt.Errorf(
 			"%w: no session-key packet at the start of the message", ErrMalformedMessage)
+
+	case len(c.named) == 0:
+		return nil, nil, fmt.Errorf(
+			"%w: its %d session-key packets are all of a kind this cannot read, so none names this certificate (%x)",
+			ErrNotAddressed, c.unreadable, recipient.KeyID)
+
 	default:
-		return encryption.PKESK{}, nil, fmt.Errorf("%w: addressed to %s, this certificate is %x",
-			ErrNotAddressed, keyIDs(named), recipient.KeyID)
+		return nil, nil, fmt.Errorf("%w: addressed to %s, this certificate is %x",
+			ErrNotAddressed, keyIDs(c.named), recipient.KeyID)
 	}
 }
 
