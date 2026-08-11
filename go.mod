@@ -13,7 +13,7 @@ tool (
 require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
-	gitlab.com/phpboyscout/go-tool-base v0.36.1
+	gitlab.com/phpboyscout/go-tool-base v0.37.0
 	gitlab.com/phpboyscout/go/credentials v0.3.1
 	gitlab.com/phpboyscout/go/errorhandling v0.3.0
 	gitlab.com/phpboyscout/go/signing-cli v0.5.0
@@ -40,6 +40,7 @@ require (
 	github.com/golangci/golines v0.15.0 // indirect
 	github.com/golangci/rowserrcheck v0.0.0-20260419091836-c5f79b8a11ba // indirect
 	github.com/golangci/swaggoswag v0.0.0-20250504205917-77f2aca3143e // indirect
+	github.com/google/go-github/v90 v90.0.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-memdb v1.3.5 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
@@ -188,7 +189,6 @@ require (
 	github.com/golangci/revgrep v0.8.0 // indirect
 	github.com/golangci/unconvert v0.0.0-20250410112200-a129a6e6413e // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/go-github/v89 v89.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
@@ -203,7 +203,7 @@ require (
 	github.com/gostaticanalysis/comment v1.5.0 // indirect
 	github.com/gostaticanalysis/forcetypeassert v0.2.0 // indirect
 	github.com/gostaticanalysis/nilerr v0.1.2 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-immutable-radix/v2 v2.1.0 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
@@ -340,52 +340,52 @@ require (
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	gitlab.com/bosi/decorder v0.4.2 // indirect
-	gitlab.com/gitlab-org/api/client-go/v2 v2.55.1 // indirect
+	gitlab.com/gitlab-org/api/client-go/v2 v2.56.0 // indirect
 	gitlab.com/phpboyscout/go/aferobilly v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/authn v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/browser v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/changelog v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/chat v0.9.1 // indirect
-	gitlab.com/phpboyscout/go/chat-anthropic v0.8.1 // indirect
-	gitlab.com/phpboyscout/go/chat-gemini v0.8.1 // indirect
-	gitlab.com/phpboyscout/go/chat-openai v0.8.1 // indirect
-	gitlab.com/phpboyscout/go/config v0.13.1 // indirect
+	gitlab.com/phpboyscout/go/authn v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/browser v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/changelog v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/chat v0.9.2 // indirect
+	gitlab.com/phpboyscout/go/chat-anthropic v0.8.2 // indirect
+	gitlab.com/phpboyscout/go/chat-gemini v0.8.2 // indirect
+	gitlab.com/phpboyscout/go/chat-openai v0.8.2 // indirect
+	gitlab.com/phpboyscout/go/config v0.13.2 // indirect
 	gitlab.com/phpboyscout/go/config-afero v0.1.5 // indirect
-	gitlab.com/phpboyscout/go/controls v0.3.0 // indirect
-	gitlab.com/phpboyscout/go/forge v0.9.1 // indirect
-	gitlab.com/phpboyscout/go/forge-bitbucket v0.5.1 // indirect
-	gitlab.com/phpboyscout/go/forge-gitea v0.7.1 // indirect
-	gitlab.com/phpboyscout/go/forge-github v0.6.1 // indirect
-	gitlab.com/phpboyscout/go/forge-gitlab v0.6.2 // indirect
-	gitlab.com/phpboyscout/go/httpclient v0.2.1 // indirect
-	gitlab.com/phpboyscout/go/observability v0.3.0 // indirect
-	gitlab.com/phpboyscout/go/output v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/redact v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/regexutil v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/repo v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/controls v0.3.1 // indirect
+	gitlab.com/phpboyscout/go/forge v0.11.0 // indirect
+	gitlab.com/phpboyscout/go/forge-bitbucket v0.5.4 // indirect
+	gitlab.com/phpboyscout/go/forge-gitea v0.9.0 // indirect
+	gitlab.com/phpboyscout/go/forge-github v0.8.1 // indirect
+	gitlab.com/phpboyscout/go/forge-gitlab v0.8.0 // indirect
+	gitlab.com/phpboyscout/go/httpclient v0.2.2 // indirect
+	gitlab.com/phpboyscout/go/observability v0.3.1 // indirect
+	gitlab.com/phpboyscout/go/output v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/redact v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/regexutil v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/repo v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/signing v0.6.2
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.4.2
-	gitlab.com/phpboyscout/go/tls v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/transit v0.2.1 // indirect
-	gitlab.com/phpboyscout/go/transport v0.5.2 // indirect
-	gitlab.com/phpboyscout/go/workspace v0.2.0 // indirect
+	gitlab.com/phpboyscout/go/tls v0.2.1 // indirect
+	gitlab.com/phpboyscout/go/transit v0.2.2 // indirect
+	gitlab.com/phpboyscout/go/transport v0.6.0 // indirect
+	gitlab.com/phpboyscout/go/workspace v0.2.1 // indirect
 	gitlab.com/phpboyscout/go/yamldoc v0.2.0 // indirect
 	go-simpler.org/musttag v0.14.0 // indirect
 	go-simpler.org/sloglint v0.12.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/contrib/bridges/otelslog v0.19.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0 // indirect
-	go.opentelemetry.io/otel v1.44.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.20.0 // indirect
+	go.opentelemetry.io/contrib/bridges/otelslog v0.20.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0 // indirect
+	go.opentelemetry.io/otel v1.45.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.21.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 // indirect
-	go.opentelemetry.io/otel/log v0.20.0 // indirect
-	go.opentelemetry.io/otel/metric v1.44.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
-	go.opentelemetry.io/otel/sdk/log v0.20.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
-	go.opentelemetry.io/otel/trace v1.44.0 // indirect
+	go.opentelemetry.io/otel/log v0.21.0 // indirect
+	go.opentelemetry.io/otel/metric v1.45.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
+	go.opentelemetry.io/otel/sdk/log v0.21.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.45.0 // indirect
+	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
@@ -405,8 +405,8 @@ require (
 	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/api v0.290.0 // indirect
 	google.golang.org/genai v1.66.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260727163830-6c54dddc4772 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260727163830-6c54dddc4772 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/grpc v1.83.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
