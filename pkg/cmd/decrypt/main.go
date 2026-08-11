@@ -13,6 +13,7 @@ import (
 	"gitlab.com/phpboyscout/go/encryption"
 
 	"gitlab.com/phpboyscout/sigillum/internal/openpgp"
+	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 )
 
 // Errors this command reports.
@@ -66,12 +67,10 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 
 	defer closeMsg()
 
-	out, closeOut, err := openOutput(opts.Output)
+	out, commit, err := openOutput(opts.Output)
 	if err != nil {
 		return err
 	}
-
-	defer closeOut()
 
 	// Wired lazily, and that matters. Decrypt refuses a message addressed to
 	// another certificate before it asks for a shared secret, so building the
@@ -80,6 +79,13 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	deriver := &lazyDeriver{service: service, keyID: opts.Key, log: p.GetLogger()}
 
 	if err := openpgp.Decrypt(ctx, deriver, recipient, message, out); err != nil {
+		return err
+	}
+
+	// Only now is the destination replaced. A failure above leaves whatever
+	// was there untouched — which matters because the common failures are
+	// routine: a message addressed to another key, or a truncated paste.
+	if err := commit(); err != nil {
 		return err
 	}
 
@@ -127,7 +133,12 @@ func (d *lazyDeriver) DeriveSharedSecret(ctx context.Context, peerPoint []byte) 
 		return nil, err
 	}
 
-	return deriver.DeriveSharedSecret(ctx, peerPoint) //nolint:wrapcheck // the provider's error is the useful one.
+	secret, err := deriver.DeriveSharedSecret(ctx, peerPoint)
+	if err != nil {
+		return nil, fmt.Errorf("deriving the shared secret: %w", err)
+	}
+
+	return secret, nil
 }
 
 // CoordinateBytes is asked for after a secret has been derived, so the key
@@ -148,9 +159,14 @@ func (d *lazyDeriver) CoordinateBytes() int {
 // several must not guess which key service to send a request to.
 func lookupBackend(name string) (encryption.KeyService, error) {
 	if name != "" {
-		// The core's error already names what is registered, so it is returned
-		// as-is rather than decorated with the same list twice.
-		return encryption.LookupKeyService(name) //nolint:wrapcheck // already descriptive.
+		// The core's error already names what is registered, so this adds the
+		// flag that supplied the name rather than repeating the list.
+		service, err := encryption.LookupKeyService(name)
+		if err != nil {
+			return nil, fmt.Errorf("--backend: %w", err)
+		}
+
+		return service, nil
 	}
 
 	available := encryption.KeyServiceNames()
@@ -180,7 +196,7 @@ func openInput(path string) (io.Reader, func(), error) {
 		return os.Stdin, func() {}, nil
 	}
 
-	f, err := os.Open(path) //nolint:gosec // the path is the operator's own argument.
+	f, err := opfile.Open(path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -189,9 +205,13 @@ func openInput(path string) (io.Reader, func(), error) {
 }
 
 // openOutput writes plaintext to a file or stdout.
-func openOutput(path string) (io.Writer, func(), error) {
+// openOutput returns the destination and a commit that puts it in place.
+//
+// The commit is what makes a failed decryption harmless: nothing replaces the
+// operator's file until the plaintext is complete.
+func openOutput(path string) (io.Writer, func() error, error) {
 	if path == "" || path == "-" {
-		return os.Stdout, func() {}, nil
+		return os.Stdout, func() error { return nil }, nil
 	}
 
 	// Owner-only: a decrypted vulnerability report is the most sensitive thing
@@ -199,10 +219,10 @@ func openOutput(path string) (io.Writer, func(), error) {
 	// having encrypted it.
 	const plaintextMode = 0o600
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, plaintextMode) //nolint:gosec // operator's own path.
+	w, err := opfile.Create(path, plaintextMode)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return f, func() { _ = f.Close() }, nil
+	return w, w.Commit, nil
 }

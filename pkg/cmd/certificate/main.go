@@ -17,6 +17,8 @@ import (
 
 	"gitlab.com/phpboyscout/go/encryption"
 	"gitlab.com/phpboyscout/go/encryption/certificate"
+
+	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 )
 
 var (
@@ -41,17 +43,7 @@ var (
 // Both signatures are made remotely. No private key material exists in this
 // process at any point.
 func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOptions, _ []string) error {
-	for name, value := range map[string]string{
-		"--user-id":     opts.UserId,
-		"--certify-key": opts.CertifyKey,
-		"--encrypt-key": opts.EncryptKey,
-	} {
-		if value == "" {
-			return fmt.Errorf("%w: %s", ErrMissingFlag, name)
-		}
-	}
-
-	created, err := creationTime(opts.Created)
+	created, err := checkFlags(opts)
 	if err != nil {
 		return err
 	}
@@ -87,14 +79,32 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	out, closeOut, err := openOutput(opts.Output)
+	out, commit, err := openOutput(opts.Output)
 	if err != nil {
 		return err
 	}
 
-	defer closeOut()
+	if err := write(out, der, opts.Armor); err != nil {
+		return err
+	}
 
-	return write(out, der, opts.Armor)
+	return commit()
+}
+
+// checkFlags refuses the arguments that cannot produce a certificate, and
+// returns the creation time the rest of the run needs.
+func checkFlags(opts *CertificateOptions) (time.Time, error) {
+	for name, value := range map[string]string{
+		"--user-id":     opts.UserId,
+		"--certify-key": opts.CertifyKey,
+		"--encrypt-key": opts.EncryptKey,
+	} {
+		if value == "" {
+			return time.Time{}, fmt.Errorf("%w: %s", ErrMissingFlag, name)
+		}
+	}
+
+	return creationTime(opts.Created)
 }
 
 // creationTime parses --created, which is required rather than defaulted.
@@ -147,21 +157,36 @@ func subkeyFor(
 		return certificate.ECDHPublicKey{}, err
 	}
 
-	// The KDF parameters this certificate advertises. SHA-256 and AES-128 are
-	// what RFC 6637 pairs with P-256; they are the certificate's statement
-	// about how a sender must derive the key-encryption key, not a claim about
-	// the strength of the message itself.
-	const (
-		kdfHashSHA256 = 8
-		kdfKEKAES128  = 7
-	)
+	// elliptic.Marshal is deprecated; (*ecdsa.PublicKey).ECDH gives the same
+	// uncompressed encoding through crypto/ecdh, and refuses a point that is
+	// not on the curve — so a key service returning something malformed fails
+	// here rather than in a certificate somebody has already published.
+	agreement, err := pub.ECDH()
+	if err != nil {
+		return certificate.ECDHPublicKey{}, fmt.Errorf(
+			"the encryption key is not a usable %s point: %w", reader.Curve().Params().Name, err)
+	}
+
+	point := agreement.Bytes()
+
+	// The KDF parameters this certificate advertises, paired to the curve as
+	// RFC 6637 §12.1 requires.
+	//
+	// Not a preference: a sender derives the key-encryption key exactly as the
+	// packet says, so hardcoding SHA-256/AES-128 would wrap every report to a
+	// P-521 key under a 128-bit KEK — valid OpenPGP, honoured by every sender,
+	// and invisible.
+	hashID, kekAlgID, err := certificate.RecommendedKDF(oid)
+	if err != nil {
+		return certificate.ECDHPublicKey{}, err
+	}
 
 	return certificate.ECDHPublicKey{
 		Created:  created,
 		CurveOID: oid,
-		Point:    elliptic.Marshal(reader.Curve(), pub.X, pub.Y), //nolint:staticcheck // the form a packet carries.
-		HashID:   kdfHashSHA256,
-		KEKAlgID: kdfKEKAES128,
+		Point:    point,
+		HashID:   hashID,
+		KEKAlgID: kekAlgID,
 	}, nil
 }
 
@@ -185,7 +210,12 @@ func lookupBackend(name string) (encryption.KeyService, error) {
 	if name != "" {
 		// The core's error already names what is registered, so it is returned
 		// as-is rather than decorated with the same list twice.
-		return encryption.LookupKeyService(name) //nolint:wrapcheck // already descriptive.
+		service, err := encryption.LookupKeyService(name)
+		if err != nil {
+			return nil, fmt.Errorf("--backend: %w", err)
+		}
+
+		return service, nil
 	}
 
 	available := encryption.KeyServiceNames()
@@ -204,9 +234,11 @@ func lookupBackend(name string) (encryption.KeyService, error) {
 // write emits the certificate, armoured or binary.
 func write(out io.Writer, der []byte, armoured bool) error {
 	if !armoured {
-		_, err := out.Write(der)
+		if _, err := out.Write(der); err != nil {
+			return fmt.Errorf("writing the certificate: %w", err)
+		}
 
-		return err //nolint:wrapcheck // a write failure needs no embellishment.
+		return nil
 	}
 
 	w, err := armor.Encode(out, openpgp.PublicKeyType, nil)
@@ -218,22 +250,30 @@ func write(out io.Writer, der []byte, armoured bool) error {
 		return fmt.Errorf("armouring: %w", err)
 	}
 
-	return w.Close() //nolint:wrapcheck // Close reports the same failure.
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("armouring: %w", err)
+	}
+
+	return nil
 }
 
-func openOutput(path string) (io.Writer, func(), error) {
+// openOutput returns the destination and a commit that puts it in place.
+//
+// A published certificate is the thing correspondents encrypt to, so replacing
+// a good one with a half-written file would be worse than writing nothing.
+func openOutput(path string) (io.Writer, func() error, error) {
 	if path == "" || path == "-" {
-		return os.Stdout, func() {}, nil
+		return os.Stdout, func() error { return nil }, nil
 	}
 
 	// World-readable on purpose: a certificate is public, and is meant to be
 	// published.
 	const certificateMode = 0o644
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, certificateMode) //nolint:gosec // a public certificate.
+	w, err := opfile.Create(path, certificateMode)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return f, func() { _ = f.Close() }, nil
+	return w, w.Commit, nil
 }
