@@ -116,36 +116,83 @@ func Decrypt(
 		return err
 	}
 
-	for i, pkesk := range candidates {
+	cipherID, sessionKey, err := recoverSessionKey(ctx, deriver, recipient, candidates)
+	if err != nil {
+		return err
+	}
+
+	return decryptBody(rest, packet.CipherFunction(cipherID), sessionKey, out)
+}
+
+// recoverSessionKey attempts the candidates in order and returns the first that
+// opens.
+//
+// Every failure advances to the next, because a candidate can fail for reasons
+// that say nothing about ours: a co-recipient on another curve makes the key
+// service reject *their* ephemeral point, and a packet naming our key id can be
+// planted by anyone who can touch the message, since the key id is public.
+// Stopping at the first failure loses a report the very next packet would have
+// opened.
+//
+// What must not be lost is why. Two kinds of failure are worth reporting even
+// after a later candidate is tried and also fails, so they are kept as the run
+// goes on and reported in preference to a blanket verdict.
+func recoverSessionKey(
+	ctx context.Context,
+	deriver SecretDeriver,
+	recipient Recipient,
+	candidates []candidate,
+) (cipherID byte, sessionKey []byte, err error) {
+	var namedFailure, otherFailure error
+
+	for i, c := range candidates {
 		// Each attempt is one key-service call, and for a hidden recipient it
 		// is a guess. A message may carry any number of wildcard packets, so
 		// without a ceiling anyone who can write to the published address can
 		// bill us for as many derivations as they care to append.
 		if i >= maxDerivations {
-			return fmt.Errorf("%w: gave up after trying %d of %d candidate session-key packets",
+			return 0, nil, fmt.Errorf("%w: gave up after trying %d of %d candidate session-key packets",
 				ErrNotAddressed, maxDerivations, len(candidates))
 		}
 
-		cipherID, sessionKey, err := unwrap(ctx, deriver, recipient, pkesk)
+		cipherID, sessionKey, err := unwrap(ctx, deriver, recipient, c.pkesk)
+		if err == nil {
+			return cipherID, sessionKey, nil
+		}
 
 		switch {
-		case err == nil:
-			return decryptBody(rest, packet.CipherFunction(cipherID), sessionKey, out)
+		// The message named this certificate and the unwrap still failed. That
+		// is a corrupt message or the wrong --key, not a message for somebody
+		// else, and reporting it as the latter sends the operator to find a
+		// different certificate when theirs is right.
+		case c.named && namedFailure == nil:
+			namedFailure = err
 
-		// The unwrap failing means this packet was not ours: a hidden
-		// recipient names nobody, so trying it is the only way to find out.
-		// Any other failure is about the message or the key service and would
-		// recur identically on the next candidate.
-		case errors.Is(err, encryption.ErrIntegrity), errors.Is(err, encryption.ErrChecksum):
-			continue
-
-		default:
-			return err
+		// Not an unwrap verdict at all — a key service that is unreachable or
+		// refusing, a point it will not accept. "Not addressed here" would
+		// claim we established something we never did.
+		case !isUnwrapVerdict(err) && otherFailure == nil:
+			otherFailure = err
 		}
 	}
 
-	return fmt.Errorf("%w: none of the %d candidate session-key packets unwrapped",
+	switch {
+	case namedFailure != nil:
+		return 0, nil, namedFailure
+	case otherFailure != nil:
+		return 0, nil, otherFailure
+	}
+
+	// Every candidate was a wildcard and every unwrap said no, which is exactly
+	// what a message for somebody else looks like.
+	return 0, nil, fmt.Errorf("%w: none of the %d candidate session-key packets unwrapped",
 		ErrNotAddressed, len(candidates))
+}
+
+// isUnwrapVerdict reports whether an error means "this packet was not ours"
+// rather than "we could not tell".
+func isUnwrapVerdict(err error) bool {
+	return errors.Is(err, encryption.ErrIntegrity) || errors.Is(err, encryption.ErrChecksum)
 }
 
 // maxDerivations bounds how many session-key packets Decrypt will try.
@@ -193,18 +240,17 @@ var wildcardKeyID [8]byte
 //
 // The whole sequence is read before any key-service call, so a message that is
 // genuinely not ours still costs nothing.
-func addressedToUs(message io.Reader, recipient Recipient) ([]encryption.PKESK, []byte, error) {
+func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte, error) {
 	raw, err := readMessage(message)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var (
-		named      [][8]byte
+		others     [][8]byte
+		ours       []encryption.PKESK
 		hidden     []encryption.PKESK
-		matched    bool
 		unreadable int
-		ours       encryption.PKESK
 	)
 
 	body := raw
@@ -234,16 +280,21 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]encryption.PKESK, 
 			continue
 		}
 
-		switch {
-		case pkesk.KeyID == recipient.KeyID && !matched:
-			ours, matched = pkesk, true
-		case pkesk.KeyID == wildcardKeyID:
+		switch pkesk.KeyID {
+		// Every packet naming us, not just the first. The key id is public —
+		// it is the tail of the certificate's own fingerprint — so anyone able
+		// to touch the message can prepend a packet carrying it and a wrapped
+		// key that will not open. Keeping only the first filed the genuine one
+		// under somebody else's recipients, where nothing could ever reach it.
+		case recipient.KeyID:
+			ours = append(ours, pkesk)
+		case wildcardKeyID:
 			// A hidden recipient names nobody, so the only way to know whether
 			// it is ours is to try it. Held back until every named packet has
 			// been read, since one of those may match and cost nothing.
 			hidden = append(hidden, pkesk)
 		default:
-			named = append(named, pkesk.KeyID)
+			others = append(others, pkesk.KeyID)
 		}
 
 		body = pkt.Rest
@@ -251,19 +302,28 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]encryption.PKESK, 
 
 	return chooseRecipients(candidateSet{
 		ours:       ours,
-		matched:    matched,
 		hidden:     hidden,
-		named:      named,
+		others:     others,
 		unreadable: unreadable,
 	}, body, recipient)
 }
 
+// candidate is a session-key packet worth attempting, and whether the message
+// named this certificate to reach it.
+//
+// The distinction decides what a failure means. A packet that named us and did
+// not open is a corrupt message or the wrong key; a wildcard that did not open
+// is simply not ours.
+type candidate struct {
+	pkesk encryption.PKESK
+	named bool
+}
+
 // candidateSet is what one pass over the session-key packets found.
 type candidateSet struct {
-	ours    encryption.PKESK
-	matched bool
-	hidden  []encryption.PKESK
-	named   [][8]byte
+	ours   []encryption.PKESK
+	hidden []encryption.PKESK
+	others [][8]byte
 
 	// unreadable counts packets that are session-key packets but not ones this
 	// package can parse — a co-recipient on RSA, or a v6 sender. They cannot
@@ -279,31 +339,33 @@ type candidateSet struct {
 // packet follows, in the order the sender wrote them: taking only the first
 // means two hidden recipients with ours second fail with a checksum error on a
 // message that is genuinely ours.
-func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]encryption.PKESK, []byte, error) {
-	candidates := make([]encryption.PKESK, 0, len(c.hidden)+1)
+func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candidate, []byte, error) {
+	candidates := make([]candidate, 0, len(c.ours)+len(c.hidden))
 
-	if c.matched {
-		candidates = append(candidates, c.ours)
+	for _, pkesk := range c.ours {
+		candidates = append(candidates, candidate{pkesk: pkesk, named: true})
 	}
 
-	candidates = append(candidates, c.hidden...)
+	for _, pkesk := range c.hidden {
+		candidates = append(candidates, candidate{pkesk: pkesk})
+	}
 
 	switch {
 	case len(candidates) > 0:
 		return candidates, body, nil
 
-	case len(c.named) == 0 && c.unreadable == 0:
+	case len(c.others) == 0 && c.unreadable == 0:
 		return nil, nil, fmt.Errorf(
 			"%w: no session-key packet at the start of the message", ErrMalformedMessage)
 
-	case len(c.named) == 0:
+	case len(c.others) == 0:
 		return nil, nil, fmt.Errorf(
 			"%w: its %d session-key packets are all of a kind this cannot read, so none names this certificate (%x)",
 			ErrNotAddressed, c.unreadable, recipient.KeyID)
 
 	default:
 		return nil, nil, fmt.Errorf("%w: addressed to %s, this certificate is %x",
-			ErrNotAddressed, keyIDs(c.named), recipient.KeyID)
+			ErrNotAddressed, keyIDs(c.others), recipient.KeyID)
 	}
 }
 
