@@ -213,3 +213,72 @@ func (r *recordingCloser) Close() error {
 
 	return nil
 }
+
+// TestCopyLiteralBoundsPacketBreadth covers finding 09.
+//
+// copyLiteral silently discards any packet that is neither Compressed nor
+// LiteralData and keeps reading, with no bound on how many it will consume.
+//
+// maxPlaintext bounds literal data and maxCompressionDepth bounds nesting, so
+// neither covers breadth. One compressed packet expanding to millions of marker
+// packets is walked one at a time — the same denial of service as the nesting
+// bound, reached sideways rather than downwards. The expansion is what makes it
+// asymmetric: the ciphertext here is a few kilobytes and the walk is megabytes.
+func TestCopyLiteralBoundsPacketBreadth(t *testing.T) {
+	t.Parallel()
+
+	const markers = 200_000
+
+	// A marker packet is tag 10 with the body "PGP" — the smallest packet that
+	// is neither compressed data nor literal data, so copyLiteral skips it.
+	var inner bytes.Buffer
+	for range markers {
+		inner.Write([]byte{0xCA, 0x03, 'P', 'G', 'P'})
+	}
+
+	var buf bytes.Buffer
+
+	w, err := packet.SerializeCompressed(nopWriteCloser{&buf}, packet.CompressionZIP, nil)
+	if err != nil {
+		t.Fatalf("SerializeCompressed: %v", err)
+	}
+
+	if _, err := w.Write(inner.Bytes()); err != nil {
+		t.Fatalf("writing markers: %v", err)
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing: %v", err)
+	}
+
+	t.Logf("%d marker packets, %d octets uncompressed, compress to %d octets",
+		markers, inner.Len(), buf.Len())
+
+	counted := &countingReader{Reader: bytes.NewReader(buf.Bytes())}
+
+	err = copyLiteral(counted, io.Discard)
+	if err == nil {
+		t.Fatal("a message carrying no literal data was accepted")
+	}
+
+	// The bound that matters is work done, not the error returned: the walk
+	// must stop long before the whole expansion has been read.
+	if counted.n >= buf.Len() {
+		t.Errorf("read %d of %d ciphertext octets — the whole expansion was walked, so nothing bounds breadth",
+			counted.n, buf.Len())
+	}
+}
+
+// countingReader records how much of the ciphertext was actually consumed.
+type countingReader struct {
+	io.Reader
+
+	n int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.n += n
+
+	return n, err
+}

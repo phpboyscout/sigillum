@@ -283,3 +283,89 @@ func ephemeralPointOf(t *testing.T, framed []byte) []byte {
 
 	return pkesk.EphemeralPoint
 }
+
+// TestDecryptAcceptsArmourWithACoveringLine covers finding 08.
+//
+// looksArmoured anchors the `-----BEGIN ` probe at byte zero after whitespace,
+// so armour preceded by any text is fed to the packet parser as binary.
+//
+// A report pasted into a confidential ticket — the arrival shape the how-to
+// describes — routinely carries a covering line, a quoted header, or a From:
+// block from a saved .eml. armor.Decode skipped leading garbage and handled all
+// of them. The operator now gets "no session-key packet at the start of the
+// message" for a perfectly good report, with nothing naming the leading line.
+//
+// Decision D2 resolves this by attempting a binary parse first and only then
+// looking for armour, which removes the hijack by construction rather than by
+// choosing a preamble bound. Both halves are pinned here.
+func TestDecryptAcceptsArmourWithACoveringLine(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a report pasted into a ticket under a covering line"
+
+	der, deriver := testCertificate(t)
+
+	armoured := encryptTo(t, der, plaintext, true)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		preamble string
+	}{
+		{"no preamble", ""},
+		{"a covering line", "Here is the report:\n\n"},
+		{"a quoted mail header", "From: researcher@example.invalid\nSubject: security issue\n\n"},
+		{"an indented paste", "    \n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			message := append([]byte(tc.preamble), armoured...)
+
+			var got bytes.Buffer
+			if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
+				t.Fatalf("armoured report refused: %v", err)
+			}
+
+			if got.String() != plaintext {
+				t.Errorf("recovered %q, want %q", got.String(), plaintext)
+			}
+		})
+	}
+}
+
+// TestDecryptStillRefusesAnEmbeddedArmourHijack is the property the anchoring
+// was introduced for, and which the fix for the covering line must not lose.
+//
+// armor.Decode skips leading garbage, so it finds a header anywhere. An
+// attacker composing a binary message chooses where to put one; decoding from
+// their marker discards the real packets and hands the operator a base64 error
+// where their report should be.
+func TestDecryptStillRefusesAnEmbeddedArmourHijack(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a binary report carrying an armour header in its ciphertext"
+
+	der, deriver := testCertificate(t)
+
+	message := encryptTo(t, der, plaintext, false)
+	message = append(message, "\n-----BEGIN PGP MESSAGE-----\n\nZm9v\n-----END PGP MESSAGE-----\n"...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("a binary message containing an armour header was hijacked: %v", err)
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+}
