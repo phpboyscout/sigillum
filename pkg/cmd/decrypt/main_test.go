@@ -184,3 +184,83 @@ func TestStdinTwiceErrorSaysWhatToDo(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenOutputRefusesANonRegularDestination covers finding 18, per decision D3.
+//
+// The commands used to open the destination with O_WRONLY|O_CREATE|O_TRUNC,
+// which writes *through* whatever the path resolves to. Atomic replacement
+// writes a temporary alongside and renames, which replaces the directory entry
+// instead — so a symlink is destroyed and a FIFO unlinked.
+//
+// The consequence is confidentiality-relevant rather than merely surprising: an
+// operator who pointed --output through a symlink into a mounted volume, or at
+// a FIFO feeding another process, now finds the decrypted vulnerability report
+// sitting on local disk where they did not expect plaintext at rest.
+//
+// D3: refuse anything that is not a regular file or absent, naming what it is.
+// Piping is already served by stdout, which is the default and what `-` selects.
+func TestOpenOutputRefusesANonRegularDestination(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	target := filepath.Join(dir, "target.txt")
+	if err := os.WriteFile(target, []byte("existing content"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	link := filepath.Join(dir, "report.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+
+	out, err := openOutput(link)
+	if err == nil {
+		// If it were allowed, prove the damage rather than asserting it.
+		_, _ = out.w.Write([]byte("decrypted report"))
+		_ = out.commit()
+
+		info, statErr := os.Lstat(link)
+		if statErr == nil && info.Mode()&os.ModeSymlink == 0 {
+			t.Fatal("--output onto a symlink replaced the link with a regular file, " +
+				"so plaintext was written somewhere the operator did not name")
+		}
+
+		t.Fatal("openOutput accepted a symbolic link destination")
+	}
+
+	if !strings.Contains(err.Error(), "symbolic link") && !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("error %q does not say what the destination is", err)
+	}
+}
+
+// TestCheckFlagsReportsTheSameMissingFlagEveryTime guards this command against
+// the defect finding 25 found in the certificate command, whose checkFlags
+// reports the first missing flag by ranging over a map literal.
+//
+// This command's checkFlags tests its flags in a fixed order, so the message is
+// stable. Pinned here so a future refactor toward a map does not reintroduce it
+// on this side.
+func TestCheckFlagsReportsTheSameMissingFlagEveryTime(t *testing.T) {
+	t.Parallel()
+
+	var first string
+
+	for i := range 200 {
+		err := checkFlags(&DecryptOptions{}, nil)
+		if err == nil {
+			t.Fatal("no flags supplied, but checkFlags was content")
+		}
+
+		if i == 0 {
+			first = err.Error()
+
+			continue
+		}
+
+		if err.Error() != first {
+			t.Fatalf("iteration %d reported %q, iteration 0 reported %q — map iteration order leaks into the message",
+				i, err.Error(), first)
+		}
+	}
+}
