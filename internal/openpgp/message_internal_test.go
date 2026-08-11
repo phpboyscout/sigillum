@@ -142,3 +142,74 @@ func TestLooksArmouredAnchorsAtTheStart(t *testing.T) {
 		})
 	}
 }
+
+// TestCopyAuthenticatedDoesNotDrainAfterRefusing covers what Close costs on a
+// message that has already been rejected.
+//
+// go-crypto's Close verifies the modification detection code by reading to the
+// end, so calling it after a refusal decrypts and decompresses everything the
+// bound declined to hold — the command appears to hang for minutes on input it
+// rejected immediately. It also misreports: a drain meeting a truncated stream
+// returns an MDC mismatch, and Close's error used to take precedence, so an
+// oversized message was reported as one that may have been altered.
+//
+// Nothing is handed over on the refusal path, so no integrity guarantee is
+// lost by not checking it.
+func TestCopyAuthenticatedDoesNotDrainAfterRefusing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("refused input is not closed", func(t *testing.T) {
+		t.Parallel()
+
+		// Not a packet stream, so copyLiteral fails immediately.
+		body := &recordingCloser{Reader: bytes.NewReader([]byte("not openpgp packets at all"))}
+
+		err := copyAuthenticated(body, io.Discard)
+		if err == nil {
+			t.Fatal("unreadable input was accepted")
+		}
+
+		if errors.Is(err, ErrIntegrity) {
+			t.Errorf("error = %v, want the read failure rather than an integrity verdict", err)
+		}
+
+		if body.closed {
+			t.Error("Close was called on a message already refused, which is the drain")
+		}
+	})
+
+	t.Run("accepted input is closed", func(t *testing.T) {
+		t.Parallel()
+
+		const plaintext = "a report that should be verified before it is handed over"
+
+		body := &recordingCloser{Reader: bytes.NewReader(nestedCompressed(t, 1, plaintext))}
+
+		var out bytes.Buffer
+		if err := copyAuthenticated(body, &out); err != nil {
+			t.Fatalf("copyAuthenticated: %v", err)
+		}
+
+		if !body.closed {
+			t.Error("plaintext was handed over without verifying the modification detection code")
+		}
+
+		if out.String() != plaintext {
+			t.Errorf("recovered %q, want %q", out.String(), plaintext)
+		}
+	})
+}
+
+// recordingCloser reports whether Close was reached, standing in for the drain
+// go-crypto performs there.
+type recordingCloser struct {
+	io.Reader
+
+	closed bool
+}
+
+func (r *recordingCloser) Close() error {
+	r.closed = true
+
+	return nil
+}

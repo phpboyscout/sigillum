@@ -25,6 +25,24 @@ The message is read from the positional argument, or from stdin when it is
 omitted or given as `-`. Armoured and binary messages are both accepted; you do
 not have to know which you have.
 
+!!! warning "Only one of them can come from stdin"
+
+    `--certificate -` and a message from stdin are mutually exclusive. The
+    certificate is read first and reading it consumes stdin entirely, so there
+    is nothing left for the message. The command refuses the combination rather
+    than failing later with an error about the report.
+
+    ```bash
+    # Refused: both want stdin
+    cat security-contact.asc | sigillum decrypt --certificate - --key alias/x
+
+    # Fine: the certificate is a file, the message comes from stdin
+    cat report.asc | sigillum decrypt --certificate security-contact.asc --key alias/x
+
+    # Fine: the certificate comes from stdin, the message is a file
+    cat security-contact.asc | sigillum decrypt --certificate - --key alias/x report.asc
+    ```
+
 ## Flags
 
 | Flag | Required | Default | Purpose |
@@ -59,6 +77,7 @@ decided locally.
 | Message contains | Means | Reached the key service? |
 |---|---|---|
 | `required flag not set` | `--certificate` or `--key` missing | no |
+| `cannot both come from stdin` | `--certificate -` with the message also on stdin | no |
 | `no key service "..."` | `--backend` names something not compiled in | no |
 | `certificate has no ECDH encryption subkey` | Signing-only certificate | no |
 | `key is revoked` | The certificate's holder has withdrawn its encryption subkey; fetch a current certificate | no |

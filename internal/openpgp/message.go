@@ -177,21 +177,34 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 func copyAuthenticated(body io.ReadCloser, out io.Writer) error {
 	var buf bytes.Buffer
 
-	copyErr := copyLiteral(body, &buf)
+	if copyErr := copyLiteral(body, &buf); copyErr != nil {
+		// Deliberately not closed. go-crypto's Close verifies the modification
+		// detection code by draining to EOF (seMDCReader.Close, "we need to
+		// read to the end"), so on a message already refused it decrypts and
+		// decompresses everything we declined to hold — for an oversized one,
+		// precisely the work maxPlaintext exists to avoid. The command appears
+		// to hang for minutes on input it rejected immediately.
+		//
+		// Skipping it also keeps the refusal honest. A drain that meets a
+		// truncated stream returns ErrMDCHashMismatch, and Close's error took
+		// precedence here — so an oversized message was reported as one that
+		// may have been altered.
+		//
+		// No integrity guarantee is lost, because nothing is handed over on
+		// this path: the check exists to gate output, and there is none. And
+		// nothing here holds an operating-system resource — the readers are
+		// over a byte slice — so there is nothing to release.
+		return copyErr
+	}
 
-	// Close first, and always: it reports the integrity failure, and it must
-	// be consulted even when the read failed, because a truncated read is one
-	// of the things tampering looks like.
+	// Close is what makes the plaintext safe to hand over: the modification
+	// detection code is verified here, not during Read, so its error arrives
+	// only after every byte has been buffered.
 	if err := body.Close(); err != nil {
 		return fmt.Errorf("%w: %w", ErrIntegrity, err)
 	}
 
-	if copyErr != nil {
-		return copyErr
-	}
-
-	_, err := io.Copy(out, &buf)
-	if err != nil {
+	if _, err := io.Copy(out, &buf); err != nil {
 		return fmt.Errorf("writing plaintext: %w", err)
 	}
 

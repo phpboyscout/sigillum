@@ -24,6 +24,10 @@ var (
 	// ErrNoBackends means the binary was built with no key service compiled
 	// in, so there is nothing to decrypt or sign with.
 	ErrNoBackends = errors.New("no key service backends are compiled into this binary")
+
+	// ErrStdinTwice means both the certificate and the message were asked for
+	// from stdin, which cannot work: reading the first drains it.
+	ErrStdinTwice = errors.New("the certificate and the message cannot both come from stdin")
 )
 
 // RunDecrypt reads an encrypted report and writes its plaintext out.
@@ -32,12 +36,8 @@ var (
 // by the key service. Everything else happens here: the key derivation, the
 // AES key unwrap, and opening the encrypted-data packet.
 func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args []string) error {
-	if opts.Certificate == "" {
-		return fmt.Errorf("%w: --certificate", ErrMissingFlag)
-	}
-
-	if opts.Key == "" {
-		return fmt.Errorf("%w: --key", ErrMissingFlag)
+	if err := checkFlags(opts, args); err != nil {
+		return err
 	}
 
 	service, err := lookupBackend(opts.Backend)
@@ -67,10 +67,16 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 
 	defer closeMsg()
 
-	out, commit, err := openOutput(opts.Output)
+	out, err := openOutput(opts.Output)
 	if err != nil {
 		return err
 	}
+
+	// Unconditional, and safe after a commit. Without it a failed run leaves
+	// its temporary file behind, and the common failures here are routine — a
+	// message addressed to another key, a truncated paste — so they accumulate,
+	// owner-readable, sometimes holding part of a report.
+	defer out.abandon()
 
 	// Wired lazily, and that matters. Decrypt refuses a message addressed to
 	// another certificate before it asks for a shared secret, so building the
@@ -78,14 +84,14 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	// to reject something we already knew was not ours.
 	deriver := &lazyDeriver{service: service, keyID: opts.Key, log: p.GetLogger()}
 
-	if err := openpgp.Decrypt(ctx, deriver, recipient, message, out); err != nil {
+	if err := openpgp.Decrypt(ctx, deriver, recipient, message, out.w); err != nil {
 		return err
 	}
 
 	// Only now is the destination replaced. A failure above leaves whatever
 	// was there untouched — which matters because the common failures are
 	// routine: a message addressed to another key, or a truncated paste.
-	if err := commit(); err != nil {
+	if err := out.commit(); err != nil {
 		return err
 	}
 
@@ -204,14 +210,30 @@ func openInput(path string) (io.Reader, func(), error) {
 	return f, func() { _ = f.Close() }, nil
 }
 
-// openOutput writes plaintext to a file or stdout.
-// openOutput returns the destination and a commit that puts it in place.
+// destination is where plaintext goes and both ways of finishing with it.
+//
+// Carrying abandon alongside commit is the point. An earlier shape returned the
+// writer and its commit and dropped the writer itself, which left no caller
+// able to reach Abandon at all — so every failed run leaked its temporary file.
+type destination struct {
+	w       io.Writer
+	commit  func() error
+	abandon func()
+}
+
+// openOutput returns the destination, a commit that puts it in place, and an
+// abandon that removes the temporary file.
 //
 // The commit is what makes a failed decryption harmless: nothing replaces the
-// operator's file until the plaintext is complete.
-func openOutput(path string) (io.Writer, func() error, error) {
+// operator's file until the plaintext is complete. Abandon is safe to call
+// after commit, so it can be deferred unconditionally.
+func openOutput(path string) (destination, error) {
 	if path == "" || path == "-" {
-		return os.Stdout, func() error { return nil }, nil
+		return destination{
+			w:       os.Stdout,
+			commit:  func() error { return nil },
+			abandon: func() {},
+		}, nil
 	}
 
 	// Owner-only: a decrypted vulnerability report is the most sensitive thing
@@ -221,8 +243,39 @@ func openOutput(path string) (io.Writer, func() error, error) {
 
 	w, err := opfile.Create(path, plaintextMode)
 	if err != nil {
-		return nil, nil, err
+		return destination{}, err
 	}
 
-	return w, w.Commit, nil
+	return destination{w: w, commit: w.Commit, abandon: w.Abandon}, nil
+}
+
+// checkFlags refuses the arguments that cannot produce a plaintext.
+//
+// The stdin pair is the one worth explaining. The certificate and the message
+// can each be read from stdin, and the reference documents both — but not that
+// they are mutually exclusive. The certificate is read first, and reading it
+// drains stdin to EOF, so the message is then empty and the run fails with
+// "malformed message: message is empty", pointing the operator at the report
+// rather than at the flags.
+//
+// Refused here rather than left to fail, because the failure names the wrong
+// thing and there is no arrangement of the two that works.
+func checkFlags(opts *DecryptOptions, args []string) error {
+	if opts.Certificate == "" {
+		return fmt.Errorf("%w: --certificate", ErrMissingFlag)
+	}
+
+	if opts.Key == "" {
+		return fmt.Errorf("%w: --key", ErrMissingFlag)
+	}
+
+	messageFromStdin := len(args) == 0 || args[0] == "-"
+
+	if opts.Certificate == "-" && messageFromStdin {
+		return fmt.Errorf(
+			"%w: --certificate - reads the certificate from stdin, which leaves nothing for the message;"+
+				" give the certificate or the message as a file", ErrStdinTwice)
+	}
+
+	return nil
 }

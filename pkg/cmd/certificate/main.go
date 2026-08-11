@@ -79,16 +79,20 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	out, commit, err := openOutput(opts.Output)
+	out, err := openOutput(opts.Output)
 	if err != nil {
 		return err
 	}
 
-	if err := write(out, der, opts.Armor); err != nil {
+	// Unconditional, and safe after a commit. Without it a failed run leaves
+	// its temporary file beside the destination.
+	defer out.abandon()
+
+	if err := write(out.w, der, opts.Armor); err != nil {
 		return err
 	}
 
-	return commit()
+	return out.commit()
 }
 
 // checkFlags refuses the arguments that cannot produce a certificate, and
@@ -257,13 +261,30 @@ func write(out io.Writer, der []byte, armoured bool) error {
 	return nil
 }
 
-// openOutput returns the destination and a commit that puts it in place.
+// destination is where the certificate goes and both ways of finishing with it.
+//
+// Carrying abandon alongside commit is the point. An earlier shape returned the
+// writer and its commit and dropped the writer itself, which left no caller
+// able to reach Abandon at all — so every failed run leaked its temporary file.
+type destination struct {
+	w       io.Writer
+	commit  func() error
+	abandon func()
+}
+
+// openOutput returns the destination, a commit that puts it in place, and an
+// abandon that removes the temporary file.
 //
 // A published certificate is the thing correspondents encrypt to, so replacing
 // a good one with a half-written file would be worse than writing nothing.
-func openOutput(path string) (io.Writer, func() error, error) {
+// Abandon is safe to call after commit, so it can be deferred unconditionally.
+func openOutput(path string) (destination, error) {
 	if path == "" || path == "-" {
-		return os.Stdout, func() error { return nil }, nil
+		return destination{
+			w:       os.Stdout,
+			commit:  func() error { return nil },
+			abandon: func() {},
+		}, nil
 	}
 
 	// World-readable on purpose: a certificate is public, and is meant to be
@@ -272,8 +293,8 @@ func openOutput(path string) (io.Writer, func() error, error) {
 
 	w, err := opfile.Create(path, certificateMode)
 	if err != nil {
-		return nil, nil, err
+		return destination{}, err
 	}
 
-	return w, w.Commit, nil
+	return destination{w: w, commit: w.Commit, abandon: w.Abandon}, nil
 }
