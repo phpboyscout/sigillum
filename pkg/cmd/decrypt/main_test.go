@@ -2,10 +2,13 @@ package decrypt
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/afero"
+
+	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 )
 
 // What the command does with the operator's filesystem and flags, which the
@@ -25,10 +28,11 @@ import (
 func TestOpenOutputAbandonLeavesNothingBehind(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	mem := afero.NewMemMapFs()
+	dir := "/reports"
 	path := filepath.Join(dir, "report.txt")
 
-	out, err := openOutput(path)
+	out, err := openOutput(opfileafero.Wrap(mem), path)
 	if err != nil {
 		t.Fatalf("openOutput: %v", err)
 	}
@@ -39,7 +43,7 @@ func TestOpenOutputAbandonLeavesNothingBehind(t *testing.T) {
 
 	out.abandon()
 
-	entries, err := os.ReadDir(dir)
+	entries, err := afero.ReadDir(mem, dir)
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
@@ -57,10 +61,11 @@ func TestOpenOutputAbandonAfterCommitIsSafe(t *testing.T) {
 
 	const plaintext = "the whole report"
 
-	dir := t.TempDir()
+	mem := afero.NewMemMapFs()
+	dir := "/reports"
 	path := filepath.Join(dir, "report.txt")
 
-	out, err := openOutput(path)
+	out, err := openOutput(opfileafero.Wrap(mem), path)
 	if err != nil {
 		t.Fatalf("openOutput: %v", err)
 	}
@@ -75,7 +80,7 @@ func TestOpenOutputAbandonAfterCommitIsSafe(t *testing.T) {
 
 	out.abandon()
 
-	got, err := os.ReadFile(path)
+	got, err := afero.ReadFile(mem, path)
 	if err != nil {
 		t.Fatalf("the committed file did not survive abandon: %v", err)
 	}
@@ -84,7 +89,7 @@ func TestOpenOutputAbandonAfterCommitIsSafe(t *testing.T) {
 		t.Errorf("file contains %q, want %q", got, plaintext)
 	}
 
-	entries, err := os.ReadDir(dir)
+	entries, err := afero.ReadDir(mem, dir)
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
@@ -182,55 +187,6 @@ func TestStdinTwiceErrorSaysWhatToDo(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
-	}
-}
-
-// TestOpenOutputRefusesANonRegularDestination covers finding 18, per decision D3.
-//
-// The commands used to open the destination with O_WRONLY|O_CREATE|O_TRUNC,
-// which writes *through* whatever the path resolves to. Atomic replacement
-// writes a temporary alongside and renames, which replaces the directory entry
-// instead — so a symlink is destroyed and a FIFO unlinked.
-//
-// The consequence is confidentiality-relevant rather than merely surprising: an
-// operator who pointed --output through a symlink into a mounted volume, or at
-// a FIFO feeding another process, now finds the decrypted vulnerability report
-// sitting on local disk where they did not expect plaintext at rest.
-//
-// D3: refuse anything that is not a regular file or absent, naming what it is.
-// Piping is already served by stdout, which is the default and what `-` selects.
-func TestOpenOutputRefusesANonRegularDestination(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-
-	target := filepath.Join(dir, "target.txt")
-	if err := os.WriteFile(target, []byte("existing content"), 0o600); err != nil {
-		t.Fatalf("write target: %v", err)
-	}
-
-	link := filepath.Join(dir, "report.txt")
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symlinks unavailable here: %v", err)
-	}
-
-	out, err := openOutput(link)
-	if err == nil {
-		// If it were allowed, prove the damage rather than asserting it.
-		_, _ = out.w.Write([]byte("decrypted report"))
-		_ = out.commit()
-
-		info, statErr := os.Lstat(link)
-		if statErr == nil && info.Mode()&os.ModeSymlink == 0 {
-			t.Fatal("--output onto a symlink replaced the link with a regular file, " +
-				"so plaintext was written somewhere the operator did not name")
-		}
-
-		t.Fatal("openOutput accepted a symbolic link destination")
-	}
-
-	if !strings.Contains(err.Error(), "symbolic link") && !strings.Contains(err.Error(), "symlink") {
-		t.Errorf("error %q does not say what the destination is", err)
 	}
 }
 

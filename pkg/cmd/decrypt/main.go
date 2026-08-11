@@ -14,6 +14,7 @@ import (
 
 	"gitlab.com/phpboyscout/sigillum/internal/openpgp"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile"
+	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 )
 
 // Errors this command reports.
@@ -45,7 +46,7 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
-	certificate, closeCert, err := openInput(opts.Certificate)
+	certificate, closeCert, err := openInput(opfileafero.Wrap(p.GetFS()), opts.Certificate)
 	if err != nil {
 		return fmt.Errorf("reading the certificate: %w", err)
 	}
@@ -60,14 +61,14 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
-	message, closeMsg, err := openMessage(args)
+	message, closeMsg, err := openMessage(opfileafero.Wrap(p.GetFS()), args)
 	if err != nil {
 		return err
 	}
 
 	defer closeMsg()
 
-	out, err := openOutput(opts.Output)
+	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output)
 	if err != nil {
 		return err
 	}
@@ -189,20 +190,20 @@ func lookupBackend(name string) (encryption.KeyService, error) {
 }
 
 // openMessage returns the encrypted report, from a path argument or stdin.
-func openMessage(args []string) (io.Reader, func(), error) {
+func openMessage(fsys opfile.FS, args []string) (io.Reader, func(), error) {
 	if len(args) == 0 || args[0] == "-" {
 		return os.Stdin, func() {}, nil
 	}
 
-	return openInput(args[0])
+	return openInput(fsys, args[0])
 }
 
-func openInput(path string) (io.Reader, func(), error) {
+func openInput(fsys opfile.FS, path string) (io.Reader, func(), error) {
 	if path == "-" {
 		return os.Stdin, func() {}, nil
 	}
 
-	f, err := opfile.Open(path)
+	f, err := opfile.Open(fsys, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -227,7 +228,7 @@ type destination struct {
 // The commit is what makes a failed decryption harmless: nothing replaces the
 // operator's file until the plaintext is complete. Abandon is safe to call
 // after commit, so it can be deferred unconditionally.
-func openOutput(path string) (destination, error) {
+func openOutput(fsys opfile.FS, path string) (destination, error) {
 	if path == "" || path == "-" {
 		return destination{
 			w:       os.Stdout,
@@ -241,7 +242,7 @@ func openOutput(path string) (destination, error) {
 	// having encrypted it.
 	const plaintextMode = 0o600
 
-	w, err := opfile.Create(path, plaintextMode)
+	w, err := opfile.Create(fsys, path, plaintextMode)
 	if err != nil {
 		return destination{}, err
 	}

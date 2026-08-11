@@ -19,6 +19,7 @@ import (
 	"gitlab.com/phpboyscout/go/encryption/certificate"
 
 	"gitlab.com/phpboyscout/sigillum/internal/opfile"
+	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 )
 
 var (
@@ -79,7 +80,7 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	out, err := openOutput(opts.Output)
+	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output)
 	if err != nil {
 		return err
 	}
@@ -278,7 +279,7 @@ type destination struct {
 // A published certificate is the thing correspondents encrypt to, so replacing
 // a good one with a half-written file would be worse than writing nothing.
 // Abandon is safe to call after commit, so it can be deferred unconditionally.
-func openOutput(path string) (destination, error) {
+func openOutput(fsys opfile.FS, path string) (destination, error) {
 	if path == "" || path == "-" {
 		return destination{
 			w:       os.Stdout,
@@ -291,7 +292,7 @@ func openOutput(path string) (destination, error) {
 	// published.
 	const certificateMode = 0o644
 
-	w, err := opfile.Create(path, certificateMode)
+	w, err := opfile.Create(fsys, path, certificateMode)
 	if err != nil {
 		return destination{}, err
 	}
