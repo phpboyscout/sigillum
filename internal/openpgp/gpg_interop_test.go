@@ -35,7 +35,12 @@ func TestDecryptsAMessageComposedByGPG(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_ = exec.Command("gpgconf", "--homedir", home, "--kill", "all").Run() //nolint:errcheck // best effort.
+		// Reported rather than discarded: a surviving agent holds the home
+		// directory open, and the next test then inherits state that makes a
+		// failure look cryptographic.
+		if err := exec.Command("gpgconf", "--homedir", home, "--kill", "all").Run(); err != nil {
+			t.Logf("could not stop the gpg agent for %s: %v", home, err)
+		}
 	})
 
 	der, deriver := testCertificate(t)
@@ -79,7 +84,11 @@ func TestDecryptsAMessageComposedByGPG(t *testing.T) {
 		t.Fatalf("open message: %v", err)
 	}
 
-	defer message.Close() //nolint:errcheck // read-only.
+	defer func() {
+		if err := message.Close(); err != nil {
+			t.Errorf("closing the message: %v", err)
+		}
+	}()
 
 	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {

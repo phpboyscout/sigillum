@@ -111,10 +111,11 @@ func (w *world) decryptWithBackend(backend string) error {
 
 	args = append(args, filepath.Join(w.dir, "report.pgp"))
 
-	// A failure here is the observation, not a step error.
-	_ = w.run(args...) //nolint:errcheck // the exit status is asserted on.
-
-	return nil
+	// run records the command's exit status on the world and returns only a
+	// harness failure — the binary not building, say. The exit status is what
+	// these scenarios assert on, so it stays on the world; the harness failure
+	// is returned, because a scenario that could not run has not passed.
+	return w.run(args...)
 }
 
 // Key identifiers used by the scenarios that never reach a key service.
@@ -129,18 +130,14 @@ const (
 )
 
 func (w *world) decryptWithoutACertificate() error {
-	_ = w.run("decrypt", "--key", encryptAlias) //nolint:errcheck // asserted on.
-
-	return nil
+	return w.run("decrypt", "--key", encryptAlias)
 }
 
 func (w *world) assembleWithoutACreationTime() error {
-	_ = w.run("certificate", //nolint:errcheck // asserted on.
+	return w.run("certificate",
 		"--user-id", "Security <security@example.invalid>",
 		"--certify-key", certifyAlias,
 		"--encrypt-key", encryptAlias)
-
-	return nil
 }
 
 // --- Then ---
