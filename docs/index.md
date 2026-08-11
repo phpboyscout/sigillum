@@ -1,7 +1,7 @@
 ---
 title: sigillum
-description: Sign and verify release artefacts from the command line, with the private key never leaving your KMS.
-tags: [overview, introduction, signing]
+description: Sign release artefacts and read encrypted vulnerability reports from the command line, with the private key never leaving your KMS.
+tags: [overview, introduction, signing, encryption]
 hide:
   - navigation
 ---
@@ -12,12 +12,14 @@ hide:
   </div>
   <div class="hero-body">
     <h1 class="hero-title">sigillum</h1>
-    <p class="hero-tagline">Sign a release. Nothing else.</p>
+    <p class="hero-tagline">Keys you hold. Keys you cannot read.</p>
     <p class="hero-description">
-      A standalone command-line tool for signing release artefacts, as OpenPGP or
-      as minisign. The private key never leaves your KMS, HSM or PEM file, the
-      output is an ordinary detached signature the standard tools accept, and
-      nothing about it cares what language your project is written in.
+      A standalone command-line tool for the two jobs a project's OpenPGP keys
+      actually do: signing release artefacts, and reading the encrypted
+      vulnerability reports researchers send to your security contact. The
+      private key never leaves your KMS, HSM or PEM file, the output is what the
+      standard tools already accept, and nothing about it cares what language
+      your project is written in.
     </p>
     <div class="install-box">
       <span class="install-command">go install gitlab.com/phpboyscout/sigillum/cmd/sigillum@latest</span>
@@ -42,6 +44,14 @@ hide:
   <div class="cap">
     <h3>Generate</h3>
     <p>Create a fresh Ed25519 or RSA keypair locally, when a hosted key is more ceremony than the job needs.</p>
+  </div>
+  <div class="cap">
+    <h3>Decrypt</h3>
+    <p>Read a vulnerability report encrypted to your published certificate. One <code>kms:DeriveSharedSecret</code> call does the only secret work; no private key exists in the process.</p>
+  </div>
+  <div class="cap">
+    <h3>Certify</h3>
+    <p>Assemble a publishable OpenPGP certificate whose primary and encryption subkey are both KMS keys, with both signatures made inside the service.</p>
   </div>
   <div class="cap">
     <h3>Publish</h3>
@@ -77,6 +87,21 @@ sigillum sign \
 That writes `checksums.txt.sig`, an armored detached signature that `gpg --verify`
 (and every other modern OpenPGP implementation) accepts. Swap `--backend aws-kms`
 for `--backend local --key-id ./release.pem` to sign with an on-disk key instead.
+
+## Read an encrypted report in one command
+
+```bash
+sigillum decrypt \
+    --certificate security-contact.asc \
+    --key alias/security-contact-v1-encrypt \
+    report.asc
+```
+
+A researcher fetched that certificate from your `security.txt`, encrypted their
+report to it, and opened a confidential ticket. Opening it needs exactly one
+call to your key service; the derivation, the key unwrap and the body decryption
+all happen locally. See
+[Receive an encrypted report](how-to/receive-an-encrypted-report.md).
 
 ## How do I verify a signature?
 

@@ -10,12 +10,14 @@ Command reference for sigillum. Run `sigillum <command> --help` for the
 authoritative, always-current flag set — the pages here mirror it and add the
 defaults, failure modes and flag combinations that `--help` has no room for.
 
-## The two commands sigillum exists for
+## The commands sigillum exists for
 
 | Command | Purpose |
 |---------|---------|
 | [`sign`](sign.md) | Produce a detached signature over one file — armored OpenPGP for checksum manifests, or minisign for release artefacts. |
 | [`keys`](keys.md) | Manage signing keys: `generate`, `mint`, `wkd`, `minisign`, `publish`. |
+| [`decrypt`](decrypt.md) | Read an OpenPGP message addressed to a KMS-backed certificate. |
+| [`certificate`](certificate.md) | Assemble a publishable certificate whose keys both live in a key service. |
 
 Both are attached from
 [`gitlab.com/phpboyscout/go/signing-cli`](https://signing-cli.go.phpboyscout.uk/)

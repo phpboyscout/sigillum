@@ -30,3 +30,4 @@ bin/*
 config/local.yaml
 site/*
 CHANGELOG.md
+.wrangler/

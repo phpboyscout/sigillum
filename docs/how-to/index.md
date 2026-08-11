@@ -1,6 +1,6 @@
 ---
 title: How-to guides
-description: Task-oriented guides for signing and publishing with sigillum — OpenPGP manifests, minisign artefacts, key generation and trust-anchor publication.
+description: Task-oriented guides for signing, publishing and decryption with sigillum — OpenPGP manifests, minisign artefacts, key generation, trust-anchor publication and encrypted vulnerability reports.
 tags: [how-to, signing, keys, publishing]
 ---
 
@@ -10,6 +10,12 @@ Task-oriented guides. Each one walks through a single concrete task and assumes
 you already know the basics — start with
 [Sign and verify your first release](../tutorials/sign-and-verify-your-first-release.md)
 if you do not.
+
+## Receiving encrypted reports
+
+- **[Receive an encrypted report](receive-an-encrypted-report.md)** — publish a
+  KMS-backed certificate, advertise it in `security.txt`, and read what
+  researchers send you.
 
 ## The OpenPGP lane — signing checksum manifests
 

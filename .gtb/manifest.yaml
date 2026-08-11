@@ -36,7 +36,7 @@ release_source:
   owner: phpboyscout
   repo: sigillum
 version:
-  gtb: v0.33.1-0.20260728135435-fc2b1bd1decb+dirty
+  gtb: v0.36.1
 hashes:
   .gitignore: 660975e0ad0d5136feb10221a14835d0d6a0bf86788a08f8c97d4f9cbd06c453
   .gitlab-ci.yml: b4c2873817c3b1aa28b46cf76202fe9da85b082c52ea6623ef4b8941f7ecdda7
@@ -62,3 +62,51 @@ hashes:
   pkg/cmd/root/assets/init/config.yaml: 93df4d1e86bfa4be31b5761ca0adf65adc8ea399686a60a3a776305478b64c15
   renovate.json5: ee382029c06673485816d302f4627e8e02b9ecb97b781c0a149e9ac17f6f3cd4
   zensical.toml: 218748b58234af73c4a0b8feab5555da0260facb1782ee247e8722c0e01ef70a
+commands:
+  - name: decrypt
+    description: Decrypt an OpenPGP message addressed to a KMS-backed certificate
+    long_description: Decrypt an OpenPGP message addressed to a KMS-backed certificate
+    hashes:
+      cmd.go: bfb316a86f6906ac7e5162c8f407649c33339a373b5a58a26e07c3958ea2dac5
+    protected: false
+    flags:
+      - name: certificate
+        type: string
+        description: Path to the recipient certificate, or '-' for stdin
+      - name: key
+        type: string
+        description: Key service identifier for the encryption subkey
+      - name: backend
+        type: string
+        description: Key service backend to use
+      - name: output
+        type: string
+        description: Write plaintext here instead of stdout
+  - name: certificate
+    description: Assemble and emit an OpenPGP certificate backed by key-service keys
+    long_description: Assemble and emit an OpenPGP certificate backed by key-service keys
+    hashes:
+      cmd.go: 22f694c956d9eb7b2e17abc23bc4a5b6b201ac0bee9cea40ee5194a4cd4f83e5
+    protected: true
+    flags:
+      - name: user-id
+        type: string
+        description: Identity to certify, as 'Name <email>'
+      - name: certify-key
+        type: string
+        description: Key service identifier for the certification primary
+      - name: encrypt-key
+        type: string
+        description: Key service identifier for the encryption subkey
+      - name: backend
+        type: string
+        description: Key service backend to use
+      - name: created
+        type: string
+        description: Key creation time as RFC 3339; must not change between runs
+      - name: armor
+        type: bool
+        description: Emit ASCII armour instead of binary
+      - name: output
+        type: string
+        description: Write the certificate here instead of stdout

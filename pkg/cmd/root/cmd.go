@@ -16,6 +16,8 @@ import (
 	signingcli "gitlab.com/phpboyscout/go/signing-cli"
 
 	trustkeys "gitlab.com/phpboyscout/sigillum/internal/trustkeys"
+	certificate "gitlab.com/phpboyscout/sigillum/pkg/cmd/certificate"
+	decrypt "gitlab.com/phpboyscout/sigillum/pkg/cmd/decrypt"
 )
 
 //go:embed assets/*
@@ -46,7 +48,9 @@ func NewCmdRoot(v version.Info) (*setup.Command, *props.Props) {
 
 	p.ErrorHandler = errorhandling.New(logger.ToSlog(l), p.Tool.Help)
 
-	rootCmd := gtbRoot.NewCmdRoot(p, setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())), setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())))
+	rootCmd := gtbRoot.NewCmdRoot(p, setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())), setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())),
+		decrypt.NewCmdDecrypt(p),
+		certificate.NewCmdCertificate(p))
 
 	return rootCmd, p
 }

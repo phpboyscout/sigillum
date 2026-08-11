@@ -538,6 +538,8 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 		return ctx, nil
 	})
 
+	registerDecryptSteps(ctx, w)
+
 	ctx.Given(`^a freshly built sigillum binary$`, w.aFreshlyBuiltBinary)
 	ctx.Given(`^an empty working directory$`, w.anEmptyWorkingDirectory)
 	ctx.Given(`^an ed25519 key with a pem private half$`, w.haveEd25519PEMKey)
