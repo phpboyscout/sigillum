@@ -8,6 +8,8 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
+
+	"gitlab.com/phpboyscout/go/encryption"
 )
 
 // Message framing lives here rather than in the core module.
@@ -32,45 +34,66 @@ func readMessage(message io.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	if looksArmoured(raw) {
-		block, decodeErr := armor.Decode(bytes.NewReader(raw))
-		if decodeErr != nil {
-			return nil, fmt.Errorf("%w: dearmouring: %w", ErrMalformedMessage, decodeErr)
-		}
-
-		if raw, err = dearmoured(block.Body, "message"); err != nil {
-			return nil, err
-		}
-	}
-
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("%w: message is empty", ErrMalformedMessage)
 	}
 
-	return raw, nil
+	return packetsOrArmour(raw, "message")
 }
 
-// armourPrefix opens every armoured block, RFC 9580 §6.2.
-var armourPrefix = []byte("-----BEGIN ")
-
-// looksArmoured reports whether the input begins an armoured block, and is
-// checked before reaching for a decoder.
+// packetsOrArmour returns the packet bytes of a message that may be armoured.
+//
+// Binary is tried first, and that ordering is the whole design.
 //
 // go-crypto's armor.Decode skips leading garbage: it reads line by line through
-// the whole input hunting for the header. Two consequences, and the second is
-// the one that matters.
+// the entire input hunting for a header, and will find one anywhere. An
+// attacker composing a binary message chooses where to put one, so decoding
+// before checking made their marker decide where the message began — the real
+// packets were discarded and the operator got a base64 error instead of a
+// report.
 //
-// For binary input — the documented "fetched from an API" case — it is a full
-// line-splitting scan of up to 128 MiB before it fails and the raw bytes are
-// used anyway.
+// Anchoring the search at byte zero closed that and broke something ordinary: a
+// report pasted into a ticket under a covering line, a quoted mail header, or a
+// From: block from a saved .eml. Those are the arrival shapes the how-to
+// describes.
 //
-// Worse, an attacker composing a binary message can embed the header inside the
-// encrypted-data packet. Decode then succeeds on somebody else's choice of
-// where the message starts, the real packets are discarded, and the operator is
-// handed a base64 error instead of their report. Anchoring the check at the
-// front removes the choice.
-func looksArmoured(raw []byte) bool {
-	return bytes.HasPrefix(bytes.TrimLeft(raw, " \t\r\n"), armourPrefix)
+// Asking "is this already a message?" first settles both without a bound to
+// choose. A valid binary message is consumed as binary, so an embedded header
+// inside its ciphertext is never reached; anything that is not one can be
+// searched for armour as freely as go-crypto likes, because there are no real
+// packets left to discard. No arbitrary preamble limit, which a long forwarded
+// header block would eventually have exceeded.
+func packetsOrArmour(raw []byte, what string) ([]byte, error) {
+	if isPacketStream(raw) {
+		return raw, nil
+	}
+
+	block, decodeErr := armor.Decode(bytes.NewReader(raw))
+	if decodeErr != nil {
+		return nil, fmt.Errorf("%w: %s is neither OpenPGP packets nor an armoured block: %w",
+			ErrMalformedMessage, what, decodeErr)
+	}
+
+	return dearmoured(block.Body, what)
+}
+
+// isPacketStream reports whether the input already begins an OpenPGP packet.
+//
+// A definite answer rather than a heuristic: the first octet of a packet header
+// has its high bit set, and the tag must be one this exchange uses. Armour is
+// printable text, so it cannot satisfy either.
+func isPacketStream(raw []byte) bool {
+	pkt, err := encryption.ParsePacket(raw)
+	if err != nil {
+		return false
+	}
+
+	switch pkt.Tag {
+	case encryption.TagPKESK, encryption.TagPublicKey:
+		return true
+	default:
+		return false
+	}
 }
 
 // dearmoured reads the decoded body of an armoured block, classifying a failure
@@ -237,6 +260,22 @@ const maxPlaintext = 64 << 20
 // own high-level reader refuses beyond one or two.
 const maxCompressionDepth = 2
 
+// maxPacketsInspected bounds how many packets are walked looking for literal
+// data.
+//
+// maxPlaintext bounds the literal data and maxCompressionDepth bounds the
+// descent, so neither covers breadth. copyLiteral skips anything that is
+// neither compressed nor literal, and a single compressed packet expanding to
+// millions of marker or padding packets is walked one at a time — the same
+// denial of service as the nesting bound, reached sideways rather than
+// downwards, and just as asymmetric: under 1.5 KiB of ciphertext expands to a
+// megabyte of walk.
+//
+// A real message carries a literal packet, possibly behind one compressed
+// packet, possibly after a marker. Sixty-four is far past anything a sender
+// produces and far below anything that costs noticeable work.
+const maxPacketsInspected = 64
+
 // copyLiteral walks the packets inside the encrypted data — compressed or not —
 // and writes the literal contents to out, refusing anything over maxPlaintext.
 func copyLiteral(body io.Reader, out io.Writer) error {
@@ -244,7 +283,12 @@ func copyLiteral(body io.Reader, out io.Writer) error {
 
 	depth := 0
 
-	for {
+	for inspected := 0; ; inspected++ {
+		if inspected >= maxPacketsInspected {
+			return fmt.Errorf("%w: no literal data in the first %d packets inside the encrypted data",
+				ErrMalformedMessage, maxPacketsInspected)
+		}
+
 		p, err := reader.Next()
 		if err != nil {
 			return fmt.Errorf("%w: no literal data inside the encrypted packet: %w",

@@ -1,14 +1,12 @@
 package openpgp
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 
 	"gitlab.com/phpboyscout/go/encryption"
@@ -75,16 +73,14 @@ func ReadRecipient(r io.Reader) (Recipient, error) {
 		return Recipient{}, err
 	}
 
-	if looksArmoured(raw) {
-		block, decodeErr := armor.Decode(bytes.NewReader(raw))
-		if decodeErr != nil {
-			return Recipient{}, fmt.Errorf("%w: dearmouring the certificate: %w",
-				ErrMalformedMessage, decodeErr)
-		}
-
-		if raw, err = dearmoured(block.Body, "certificate"); err != nil {
-			return Recipient{}, err
-		}
+	// The same ordering as a message, and the same reason: a binary certificate
+	// is consumed as packets, so an armour header embedded in one cannot decide
+	// where it begins, and a certificate pasted under a covering line is still
+	// found. Shared rather than repeated -- the two carried the same block
+	// twice, differing only in a label.
+	raw, err = packetsOrArmour(raw, "certificate")
+	if err != nil {
+		return Recipient{}, err
 	}
 
 	recipient, err := certificate.Parse(raw)

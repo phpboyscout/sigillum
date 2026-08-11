@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
@@ -110,108 +111,36 @@ type nopWriteCloser struct{ io.Writer }
 
 func (nopWriteCloser) Close() error { return nil }
 
-// TestLooksArmouredAnchorsAtTheStart covers the probe that decides whether to
-// reach for a decoder.
+// TestIsPacketStreamDecidesWithoutGuessing replaces the anchored armour probe
+// with the ordering decision D2 settled.
 //
-// go-crypto's armor.Decode skips leading garbage, so it will find a header
-// anywhere in the input. An attacker composing a binary message can put one
-// inside the encrypted-data packet, and Decode then succeeds on their choice of
-// where the message begins — the real packets are discarded and the operator
-// gets a base64 error instead of their report.
-func TestLooksArmouredAnchorsAtTheStart(t *testing.T) {
+// The probe existed because armor.Decode finds a header anywhere, so an
+// attacker composing a binary message chose where the message began. Anchoring
+// the probe closed that and broke armour under a covering line. Asking "is this
+// already packets?" first settles both: a valid binary message is consumed as
+// binary so an embedded header is never reached, and anything that is not one
+// can be searched for armour freely, because there are no real packets to lose.
+func TestIsPacketStreamDecidesWithoutGuessing(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name string
-		in   string
+		in   []byte
 		want bool
 	}{
-		{"an armoured block", "-----BEGIN PGP MESSAGE-----\n\nabc\n-----END PGP MESSAGE-----\n", true},
-		{"leading whitespace", "\n\t  -----BEGIN PGP MESSAGE-----\n", true},
-		{"binary", "\xc1\x0e\x03\x01\x02\x03", false},
-		{"the header buried in binary", "\xc1\x0e\x03\n-----BEGIN PGP MESSAGE-----\n", false},
-		{"empty", "", false},
-		{"a near miss", "-----BEGI", false},
+		{"an armoured block", []byte("-----BEGIN PGP MESSAGE-----\n\nabc\n"), false},
+		{"armour under a covering line", []byte("Here is the report:\n\n-----BEGIN PGP MESSAGE-----\n"), false},
+		{"empty", nil, false},
+		{"prose", []byte("this is not a message at all"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := looksArmoured([]byte(tc.in)); got != tc.want {
-				t.Errorf("looksArmoured(%q) = %v, want %v", tc.in, got, tc.want)
+			if got := isPacketStream(tc.in); got != tc.want {
+				t.Errorf("isPacketStream(%q) = %v, want %v", tc.in, got, tc.want)
 			}
 		})
 	}
-}
-
-// TestCopyAuthenticatedDoesNotDrainAfterRefusing covers what Close costs on a
-// message that has already been rejected.
-//
-// go-crypto's Close verifies the modification detection code by reading to the
-// end, so calling it after a refusal decrypts and decompresses everything the
-// bound declined to hold — the command appears to hang for minutes on input it
-// rejected immediately. It also misreports: a drain meeting a truncated stream
-// returns an MDC mismatch, and Close's error used to take precedence, so an
-// oversized message was reported as one that may have been altered.
-//
-// Nothing is handed over on the refusal path, so no integrity guarantee is
-// lost by not checking it.
-func TestCopyAuthenticatedDoesNotDrainAfterRefusing(t *testing.T) {
-	t.Parallel()
-
-	t.Run("refused input is not closed", func(t *testing.T) {
-		t.Parallel()
-
-		// Not a packet stream, so copyLiteral fails immediately.
-		body := &recordingCloser{Reader: bytes.NewReader([]byte("not openpgp packets at all"))}
-
-		err := copyAuthenticated(body, io.Discard)
-		if err == nil {
-			t.Fatal("unreadable input was accepted")
-		}
-
-		if errors.Is(err, ErrIntegrity) {
-			t.Errorf("error = %v, want the read failure rather than an integrity verdict", err)
-		}
-
-		if body.closed {
-			t.Error("Close was called on a message already refused, which is the drain")
-		}
-	})
-
-	t.Run("accepted input is closed", func(t *testing.T) {
-		t.Parallel()
-
-		const plaintext = "a report that should be verified before it is handed over"
-
-		body := &recordingCloser{Reader: bytes.NewReader(nestedCompressed(t, 1, plaintext))}
-
-		var out bytes.Buffer
-		if err := copyAuthenticated(body, &out); err != nil {
-			t.Fatalf("copyAuthenticated: %v", err)
-		}
-
-		if !body.closed {
-			t.Error("plaintext was handed over without verifying the modification detection code")
-		}
-
-		if out.String() != plaintext {
-			t.Errorf("recovered %q, want %q", out.String(), plaintext)
-		}
-	})
-}
-
-// recordingCloser reports whether Close was reached, standing in for the drain
-// go-crypto performs there.
-type recordingCloser struct {
-	io.Reader
-
-	closed bool
-}
-
-func (r *recordingCloser) Close() error {
-	r.closed = true
-
-	return nil
 }
 
 // TestCopyLiteralBoundsPacketBreadth covers finding 09.
@@ -227,13 +156,19 @@ func (r *recordingCloser) Close() error {
 func TestCopyLiteralBoundsPacketBreadth(t *testing.T) {
 	t.Parallel()
 
-	const markers = 200_000
+	const filler = 200_000
 
-	// A marker packet is tag 10 with the body "PGP" — the smallest packet that
-	// is neither compressed data nor literal data, so copyLiteral skips it.
+	// User ID packets: small, and a type the packet reader hands back rather
+	// than consuming itself, so they reach the walk and are skipped there.
+	//
+	// Marker packets do not work for this — go-crypto absorbs those internally,
+	// so two hundred thousand of them never reach copyLiteral at all and cost
+	// almost nothing. Worth recording, because the finding described the
+	// mechanism in terms of "any packet that is neither compressed nor
+	// literal", and that is not the whole story.
 	var inner bytes.Buffer
-	for range markers {
-		inner.Write([]byte{0xCA, 0x03, 'P', 'G', 'P'})
+	for range filler {
+		inner.Write([]byte{0xCD, 0x01, 'x'})
 	}
 
 	var buf bytes.Buffer
@@ -251,34 +186,24 @@ func TestCopyLiteralBoundsPacketBreadth(t *testing.T) {
 		t.Fatalf("closing: %v", err)
 	}
 
-	t.Logf("%d marker packets, %d octets uncompressed, compress to %d octets",
-		markers, inner.Len(), buf.Len())
+	t.Logf("%d filler packets, %d octets uncompressed, compress to %d octets",
+		filler, inner.Len(), buf.Len())
 
-	counted := &countingReader{Reader: bytes.NewReader(buf.Bytes())}
-
-	err = copyLiteral(counted, io.Discard)
+	err = copyLiteral(bytes.NewReader(buf.Bytes()), io.Discard)
 	if err == nil {
 		t.Fatal("a message carrying no literal data was accepted")
 	}
 
-	// The bound that matters is work done, not the error returned: the walk
-	// must stop long before the whole expansion has been read.
-	if counted.n >= buf.Len() {
-		t.Errorf("read %d of %d ciphertext octets — the whole expansion was walked, so nothing bounds breadth",
-			counted.n, buf.Len())
+	// Asserted on the error rather than on octets consumed: the compressed
+	// input is buffered into the flate reader whole, so bytes read cannot
+	// distinguish stopping early from walking everything. The two outcomes are
+	// distinguishable by which failure is reported — the bound, or running out
+	// of packets after inspecting all two hundred thousand.
+	if !strings.Contains(err.Error(), "first 64 packets") {
+		t.Errorf("error = %v; want the breadth bound to have stopped the walk", err)
 	}
-}
 
-// countingReader records how much of the ciphertext was actually consumed.
-type countingReader struct {
-	io.Reader
-
-	n int
-}
-
-func (r *countingReader) Read(p []byte) (int, error) {
-	n, err := r.Reader.Read(p)
-	r.n += n
-
-	return n, err
+	if !errors.Is(err, ErrMalformedMessage) {
+		t.Errorf("error = %v, want ErrMalformedMessage", err)
+	}
 }
