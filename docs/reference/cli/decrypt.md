@@ -61,6 +61,7 @@ decided locally.
 | `required flag not set` | `--certificate` or `--key` missing | no |
 | `no key service "..."` | `--backend` names something not compiled in | no |
 | `certificate has no ECDH encryption subkey` | Signing-only certificate | no |
+| `key is revoked` | The certificate's holder has withdrawn its encryption subkey; fetch a current certificate | no |
 | `message is not addressed to this certificate` | Encrypted to somebody else | **no** |
 | `malformed message` | Not readable as OpenPGP | no |
 | `deriving the shared secret` | The key service refused or was unreachable | yes |
