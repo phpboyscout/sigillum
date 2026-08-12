@@ -74,43 +74,11 @@ func TestDecryptAcceptsAHiddenRecipient(t *testing.T) {
 
 	der, deriver := testCertificate(t)
 
-	home := t.TempDir()
-	if err := os.Chmod(home, 0o700); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
+	home, gpg := gpgHome(t)
 
-	t.Cleanup(func() {
-		if err := exec.Command("gpgconf", "--homedir", home, "--kill", "all").Run(); err != nil {
-			t.Logf("stopping the gpg agent: %v", err)
-		}
-	})
+	importedCertificate(t, home, gpg, der)
 
-	certPath := filepath.Join(home, "cert.pgp")
-	if err := os.WriteFile(certPath, der, 0o600); err != nil {
-		t.Fatalf("write certificate: %v", err)
-	}
-
-	gpg := func(args ...string) {
-		t.Helper()
-
-		full := append([]string{"--homedir", home, "--batch", "--no-tty", "--yes"}, args...)
-
-		var stderr bytes.Buffer
-
-		cmd := exec.Command("gpg", full...)
-		cmd.Stderr = &stderr
-
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("gpg %v: %v\n%s", args, err, stderr.String())
-		}
-	}
-
-	gpg("--import", certPath)
-
-	in := filepath.Join(home, "report.txt")
-	if err := os.WriteFile(in, []byte(plaintext), 0o600); err != nil {
-		t.Fatalf("write report: %v", err)
-	}
+	in := writtenReport(t, home, plaintext)
 
 	out := filepath.Join(home, "report.pgp")
 	gpg("--trust-model", "always", "--encrypt",
@@ -336,7 +304,7 @@ func rsaSessionKeyPacket(t *testing.T) []byte {
 	const (
 		pkeskVersion3    = 3
 		publicKeyAlgoRSA = 1
-		newFormatPKESK   = 0xC0 | 1
+		tagPKESK         = 1
 	)
 
 	body := []byte{pkeskVersion3}
@@ -347,14 +315,7 @@ func rsaSessionKeyPacket(t *testing.T) []byte {
 	body = binary.BigEndian.AppendUint16(body, 2048)
 	body = append(body, bytes.Repeat([]byte{0xCD}, 256)...)
 
-	if len(body) >= 192 {
-		// Two-octet new-format length, RFC 9580 4.2.1.
-		n := len(body) - 192
-
-		return append([]byte{newFormatPKESK, byte(n>>8) + 192, byte(n & 0xFF)}, body...)
-	}
-
-	return append([]byte{newFormatPKESK, byte(len(body))}, body...)
+	return framePacket(t, tagPKESK, body)
 }
 
 // TestDecryptCapsTheNumberOfDerivations is the cost half of trying every

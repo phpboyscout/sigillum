@@ -24,6 +24,7 @@ import (
 	"gitlab.com/phpboyscout/go/encryption"
 	"gitlab.com/phpboyscout/go/encryption/certificate"
 	_ "gitlab.com/phpboyscout/go/encryption/local"
+
 	openpgp "gitlab.com/phpboyscout/sigillum/internal/openpgp"
 )
 

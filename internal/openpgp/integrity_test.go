@@ -2,16 +2,16 @@ package openpgp_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"io"
 	"testing"
-
-	"encoding/binary"
 
 	pgp "github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 
 	"gitlab.com/phpboyscout/go/encryption"
+
 	openpgp "gitlab.com/phpboyscout/sigillum/internal/openpgp"
 )
 
@@ -115,7 +115,7 @@ func downgradeToSED(t *testing.T, message []byte) []byte {
 		consumed := len(rest) - len(pkt.Rest)
 
 		if pkt.Tag == tagSEIPD {
-			out = append(out, framePacket(tagSED, pkt.Body[1:])...)
+			out = append(out, framePacket(t, tagSED, pkt.Body[1:])...)
 		} else {
 			out = append(out, rest[:consumed]...)
 		}
@@ -126,21 +126,52 @@ func downgradeToSED(t *testing.T, message []byte) []byte {
 	return out
 }
 
-// framePacket writes a new-format header for a body of any length.
-func framePacket(tag byte, body []byte) []byte {
+// framePacket wraps a body in a new-format packet header, RFC 9580 4.2.1.
+//
+// Takes t and fails rather than returning an error, because there is one
+// encoder here for the whole test package and every caller is building a
+// fixture.
+//
+// It was two encoders until this round, and both were wrong in the same way:
+// each implemented only the two length forms its own caller happened to need,
+// and each silently truncated a body that did not fit the form it chose. A
+// fixture that quietly frames a packet other than the one the test names is
+// exactly the class of defect this round keeps finding, so the boundaries are
+// checked here and the failure is loud.
+func framePacket(t *testing.T, tag byte, body []byte) []byte {
+	t.Helper()
+
 	const (
 		newFormat   = 0xC0
-		oneOctetMax = 192
-		fiveOctet   = 0xFF
+		maxTag      = 63
+		oneOctetMax = 192     // the one-octet form covers 0..191
+		twoOctetMax = 8384    // the two-octet form covers 192..8383
+		fiveOctet   = 0xFF    // the marker introducing a four-octet length
+		maxLength   = 1 << 32 // the five-octet form's ceiling, exclusive
 	)
+
+	if tag > maxTag {
+		t.Fatalf("packet tag %d does not fit a new-format header", tag)
+	}
 
 	out := []byte{newFormat | tag}
 
-	if len(body) < oneOctetMax {
-		out = append(out, byte(len(body)))
-	} else {
+	switch n := len(body); {
+	case n < oneOctetMax:
+		out = append(out, byte(n))
+
+	case n < twoOctetMax:
+		// Encoded as an offset from 192 split across two octets, so the first
+		// octet lands in 192..223 and marks the form.
+		offset := n - oneOctetMax
+		out = append(out, byte(offset>>8)+oneOctetMax, byte(offset&0xFF))
+
+	case n < maxLength:
 		out = append(out, fiveOctet)
-		out = binary.BigEndian.AppendUint32(out, uint32(len(body)))
+		out = binary.BigEndian.AppendUint32(out, uint32(n))
+
+	default:
+		t.Fatalf("a %d-octet body exceeds every packet length form", n)
 	}
 
 	return append(out, body...)
