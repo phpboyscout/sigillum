@@ -2,6 +2,8 @@ package openpgp_test
 
 import (
 	"bytes"
+	"crypto/ecdh"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -411,8 +413,11 @@ func repeatFirstPKESK(t *testing.T, message []byte, count int) []byte {
 		t.Fatalf("first packet is not a session-key packet: %v", err)
 	}
 
-	if len(pkt.Body) == 0 {
-		t.Fatal("the session-key packet has an empty body, so there is nothing to vary")
+	// Parsed as a PKESK too, because the point's length is what a fresh one
+	// must match and only the PKESK layout knows it.
+	pkesk, err := encryption.ParsePKESK(pkt.Body)
+	if err != nil {
+		t.Fatalf("the leading packet does not parse as a PKESK: %v", err)
 	}
 
 	out := make([]byte, 0, (len(pkt.Body)+5)*count+len(pkt.Rest))
@@ -420,9 +425,19 @@ func repeatFirstPKESK(t *testing.T, message []byte, count int) []byte {
 	for i := range count {
 		body := append([]byte(nil), pkt.Body...)
 
-		// The last octets belong to the wrapped session key in every PKESK
-		// version, so this stays inside attacker-chosen bytes. Two octets, so
-		// the copies stay distinct past a count of 256.
+		// A fresh ephemeral point per copy, which is what makes each one a
+		// separate billed derivation.
+		//
+		// Varying the wrapped key alone is not enough and used to be all this
+		// did. The derivation depends on the point, so Decrypt memoises on it
+		// and copies sharing a point cost one call between them however many
+		// there are — the right behaviour, and the reason that variant of the
+		// attack is now cheap to absorb. Reaching the ceiling takes points the
+		// memo cannot collapse, which costs the attacker one EC keypair each.
+		replaceEphemeralPoint(t, body, freshPoint(t, len(pkesk.EphemeralPoint)))
+
+		// The wrapped key varies too, so the candidates stay distinct for the
+		// dedup as well as for the memo.
 		body[len(body)-1] ^= byte(i)
 		if len(body) > 1 {
 			body[len(body)-2] ^= byte(i >> 8)
@@ -518,4 +533,60 @@ func TestDecryptIsNotHijackedByAnEmbeddedArmourHeader(t *testing.T) {
 	if got.String() != plaintext {
 		t.Errorf("recovered %q, want %q", got.String(), plaintext)
 	}
+}
+
+// pkeskPointOffset is where a version 3 PKESK body's ephemeral point begins:
+// one version octet, eight of key id, one algorithm octet and the MPI's
+// two-octet bit count. RFC 9580 5.1 and RFC 6637 8.
+const pkeskPointOffset = 12
+
+// freshPoint returns a valid, previously unused uncompressed point of the given
+// length, on whichever NIST curve has points that size.
+//
+// Valid rather than random bytes, because the key service refuses a point that
+// is not on its curve — a fixture of random points would exercise the rejection
+// path instead of the cost path, and the two are counted differently.
+func freshPoint(t *testing.T, length int) []byte {
+	t.Helper()
+
+	var curve ecdh.Curve
+
+	switch length {
+	case 65:
+		curve = ecdh.P256()
+	case 97:
+		curve = ecdh.P384()
+	case 133:
+		curve = ecdh.P521()
+	default:
+		t.Fatalf("no NIST curve has a %d-octet uncompressed point", length)
+	}
+
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generating an ephemeral point: %v", err)
+	}
+
+	return key.PublicKey().Bytes()
+}
+
+// replaceEphemeralPoint overwrites a PKESK body's point in place.
+//
+// Same length and the same 0x04 uncompressed prefix, so the MPI's bit count
+// stays correct without recomputing it — a point of a different size would need
+// the length rewritten and would no longer be the packet under test.
+func replaceEphemeralPoint(t *testing.T, body, point []byte) {
+	t.Helper()
+
+	if len(body) < pkeskPointOffset+len(point) {
+		t.Fatalf("PKESK body is %d octets, too short to hold a %d-octet point at %d",
+			len(body), len(point), pkeskPointOffset)
+	}
+
+	if got := body[pkeskPointOffset]; got != 0x04 {
+		t.Fatalf("the point at offset %d begins %#02x, want 0x04 — the layout is not what this assumes",
+			pkeskPointOffset, got)
+	}
+
+	copy(body[pkeskPointOffset:], point)
 }

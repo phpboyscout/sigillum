@@ -651,3 +651,70 @@ func (d *failingDeriverWith) DeriveSharedSecret(context.Context, []byte) ([]byte
 }
 
 func (d *failingDeriverWith) CoordinateBytes() int { return 32 }
+
+// TestDecryptBillsOneDerivationPerEphemeralPoint is the cost half of accepting
+// packets that name us.
+//
+// The key id naming this certificate is the tail of its published fingerprint,
+// so composing packets that carry it needs no key material and no interception.
+// A stranger can simply send one message full of them to the published address.
+//
+// Those packets are deliberately not capped — see maxGuesses for why capping
+// them loses genuine reports — so what bounds the cost instead is that the
+// billed operation depends on the ephemeral point alone. Copies sharing a point
+// are one key-service call between them, however many there are.
+//
+// Measured before that memo existed: 5,000 such packets produced 5,001 billed
+// derivations, and the report still decrypted, so nothing failed loudly enough
+// to notice. The message bound is 128 MiB and one of these packets is about a
+// hundred octets, which put the ceiling at roughly a million calls per message.
+func TestDecryptBillsOneDerivationPerEphemeralPoint(t *testing.T) {
+	t.Parallel()
+
+	const (
+		plaintext = "a report behind a great many forged packets"
+		forgeries = 500
+	)
+
+	der, deriver := testCertificate(t)
+
+	genuine := encryptTo(t, der, plaintext, false)
+	leading := firstPacket(t, genuine)
+
+	// Each forgery names our key id and reuses the genuine ephemeral point,
+	// varying only the wrapped key — one XOR per packet, and the cheapest
+	// version of this attack.
+	var message []byte
+
+	for i := range forgeries {
+		forged := append([]byte(nil), leading...)
+		forged[len(forged)-1] ^= byte(i%255 + 1)
+		forged[len(forged)-2] ^= byte(i / 255)
+		message = append(message, forged...)
+	}
+
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	counting := &countingDeriver{SecretDeriver: deriver}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), counting, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("a report behind %d forged packets was not recovered: %v", forgeries, err)
+	}
+
+	// Recovery first: the memo must not have changed any verdict.
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+
+	// One point, so one billed call, regardless of how many packets carried it.
+	if counting.calls != 1 {
+		t.Errorf("%d packets sharing one ephemeral point cost %d billed derivations, want 1",
+			forgeries+1, counting.calls)
+	}
+}

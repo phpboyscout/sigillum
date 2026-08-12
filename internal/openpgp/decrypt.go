@@ -141,6 +141,10 @@ func recoverSessionKey(
 ) (cipherID byte, sessionKey []byte, err error) {
 	var namedFailure, otherFailure error
 
+	// Scoped to this message, so nothing is remembered between calls and a key
+	// rotation between two messages is never served from a cache.
+	billed := newBilledOnce(deriver)
+
 	guesses := 0
 
 	for _, c := range candidates {
@@ -163,7 +167,7 @@ func recoverSessionKey(
 			return 0, nil, exhausted(namedFailure, otherFailure, len(candidates))
 		}
 
-		cipherID, sessionKey, err := unwrap(ctx, deriver, recipient, c.pkesk)
+		cipherID, sessionKey, err := unwrap(ctx, billed, recipient, c.pkesk)
 		if err == nil {
 			return cipherID, sessionKey, nil
 		}
@@ -258,6 +262,61 @@ func overGuessLimit(c candidate, guesses *int) bool {
 // Generous against real messages: a report copied to a coordinating body and a
 // colleague carries a handful of hidden recipients at most.
 const maxGuesses = 8
+
+// billedOnce memoises derivations by ephemeral point for one message.
+//
+// The billed operation is the derivation, and it depends on the ephemeral point
+// alone — so two candidate packets carrying the same point are the same
+// key-service call twice, and the second one buys nothing.
+//
+// That is not a micro-optimisation. The key id naming this certificate is the
+// tail of its published fingerprint, so composing packets that name it needs no
+// key material and no interception: a stranger can send one message carrying a
+// great many of them to the published address. Measured before this existed, a
+// message of 5,000 such packets — all sharing one ephemeral point, differing
+// only in the wrapped key, which costs an attacker one XOR each — produced
+// 5,001 billed derivations and still delivered the report. The message bound is
+// 128 MiB and one of these packets is about a hundred octets, so the ceiling on
+// that was of the order of a million calls per message.
+//
+// Memoising collapses the whole of that to one call while changing no verdict:
+// the same point yields the same secret, and the unwrap that follows is local
+// arithmetic.
+//
+// The map is bounded by the candidate walk, and the walk bounds distinct
+// wildcard points at [maxGuesses]. Candidates naming this certificate are not
+// bounded — see the note there — so a message carrying many DISTINCT points
+// under our key id still costs one call each. That is a narrower attack than
+// the one closed here, because every distinct point is an EC keypair the
+// attacker had to generate, but it is not closed.
+type billedOnce struct {
+	deriver SecretDeriver
+	secrets map[string][]byte
+}
+
+func newBilledOnce(deriver SecretDeriver) *billedOnce {
+	return &billedOnce{deriver: deriver, secrets: map[string][]byte{}}
+}
+
+func (b *billedOnce) CoordinateBytes() int { return b.deriver.CoordinateBytes() }
+
+func (b *billedOnce) DeriveSharedSecret(ctx context.Context, peerPoint []byte) ([]byte, error) {
+	if secret, ok := b.secrets[string(peerPoint)]; ok {
+		return secret, nil
+	}
+
+	secret, err := b.deriver.DeriveSharedSecret(ctx, peerPoint)
+	if err != nil {
+		// Failures are deliberately not memoised. A key service that refused
+		// once may refuse for a reason particular to that call, and recording
+		// "this point is bad" would turn a transient outage into a verdict.
+		return nil, err
+	}
+
+	b.secrets[string(peerPoint)] = secret
+
+	return secret, nil
+}
 
 // unwrap recovers the session key from one candidate packet.
 func unwrap(
