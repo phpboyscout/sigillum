@@ -242,21 +242,74 @@ func unwrap(
 	}, params)
 }
 
-// Packets the format requires a reader to step over rather than act on.
-const (
-	// tagMarker is the obsolete Marker packet, RFC 9580 §5.8: "MUST be ignored
-	// when received". Emitted by some older tooling ahead of a message.
-	tagMarker = 10
+// countUnparsed files a session-key packet this cannot read under whichever of
+// the two counts it belongs to.
+func countUnparsed(body []byte, err error, unreadable, malformed int) (int, int) {
+	if isRealRecipientPacket(body, err) {
+		return unreadable + 1, malformed
+	}
 
-	// tagPadding is the version 6 Padding packet, RFC 9580 §5.14, which exists
-	// to be meaningless.
-	tagPadding = 21
+	return unreadable, malformed + 1
+}
+
+// isRealRecipientPacket reports whether a session-key packet this cannot parse
+// is nonetheless one a sender really wrote.
+//
+// The distinction decides whether a message is "addressed to somebody else" or
+// simply damaged, and the version octet is what settles it. An unsupported
+// algorithm or an unsupported-but-defined version is a co-recipient this
+// package does not implement — RSA is still the commonest key type, and a
+// version 6 sender is a modern one. A version octet naming no version at all is
+// not a recipient; it is noise, and whoever wrote it chose it.
+//
+// Reading the error alone was not enough: ParsePKESK reports an undefined
+// version as unsupported, so twelve octets of padding followed by an empty
+// encrypted-data packet passed as a co-recipient and the message came back
+// "addressed to somebody else" — naming a certificate that was never involved.
+func isRealRecipientPacket(body []byte, err error) bool {
+	// RFC 9580 §5.1 defines version 3 and version 6; version 5 shipped from a
+	// draft in the wild.
+	const (
+		oldestVersion = 3
+		newestVersion = 6
+	)
+
+	if !errors.Is(err, encryption.ErrUnsupported) || len(body) == 0 {
+		return false
+	}
+
+	return body[0] >= oldestVersion && body[0] <= newestVersion
+}
+
+// The packets that begin the encrypted data, and therefore end the search for
+// session keys.
+const (
+	// tagSED is the legacy Symmetrically Encrypted Data packet, RFC 9580 §5.7.
+	// decryptBody refuses it for having no integrity protection, but it still
+	// marks where the session-key packets stop.
+	tagSED = 9
+
+	// tagSEIPD is the Symmetrically Encrypted and Integrity Protected Data
+	// packet, RFC 9580 §5.13 — what every well-formed message carries.
+	tagSEIPD = 18
 )
 
-// isIgnorablePacket reports whether a packet must be stepped over rather than
-// treated as the start of the encrypted data.
-func isIgnorablePacket(tag byte) bool {
-	return tag == tagMarker || tag == tagPadding
+// startsEncryptedData reports whether a packet begins the body.
+//
+// The scan ends here rather than at "the first packet that is not a session
+// key", which is what it used to do and what made it exploitable. Any packet an
+// attacker cared to insert — a marker, a padding packet, a tag nothing defines
+// — terminated the walk, so every genuine session-key packet after it was never
+// seen and a report addressed to this certificate came back as somebody else's.
+// Four prepended octets were enough, and a fuzz target found two separate
+// shapes of it.
+//
+// Ending at the encrypted data instead is both narrower and what the search was
+// always for. An encrypted-data packet may use a partial length, which this
+// package deliberately does not parse and go-crypto handles — so the scan stops
+// at it rather than reading it, which is why the tag is all that is needed.
+func startsEncryptedData(tag byte) bool {
+	return tag == tagSEIPD || tag == tagSED
 }
 
 // wildcardKeyID is the all-zero key id RFC 9580 §5.1 reserves for a recipient
@@ -285,6 +338,7 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 		ours       []encryption.PKESK
 		hidden     []encryption.PKESK
 		unreadable int
+		malformed  int
 	)
 
 	body := raw
@@ -301,21 +355,17 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 			break
 		}
 
-		// Except the packets the format says to ignore. Ending the scan at one
-		// of those meant a marker placed before the session-key packets hid
-		// every one of them: the walk stopped, the body started at the marker,
-		// and a report addressed to this certificate was reported as somebody
-		// else's. RFC 9580 §5.8 is explicit that a marker MUST be ignored, and
-		// ten prepended octets were enough to exploit reading it as a
-		// terminator instead.
-		if isIgnorablePacket(pkt.Tag) {
+		if startsEncryptedData(pkt.Tag) {
+			break
+		}
+
+		// Anything else is stepped over rather than treated as the body: a
+		// marker, a padding packet, or a tag nothing defines. See
+		// startsEncryptedData for why ending the scan here was exploitable.
+		if pkt.Tag != encryption.TagPKESK {
 			body = pkt.Rest
 
 			continue
-		}
-
-		if pkt.Tag != encryption.TagPKESK {
-			break
 		}
 
 		pkesk, err := encryption.ParsePKESK(pkt.Body)
@@ -325,7 +375,21 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 			// unsupported here, as does a version 6 packet from a modern
 			// sender — so propagating this would fail a report over somebody
 			// else's key while ours sat in the very next packet.
-			unreadable++
+			//
+			// Which failure it was decides what the message is, so the two are
+			// counted apart.
+			//
+			// ErrUnsupported means a real recipient on an algorithm or version
+			// this package does not implement — genuinely somebody else's
+			// packet. Anything else means the bytes are not a session-key
+			// packet at all, which makes the message malformed rather than
+			// addressed elsewhere.
+			//
+			// Conflating them let an injected prefix — a garbage packet and an
+			// empty encrypted-data packet to cut the scan short — be reported
+			// as "the message is addressed to somebody else", sending the
+			// operator to find a certificate that was never involved.
+			unreadable, malformed = countUnparsed(pkt.Body, err, unreadable, malformed)
 			body = pkt.Rest
 
 			continue
@@ -356,6 +420,7 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 		hidden:     hidden,
 		others:     others,
 		unreadable: unreadable,
+		malformed:  malformed,
 	}, body, recipient)
 }
 
@@ -380,6 +445,11 @@ type candidateSet struct {
 	// package can parse — a co-recipient on RSA, or a v6 sender. They cannot
 	// be ours, but they say the message was addressed to somebody.
 	unreadable int
+
+	// malformed counts packets in the session-key position that are not
+	// session-key packets at all. They say nothing about who the message is
+	// for, only that it is damaged.
+	malformed int
 }
 
 // chooseRecipients orders the packets worth trying, once the sequence has been
@@ -422,6 +492,11 @@ func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candi
 	switch {
 	case len(candidates) > 0:
 		return candidates, body, nil
+
+	case c.malformed > 0:
+		return nil, nil, fmt.Errorf(
+			"%w: %d packets before the encrypted data are not session-key packets",
+			ErrMalformedMessage, c.malformed)
 
 	case len(c.others) == 0 && c.unreadable == 0:
 		return nil, nil, fmt.Errorf(

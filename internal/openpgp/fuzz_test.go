@@ -110,13 +110,26 @@ func FuzzDecryptNeverPanics(f *testing.F) {
 //     did — that verdict sends the operator to find a certificate that does not
 //     exist.
 //
-// Self-contained is load-bearing, and the fuzzer taught it. An unrefined
-// version of this property failed in under a second on the prefix c1 30 — a
-// packet header declaring a forty-eight octet body, which then swallows the
-// genuine session-key packet that follows it. The message really is destroyed
-// in that case and "not addressed here" is a defensible verdict, so the
-// property was wrong rather than the code: it must only hold where the prefix
-// leaves the original message intact.
+// Two restrictions, both taught by the fuzzer rather than reasoned out in
+// advance — which is worth recording, because a property that is too strong is
+// the failure mode of this technique and it looks exactly like a defect.
+//
+// Self-contained: an unrefined version failed in under a second on the prefix
+// c1 30, a packet header declaring forty-eight octets, which swallows the
+// genuine session-key packet behind it. The message really is destroyed there
+// and "not addressed here" is defensible, so the property was wrong rather than
+// the code.
+//
+// No encrypted data in the prefix: once a prefix carries its own
+// encrypted-data packet it is a complete message in its own right, and the
+// input is two messages concatenated. A reader that stops at the first is
+// behaving correctly, however unhelpful that is. The fuzzer found this as
+// [a version 5 session-key packet][an empty encrypted-data packet], which is a
+// syntactically plausible message for somebody else.
+//
+// Neither restriction weakens what the property is for. Everything an attacker
+// can prepend that leaves a readable message readable is still covered, which
+// is where all four rounds of findings lived.
 func FuzzDecryptPrependedPackets(f *testing.F) {
 	// The seed corpus doubles as the hostile-input regression suite: `go test`
 	// replays these without -fuzz, so a shape once found stays found.
@@ -131,7 +144,7 @@ func FuzzDecryptPrependedPackets(f *testing.F) {
 	f.Add([]byte{0x84, 0x03, 0x30, 0x30, 0x30, 0xCA, 0x03, 0x30, 0x30, 0x30})
 
 	f.Fuzz(func(t *testing.T, prefix []byte) {
-		if len(prefix) > 1<<16 || !selfContained(prefix) {
+		if len(prefix) > 1<<16 || !selfContained(prefix) || carriesEncryptedData(prefix) {
 			return
 		}
 
@@ -181,6 +194,33 @@ func selfContained(prefix []byte) bool {
 	}
 
 	return true
+}
+
+// carriesEncryptedData reports whether a prefix is already a message.
+//
+// A prefix containing an encrypted-data packet makes the input two messages
+// concatenated rather than one message with a preamble, and stopping at the
+// first is correct.
+func carriesEncryptedData(prefix []byte) bool {
+	const (
+		tagSED   = 9
+		tagSEIPD = 18
+	)
+
+	for rest := prefix; len(rest) > 0; {
+		pkt, err := encryption.ParsePacket(rest)
+		if err != nil {
+			return false
+		}
+
+		if pkt.Tag == tagSED || pkt.Tag == tagSEIPD {
+			return true
+		}
+
+		rest = pkt.Rest
+	}
+
+	return false
 }
 
 // FuzzDecryptNeverEmitsUnauthenticatedPlaintext is the guarantee the whole

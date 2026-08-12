@@ -90,6 +90,38 @@ workflow:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
 
+# Property fuzzing, at a small budget per target on every pipeline.
+#
+# Four review rounds never found the marker packet that ended the candidate
+# scan; a fuzz target found it in three seconds. The point is not the budget,
+# which is tiny; it is that mutation runs when nobody remembered to ask.
+#
+# The seed corpus already runs in the ordinary test job, so this is only the
+# search. A target that finds a crasher writes it under testdata/fuzz and exits
+# non-zero, so the input is in the artifacts and becomes a permanent seed once
+# committed.
+go-fuzz:
+  stage: test
+  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.2
+  script:
+    - |
+      status=0
+      for pkg in $(go list ./...); do
+        for target in $(go test -list '^Fuzz' "$pkg" 2>/dev/null | grep '^Fuzz' || true); do
+          echo "fuzzing $target in $pkg"
+          go test "$pkg" -run '^$' -fuzz "^${target}$" -fuzztime="${FUZZTIME:-30s}" || status=1
+        done
+      done
+      exit $status
+  artifacts:
+    when: on_failure
+    paths:
+      - "**/testdata/fuzz/**"
+    expire_in: 30 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 variables:
   # releaser-pleaser + goreleaser walk the full commit history.
   GIT_DEPTH: "0"
