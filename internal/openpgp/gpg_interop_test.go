@@ -29,49 +29,13 @@ func TestDecryptsAMessageComposedByGPG(t *testing.T) {
 		t.Skip("gpg is not on PATH; skipping GnuPG interoperability")
 	}
 
-	home := t.TempDir()
-	if err := os.Chmod(home, 0o700); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-
-	t.Cleanup(func() {
-		// Reported rather than discarded: a surviving agent holds the home
-		// directory open, and the next test then inherits state that makes a
-		// failure look cryptographic.
-		if err := exec.Command("gpgconf", "--homedir", home, "--kill", "all").Run(); err != nil {
-			t.Logf("could not stop the gpg agent for %s: %v", home, err)
-		}
-	})
+	home, gpg := gpgHome(t)
 
 	der, deriver := testCertificate(t)
 
-	certPath := filepath.Join(home, "cert.pgp")
-	if err := os.WriteFile(certPath, der, 0o600); err != nil {
-		t.Fatalf("write certificate: %v", err)
-	}
+	importedCertificate(t, home, gpg, der)
 
-	gpg := func(args ...string) {
-		t.Helper()
-
-		full := append([]string{"--homedir", home, "--batch", "--no-tty", "--yes"}, args...)
-
-		cmd := exec.Command("gpg", full...)
-
-		var stderr bytes.Buffer
-
-		cmd.Stderr = &stderr
-
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("gpg %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
-		}
-	}
-
-	gpg("--import", certPath)
-
-	in := filepath.Join(home, "report.txt")
-	if err := os.WriteFile(in, []byte(plaintext), 0o600); err != nil {
-		t.Fatalf("write report: %v", err)
-	}
+	in := writtenReport(t, home, plaintext)
 
 	// Armoured, because that is how a report arrives: pasted into a ticket or
 	// an email body rather than attached as binary.
@@ -103,4 +67,75 @@ func TestDecryptsAMessageComposedByGPG(t *testing.T) {
 	if got.String() != plaintext {
 		t.Errorf("recovered %q, want %q", got.String(), plaintext)
 	}
+}
+
+// gpgHome prepares an isolated GnuPG home and returns a runner bound to it.
+//
+// Both interoperability tests had their own verbatim copy of this — the same
+// chmod, the same agent cleanup, the same argument prefix and the same stderr
+// capture. Two copies of a fixture drift, and a fixture that drifts makes one
+// of the two tests quietly stop testing what it says it does.
+//
+// The runner fails the test on a non-zero exit rather than returning an error:
+// every call is setup, and a gpg that did not run means the test never reached
+// its subject.
+func gpgHome(t *testing.T) (string, func(args ...string)) {
+	t.Helper()
+
+	home := t.TempDir()
+
+	// gpg refuses a world-readable home and says so only on stderr.
+	if err := os.Chmod(home, 0o700); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+
+	t.Cleanup(func() {
+		// Reported rather than discarded: a surviving agent holds the home
+		// directory open, and the next test then inherits state that makes a
+		// failure look cryptographic.
+		if err := exec.Command("gpgconf", "--homedir", home, "--kill", "all").Run(); err != nil {
+			t.Logf("could not stop the gpg agent for %s: %v", home, err)
+		}
+	})
+
+	return home, func(args ...string) {
+		t.Helper()
+
+		full := append([]string{"--homedir", home, "--batch", "--no-tty", "--yes"}, args...)
+
+		var stderr bytes.Buffer
+
+		cmd := exec.Command("gpg", full...)
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("gpg %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
+		}
+	}
+}
+
+// importedCertificate writes der into home and imports it, returning its path.
+func importedCertificate(t *testing.T, home string, gpg func(...string), der []byte) string {
+	t.Helper()
+
+	path := filepath.Join(home, "cert.pgp")
+	if err := os.WriteFile(path, der, 0o600); err != nil {
+		t.Fatalf("write certificate: %v", err)
+	}
+
+	gpg("--import", path)
+
+	return path
+}
+
+// writtenReport writes the plaintext a test will ask gpg to encrypt.
+func writtenReport(t *testing.T, home, plaintext string) string {
+	t.Helper()
+
+	path := filepath.Join(home, "report.txt")
+	if err := os.WriteFile(path, []byte(plaintext), 0o600); err != nil {
+		t.Fatalf("write report: %v", err)
+	}
+
+	return path
 }
