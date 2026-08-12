@@ -348,12 +348,19 @@ func TestDecryptCapsTheNumberOfDerivations(t *testing.T) {
 		t.Fatalf("error = %v, want ErrNotAddressed", err)
 	}
 
-	if counting.calls > 8 {
-		t.Errorf("the key service was called %d times; the cap is 8", counting.calls)
-	}
-
-	if counting.calls == 0 {
-		t.Error("no candidate was tried at all, so the cap is not what stopped it")
+	// EXACTLY the cap, not "at most".
+	//
+	// "At most" is what this asserted before, alongside a separate check that
+	// the count was not zero. Both held at one call — the fixture's forty
+	// identical packets deduplicated to a single candidate — so the pair
+	// admitted the one outcome that proves nothing: the run stopped for a
+	// reason other than the ceiling, and the ceiling was never reached.
+	//
+	// With forty distinct candidates the count is determined: the ceiling stops
+	// it at eight. Any other number is a defect, in either direction.
+	if counting.calls != 8 {
+		t.Errorf("the key service was called %d times for 40 hidden candidates; want exactly the cap, 8",
+			counting.calls)
 	}
 }
 
@@ -378,8 +385,24 @@ func hideRecipients2(t *testing.T, message []byte) []byte {
 	return out
 }
 
-// repeatFirstPKESK duplicates a message's leading session-key packet, standing
-// in for a sender who addressed it to a great many hidden recipients.
+// repeatFirstPKESK copies a message's leading session-key packet count times,
+// each copy DISTINCT, standing in for a sender — or an attacker — who addressed
+// it to a great many hidden recipients.
+//
+// The copies must differ, and that is the whole reason this helper is not three
+// lines of bytes.Repeat.
+//
+// chooseRecipients deduplicates candidates on the wrapped key and the ephemeral
+// point, and says in its own comment that this is "deliberately not a defence"
+// because every octet of that key is one the attacker chose. It is right. But
+// this helper used to emit identical copies, so the dedup collapsed all of them
+// to a single candidate: the tests for the guess ceiling built forty, sixty and
+// thirty packets and every one of them made exactly ONE key-service call. The
+// ceiling they exist to prove was never reached, and all three passed.
+//
+// Varying one octet of the wrapped key is what an attacker does for free, and
+// it is enough to defeat the dedup while leaving the ephemeral point valid — so
+// the derivation succeeds and the unwrap fails, which is the expensive path.
 func repeatFirstPKESK(t *testing.T, message []byte, count int) []byte {
 	t.Helper()
 
@@ -388,14 +411,52 @@ func repeatFirstPKESK(t *testing.T, message []byte, count int) []byte {
 		t.Fatalf("first packet is not a session-key packet: %v", err)
 	}
 
-	framed := message[:len(message)-len(pkt.Rest)]
-
-	out := make([]byte, 0, len(framed)*count+len(pkt.Rest))
-	for range count {
-		out = append(out, framed...)
+	if len(pkt.Body) == 0 {
+		t.Fatal("the session-key packet has an empty body, so there is nothing to vary")
 	}
 
+	out := make([]byte, 0, (len(pkt.Body)+5)*count+len(pkt.Rest))
+
+	for i := range count {
+		body := append([]byte(nil), pkt.Body...)
+
+		// The last octets belong to the wrapped session key in every PKESK
+		// version, so this stays inside attacker-chosen bytes. Two octets, so
+		// the copies stay distinct past a count of 256.
+		body[len(body)-1] ^= byte(i)
+		if len(body) > 1 {
+			body[len(body)-2] ^= byte(i >> 8)
+		}
+
+		out = append(out, framePacket(t, encryption.TagPKESK, body)...)
+	}
+
+	assertDistinctPKESKs(t, out, count)
+
 	return append(out, pkt.Rest...)
+}
+
+// assertDistinctPKESKs checks the fixture built what it claims, because the
+// defect this helper was written to fix was invisible from the tests using it.
+func assertDistinctPKESKs(t *testing.T, packets []byte, want int) {
+	t.Helper()
+
+	seen := make(map[string]bool, want)
+
+	for rest := packets; len(rest) > 0; {
+		pkt, err := encryption.ParsePacket(rest)
+		if err != nil {
+			t.Fatalf("re-parsing the fixture: %v", err)
+		}
+
+		seen[string(pkt.Body)] = true
+		rest = pkt.Rest
+	}
+
+	if len(seen) != want {
+		t.Fatalf("the fixture holds %d distinct session-key packets, want %d — "+
+			"identical copies are deduplicated and never reach the guess ceiling", len(seen), want)
+	}
 }
 
 // TestDecryptClassifiesACorruptArmouredMessage covers the commonest real input

@@ -183,7 +183,7 @@ func TestDecryptKeyServiceCostIsWhatWeDocument(t *testing.T) {
 		}
 	})
 
-	t.Run("hidden recipients cost, and are bounded", func(t *testing.T) {
+	t.Run("a hidden recipient costs one call", func(t *testing.T) {
 		t.Parallel()
 
 		message := hideRecipients2(t, encryptToMany(t, "not for us", other))
@@ -202,12 +202,39 @@ func TestDecryptKeyServiceCostIsWhatWeDocument(t *testing.T) {
 
 		// The point of the narrowing: this is not free, and the documentation
 		// must not claim it is.
-		if counting.calls == 0 {
-			t.Error("a hidden recipient was ruled out without a key-service call, which is not possible")
+		//
+		// One hidden packet, so exactly one call. This subtest used to be named
+		// "hidden recipients cost, and are bounded" and carried a `calls > 8`
+		// check alongside — on a message with a single hidden packet, where the
+		// count could never approach eight. The bound is a separate property
+		// needing a separate fixture, and it is the subtest below.
+		if counting.calls != 1 {
+			t.Errorf("one hidden recipient cost %d key-service calls, want exactly 1", counting.calls)
+		}
+	})
+
+	t.Run("hidden recipients are bounded", func(t *testing.T) {
+		t.Parallel()
+
+		// Twenty distinct hidden candidates, comfortably past the ceiling, so
+		// the ceiling is what stops the run rather than running out of packets.
+		message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 20)
+
+		recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+		if err != nil {
+			t.Fatalf("ReadRecipient: %v", err)
 		}
 
-		if counting.calls > 8 {
-			t.Errorf("the key service was called %d times; the cap is 8", counting.calls)
+		counting := &countingDeriver{SecretDeriver: deriver}
+
+		err = openpgp.Decrypt(t.Context(), counting, recipient, bytes.NewReader(message), io.Discard)
+		if !errors.Is(err, openpgp.ErrNotAddressed) {
+			t.Fatalf("error = %v, want ErrNotAddressed", err)
+		}
+
+		if counting.calls != 8 {
+			t.Errorf("20 hidden candidates cost %d key-service calls, want exactly the cap, 8",
+				counting.calls)
 		}
 	})
 }
@@ -508,12 +535,14 @@ func TestDecryptStillBoundsHiddenRecipientGuesses(t *testing.T) {
 		t.Fatal("a message for somebody else was accepted")
 	}
 
-	if counting.calls > 8 {
-		t.Errorf("the key service was called %d times for hidden recipients; the ceiling is 8", counting.calls)
-	}
-
-	if counting.calls == 0 {
-		t.Error("no guess was attempted, so the ceiling is not what stopped it")
+	// Exactly the ceiling. With sixty distinct candidates the count is
+	// determined, so "at most eight, and not zero" — which is what this
+	// asserted before — admits the run stopping for some other reason without
+	// the ceiling ever being reached. It did exactly that: the fixture emitted
+	// sixty identical packets, which deduplicate to one candidate and one call.
+	if counting.calls != 8 {
+		t.Errorf("the key service was called %d times for 60 hidden candidates; want exactly the ceiling, 8",
+			counting.calls)
 	}
 }
 
@@ -583,10 +612,20 @@ func TestDecryptKeepsTheReasonWhenTheCapIsReached(t *testing.T) {
 
 	outage := errors.New("kms: ExpiredTokenException: the security token has expired")
 
-	err = openpgp.Decrypt(t.Context(), &failingDeriverWith{err: outage}, recipient,
-		bytes.NewReader(message), io.Discard)
+	failing := &failingDeriverWith{err: outage}
+
+	err = openpgp.Decrypt(t.Context(), failing, recipient, bytes.NewReader(message), io.Discard)
 	if err == nil {
 		t.Fatal("an unreachable key service was reported as success")
+	}
+
+	// The cap must be what ended the run, or the test's name is a claim about a
+	// path it never took. It was: the fixture's thirty packets were identical
+	// and deduplicated to one candidate, so this reached the cap on no run at
+	// all and still passed.
+	if failing.calls != 8 {
+		t.Fatalf("the run made %d derivations of 30 candidates; the cap is 8, so it did not end at the cap",
+			failing.calls)
 	}
 
 	if !errors.Is(err, outage) {
@@ -600,9 +639,14 @@ func TestDecryptKeepsTheReasonWhenTheCapIsReached(t *testing.T) {
 
 // failingDeriverWith fails every derivation with one error, standing in for
 // expired credentials or an unreachable endpoint.
-type failingDeriverWith struct{ err error }
+type failingDeriverWith struct {
+	err   error
+	calls int
+}
 
 func (d *failingDeriverWith) DeriveSharedSecret(context.Context, []byte) ([]byte, error) {
+	d.calls++
+
 	return nil, d.err
 }
 
