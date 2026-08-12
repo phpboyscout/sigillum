@@ -104,7 +104,14 @@ func (w *world) run(args ...string) error {
 	return nil
 }
 
-func (w *world) path(name string) string { return filepath.Join(w.dir, name) }
+// path resolves an artefact name inside the scenario's own directory.
+//
+// Names arrive from the feature files, so the join is anchored: cleaning the
+// name as an absolute path first strips any leading "../", which keeps a step
+// from writing outside the temporary directory it was given.
+func (w *world) path(name string) string {
+	return filepath.Join(w.dir, filepath.Clean("/"+name))
+}
 
 func (w *world) read(name string) (string, error) {
 	b, err := os.ReadFile(w.path(name))
@@ -442,7 +449,7 @@ func (w *world) manifestIsUnchanged() error {
 
 func (w *world) commandSucceeds() error {
 	if w.exitErr != nil {
-		return fmt.Errorf("command failed: %v\nstdout: %s\nstderr: %s", w.exitErr, w.stdout, w.stderr)
+		return fmt.Errorf("command failed: %w\nstdout: %s\nstderr: %s", w.exitErr, w.stdout, w.stderr)
 	}
 
 	return nil
