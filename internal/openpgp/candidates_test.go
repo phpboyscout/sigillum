@@ -216,7 +216,7 @@ func TestDecryptKeyServiceCostIsWhatWeDocument(t *testing.T) {
 	t.Run("hidden recipients are bounded", func(t *testing.T) {
 		t.Parallel()
 
-		// Twenty distinct hidden candidates, comfortably past the ceiling, so
+		// Twenty distinct hidden candidates, past the ceiling of sixteen, so
 		// the ceiling is what stops the run rather than running out of packets.
 		message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 20)
 
@@ -232,8 +232,8 @@ func TestDecryptKeyServiceCostIsWhatWeDocument(t *testing.T) {
 			t.Fatalf("error = %v, want ErrNotAddressed", err)
 		}
 
-		if counting.calls != 8 {
-			t.Errorf("20 hidden candidates cost %d key-service calls, want exactly the cap, 8",
+		if counting.calls != 16 {
+			t.Errorf("20 hidden candidates cost %d key-service calls, want exactly the cap, 16",
 				counting.calls)
 		}
 	})
@@ -540,8 +540,8 @@ func TestDecryptStillBoundsHiddenRecipientGuesses(t *testing.T) {
 	// asserted before — admits the run stopping for some other reason without
 	// the ceiling ever being reached. It did exactly that: the fixture emitted
 	// sixty identical packets, which deduplicate to one candidate and one call.
-	if counting.calls != 8 {
-		t.Errorf("the key service was called %d times for 60 hidden candidates; want exactly the ceiling, 8",
+	if counting.calls != 16 {
+		t.Errorf("the key service was called %d times for 60 hidden candidates; want exactly the ceiling, 16",
 			counting.calls)
 	}
 }
@@ -623,8 +623,8 @@ func TestDecryptKeepsTheReasonWhenTheCapIsReached(t *testing.T) {
 	// path it never took. It was: the fixture's thirty packets were identical
 	// and deduplicated to one candidate, so this reached the cap on no run at
 	// all and still passed.
-	if failing.calls != 8 {
-		t.Fatalf("the run made %d derivations of 30 candidates; the cap is 8, so it did not end at the cap",
+	if failing.calls != 16 {
+		t.Fatalf("the run made %d derivations of 30 candidates; the cap is 16, so it did not end at the cap",
 			failing.calls)
 	}
 
@@ -659,10 +659,12 @@ func (d *failingDeriverWith) CoordinateBytes() int { return 32 }
 // so composing packets that carry it needs no key material and no interception.
 // A stranger can simply send one message full of them to the published address.
 //
-// Those packets are deliberately not capped — see maxGuesses for why capping
-// them loses genuine reports — so what bounds the cost instead is that the
-// billed operation depends on the ephemeral point alone. Copies sharing a point
-// are one key-service call between them, however many there are.
+// Those packets are capped, at maxDerivations, but the cap alone would be a
+// poor answer: the ceiling has to stay small enough to be worth having, and a
+// repeated packet would consume it. What makes it work is that the billed
+// operation depends on the ephemeral point alone, so copies sharing a point are
+// one key-service call between them, however many there are — and a point
+// already derived never counts against the ceiling.
 //
 // Measured before that memo existed: 5,000 such packets produced 5,001 billed
 // derivations, and the report still decrypted, so nothing failed loudly enough
@@ -716,5 +718,49 @@ func TestDecryptBillsOneDerivationPerEphemeralPoint(t *testing.T) {
 	if counting.calls != 1 {
 		t.Errorf("%d packets sharing one ephemeral point cost %d billed derivations, want 1",
 			forgeries+1, counting.calls)
+	}
+}
+
+// TestDecryptBoundsDistinctPointsNamingUs is the other half of the cost story,
+// and the case the ephemeral-point memo does not answer.
+//
+// A stranger composing packets that name this certificate needs no key material
+// — the key id is the published fingerprint's tail — and giving each one a fresh
+// ephemeral point costs them one EC keypair, a few microseconds. Every such
+// point is a distinct billed key-service call, so the memo collapses nothing and
+// only the ceiling stands between one submitted message and a very large bill.
+func TestDecryptBoundsDistinctPointsNamingUs(t *testing.T) {
+	t.Parallel()
+
+	const forgeries = 200
+
+	der, deriver := testCertificate(t)
+
+	genuine := encryptTo(t, der, "a report nobody will reach", false)
+
+	// Every forgery names our key id and carries its own valid point.
+	message := repeatFirstPKESK(t, genuine, forgeries)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	counting := &countingDeriver{SecretDeriver: deriver}
+
+	err = openpgp.Decrypt(t.Context(), counting, recipient, bytes.NewReader(message), io.Discard)
+	if err == nil {
+		t.Fatal("a message of nothing but forgeries decrypted")
+	}
+
+	if counting.calls != 16 {
+		t.Errorf("%d forged packets on distinct points cost %d billed derivations, want the ceiling, 16",
+			forgeries, counting.calls)
+	}
+
+	// The operator must be told the run was cut short rather than that the
+	// message was for somebody else, since nothing established that.
+	if errors.Is(err, openpgp.ErrNotAddressed) {
+		t.Errorf("hitting the ceiling was reported as the message being addressed elsewhere: %v", err)
 	}
 }

@@ -358,10 +358,11 @@ func TestDecryptCapsTheNumberOfDerivations(t *testing.T) {
 	// admitted the one outcome that proves nothing: the run stopped for a
 	// reason other than the ceiling, and the ceiling was never reached.
 	//
-	// With forty distinct candidates the count is determined: the ceiling stops
-	// it at eight. Any other number is a defect, in either direction.
-	if counting.calls != 8 {
-		t.Errorf("the key service was called %d times for 40 hidden candidates; want exactly the cap, 8",
+	// With forty candidates on distinct ephemeral points the count is
+	// determined: the ceiling stops it at sixteen. Any other number is a
+	// defect, in either direction.
+	if counting.calls != 16 {
+		t.Errorf("the key service was called %d times for 40 hidden candidates; want exactly the cap, 16",
 			counting.calls)
 	}
 }

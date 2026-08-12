@@ -145,25 +145,29 @@ func recoverSessionKey(
 	// rotation between two messages is never served from a cache.
 	billed := newBilledOnce(deriver)
 
-	guesses := 0
-
 	for _, c := range candidates {
-		// The ceiling applies to guesses only, and that distinction is the
-		// whole of it.
+		// One ceiling, on distinct billed derivations, applied to every
+		// candidate however it is addressed.
 		//
-		// A wildcard packet names nobody, so trying it is a guess — and anyone
-		// can send a message full of them without touching anything, which is
-		// what makes a cost ceiling necessary.
+		// The earlier rule bounded wildcard packets only, on the grounds that
+		// forging a packet naming this certificate requires modifying a message
+		// in transit and that such an attacker can delete the message anyway.
+		// That reasoning holds for suppressing a report and fails for cost: the
+		// key id is the tail of the PUBLISHED fingerprint, so any stranger can
+		// compose packets carrying it and send them to the address we publish.
 		//
-		// A packet naming this certificate is different in the one way that
-		// matters. Forging one requires modifying a message in transit, and an
-		// attacker with that capability can simply delete the message instead.
-		// Capping those therefore protects nothing and loses genuine reports:
-		// it was counted three times across three review rounds, and each time
-		// eight forged packets pushed the real one out of reach. Deduplicating
-		// them did not help either, because every octet a duplicate is keyed on
-		// is an octet the attacker chose.
-		if overGuessLimit(c, &guesses) {
+		// Since the derivation depends on the ephemeral point alone, cost is
+		// per distinct point and not per packet — so bounding distinct points
+		// is the whole of the cost story, and a candidate whose point has
+		// already been derived is free and never counted.
+		//
+		// What this gives up is bounded and already available to the same
+		// attacker: someone able to modify a message in transit can now bury a
+		// genuine report behind sixteen distinct forged points. They could
+		// delete the message outright instead, so the cap costs nothing against
+		// them, while its absence handed every stranger an amplifier of about a
+		// million billed calls per message.
+		if billed.wouldExceed(c.pkesk.EphemeralPoint) {
 			return 0, nil, exhausted(namedFailure, otherFailure, len(candidates))
 		}
 
@@ -214,15 +218,15 @@ func exhausted(namedFailure, otherFailure error, candidates int) error {
 	// most likely to be actionable rather than the most recent one.
 	switch {
 	case namedFailure != nil:
-		return fmt.Errorf("gave up after %d hidden-recipient guesses of %d candidates; the first failure was: %w",
-			maxGuesses, candidates, namedFailure)
+		return fmt.Errorf("gave up after %d key-service derivations across %d candidates; the first failure was: %w",
+			maxDerivations, candidates, namedFailure)
 	case otherFailure != nil:
-		return fmt.Errorf("gave up after %d hidden-recipient guesses of %d candidates; the first failure was: %w",
-			maxGuesses, candidates, otherFailure)
+		return fmt.Errorf("gave up after %d key-service derivations across %d candidates; the first failure was: %w",
+			maxDerivations, candidates, otherFailure)
 	}
 
-	return fmt.Errorf("%w: gave up after %d hidden-recipient guesses of %d candidates",
-		ErrNotAddressed, maxGuesses, candidates)
+	return fmt.Errorf("%w: gave up after %d key-service derivations across %d candidates",
+		ErrNotAddressed, maxDerivations, candidates)
 }
 
 // isUnwrapVerdict reports whether an error means "this packet was not ours"
@@ -231,37 +235,14 @@ func isUnwrapVerdict(err error) bool {
 	return errors.Is(err, encryption.ErrIntegrity) || errors.Is(err, encryption.ErrChecksum)
 }
 
-// overGuessLimit reports whether trying this candidate would exceed the guess
-// ceiling, counting it when it is one.
-func overGuessLimit(c candidate, guesses *int) bool {
-	if c.named {
-		return false
-	}
-
-	if *guesses >= maxGuesses {
-		return true
-	}
-
-	*guesses++
-
-	return false
-}
-
-// maxGuesses bounds how many *wildcard* session-key packets Decrypt will try.
-//
-// Only guesses are bounded. A wildcard names nobody, so ruling it out costs a
-// billed key-service call, and anyone can send a message carrying any number of
-// them without modifying anything — so an unbounded walk turns one inbound
-// report into an unbounded run of billed calls.
-//
-// Packets naming this certificate are not bounded, because bounding them
-// protects nothing: forging one requires modifying a message in transit, and
-// that capability already permits deleting the message outright. What bounding
-// them did instead was lose genuine reports, three review rounds running.
+// maxDerivations bounds how many DISTINCT ephemeral points one message may
+// cost, which after memoisation is the same as how many billed key-service
+// calls it may cost.
 //
 // Generous against real messages: a report copied to a coordinating body and a
-// colleague carries a handful of hidden recipients at most.
-const maxGuesses = 8
+// colleague carries a handful of recipients at most, and every repeat of a
+// point already seen is free regardless of this number.
+const maxDerivations = 16
 
 // billedOnce memoises derivations by ephemeral point for one message.
 //
@@ -283,15 +264,16 @@ const maxGuesses = 8
 // the same point yields the same secret, and the unwrap that follows is local
 // arithmetic.
 //
-// The map is bounded by the candidate walk, and the walk bounds distinct
-// wildcard points at [maxGuesses]. Candidates naming this certificate are not
-// bounded — see the note there — so a message carrying many DISTINCT points
-// under our key id still costs one call each. That is a narrower attack than
-// the one closed here, because every distinct point is an EC keypair the
-// attacker had to generate, but it is not closed.
+// The map is bounded by [maxDerivations], which the walk applies to every
+// candidate: a point not seen before is a billed call and counts, a point
+// already derived is free and does not.
 type billedOnce struct {
 	deriver SecretDeriver
 	secrets map[string][]byte
+
+	// calls counts derivations actually made, successful or not, which is what
+	// [maxDerivations] bounds.
+	calls int
 }
 
 func newBilledOnce(deriver SecretDeriver) *billedOnce {
@@ -300,10 +282,28 @@ func newBilledOnce(deriver SecretDeriver) *billedOnce {
 
 func (b *billedOnce) CoordinateBytes() int { return b.deriver.CoordinateBytes() }
 
+// wouldExceed reports whether deriving this point would take the message past
+// [maxDerivations] billed calls.
+//
+// A point already derived is free, so it never counts and never refuses — which
+// is what lets the ceiling be small without a repeated packet consuming it.
+func (b *billedOnce) wouldExceed(peerPoint []byte) bool {
+	if _, ok := b.secrets[string(peerPoint)]; ok {
+		return false
+	}
+
+	return b.calls >= maxDerivations
+}
+
 func (b *billedOnce) DeriveSharedSecret(ctx context.Context, peerPoint []byte) ([]byte, error) {
 	if secret, ok := b.secrets[string(peerPoint)]; ok {
 		return secret, nil
 	}
+
+	// Counted before the call, and counted even when it fails: a refused call
+	// is billed and rate-limited like any other, so the budget is spent either
+	// way.
+	b.calls++
 
 	secret, err := b.deriver.DeriveSharedSecret(ctx, peerPoint)
 	if err != nil {
@@ -568,7 +568,7 @@ func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candi
 	// attacker chose, so varying a single byte defeats it — which is exactly
 	// what happened when this was relied on to stop a genuine candidate being
 	// crowded out. It survives as an efficiency, and the crowding problem is
-	// answered by bounding guesses rather than named packets. See maxGuesses.
+	// answered by bounding distinct billed derivations. See maxDerivations.
 	seen := make(map[string]bool, len(c.ours)+len(c.hidden))
 
 	add := func(pkesk encryption.PKESK, named bool) {
