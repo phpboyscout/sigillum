@@ -147,8 +147,7 @@ func recoverSessionKey(
 		// without a ceiling anyone who can write to the published address can
 		// bill us for as many derivations as they care to append.
 		if i >= maxDerivations {
-			return 0, nil, fmt.Errorf("%w: gave up after trying %d of %d candidate session-key packets",
-				ErrNotAddressed, maxDerivations, len(candidates))
+			return 0, nil, exhausted(namedFailure, otherFailure, len(candidates))
 		}
 
 		cipherID, sessionKey, err := unwrap(ctx, deriver, recipient, c.pkesk)
@@ -183,6 +182,28 @@ func recoverSessionKey(
 	// what a message for somebody else looks like.
 	return 0, nil, fmt.Errorf("%w: none of the %d candidate session-key packets unwrapped",
 		ErrNotAddressed, len(candidates))
+}
+
+// exhausted reports running out of attempts without discarding what was learned
+// on the way.
+//
+// Returning a bare ErrNotAddressed here threw away the failures the loop had
+// gone to trouble to accumulate: a key service that was unreachable for every
+// candidate was reported as "this message is not for you", and the operator
+// went looking for a different certificate while their credentials were the
+// fault. The cap is a statement about cost, not about who the message is for.
+func exhausted(namedFailure, otherFailure error, candidates int) error {
+	switch {
+	case namedFailure != nil:
+		return fmt.Errorf("gave up after %d of %d candidate session-key packets; the last failure was: %w",
+			maxDerivations, candidates, namedFailure)
+	case otherFailure != nil:
+		return fmt.Errorf("gave up after %d of %d candidate session-key packets; the last failure was: %w",
+			maxDerivations, candidates, otherFailure)
+	}
+
+	return fmt.Errorf("%w: gave up after trying %d of %d candidate session-key packets",
+		ErrNotAddressed, maxDerivations, candidates)
 }
 
 // isUnwrapVerdict reports whether an error means "this packet was not ours"
@@ -338,12 +359,30 @@ type candidateSet struct {
 func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candidate, []byte, error) {
 	candidates := make([]candidate, 0, len(c.ours)+len(c.hidden))
 
+	// Deduplicated as they are ordered, because the cap is a cost ceiling and
+	// duplicates buy nothing with it. Copying one packet is the cheapest way to
+	// push a genuine one past the cap: the wrapped key is public, so anyone who
+	// can touch the message can repeat it until the real candidate is never
+	// reached, and the operator is told the report was for somebody else.
+	seen := make(map[string]bool, len(c.ours)+len(c.hidden))
+
+	add := func(pkesk encryption.PKESK, named bool) {
+		key := string(pkesk.WrappedKey) + "\x00" + string(pkesk.EphemeralPoint)
+		if seen[key] {
+			return
+		}
+
+		seen[key] = true
+
+		candidates = append(candidates, candidate{pkesk: pkesk, named: named})
+	}
+
 	for _, pkesk := range c.ours {
-		candidates = append(candidates, candidate{pkesk: pkesk, named: true})
+		add(pkesk, true)
 	}
 
 	for _, pkesk := range c.hidden {
-		candidates = append(candidates, candidate{pkesk: pkesk})
+		add(pkesk, false)
 	}
 
 	switch {
@@ -368,9 +407,20 @@ func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candi
 // keyIDs renders the recipients a message names, so the error says which
 // certificate should have been used rather than only that this one was wrong.
 func keyIDs(ids [][8]byte) string {
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
+	// Bounded, because the message chooses how many there are. An
+	// attacker-sized list inside maxMessage renders megabytes of hex into an
+	// error string that then reaches a log and a terminal.
+	const maxRendered = 8
+
+	rendered := min(len(ids), maxRendered)
+
+	out := make([]string, 0, rendered+1)
+	for _, id := range ids[:rendered] {
 		out = append(out, fmt.Sprintf("%x", id))
+	}
+
+	if len(ids) > rendered {
+		out = append(out, fmt.Sprintf("and %d more", len(ids)-rendered))
 	}
 
 	return strings.Join(out, ", ")

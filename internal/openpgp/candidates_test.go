@@ -369,3 +369,153 @@ func TestDecryptStillRefusesAnEmbeddedArmourHijack(t *testing.T) {
 		t.Errorf("recovered %q, want %q", got.String(), plaintext)
 	}
 }
+
+// Round four's findings on this file were the same mistake as round three's,
+// one layer out: a bound that fired discarded what it had learned, and the cap
+// counted packets an attacker supplies. These test around each boundary.
+
+// TestDecryptIsNotCrowdedOutByRepeatedPackets covers the cap being used as the
+// attack rather than the defence.
+//
+// maxDerivations counts every candidate, including ones naming our key id — and
+// the key id is public. Copying the message's own session-key packet eight
+// times, with the wrapped key corrupted, pushes the genuine packet past the cap
+// so it is never tried, and the operator is told the report was for somebody
+// else. That is finding 02 again at a threshold of eight instead of one.
+func TestDecryptIsNotCrowdedOutByRepeatedPackets(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a report behind a pile of forged packets"
+
+	der, deriver := testCertificate(t)
+
+	genuine := encryptTo(t, der, plaintext, false)
+	leading := firstPacket(t, genuine)
+
+	// Twelve distinct forgeries, past the cap of eight, each naming our key id
+	// with a wrapped key that will not open.
+	var message []byte
+
+	for i := range 12 {
+		forged := append([]byte(nil), leading...)
+		forged[len(forged)-1] ^= byte(i + 1)
+		message = append(message, forged...)
+	}
+
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var got bytes.Buffer
+
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got)
+
+	// Either the genuine packet is reached, or the run stops at the cap — but
+	// it must not report the message as addressed elsewhere, which sends the
+	// operator to find a certificate that does not exist.
+	if err != nil {
+		if errors.Is(err, openpgp.ErrNotAddressed) {
+			t.Fatalf("a report behind forged packets was reported as somebody else's: %v", err)
+		}
+
+		return
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+}
+
+// TestDecryptIgnoresDuplicateCandidates is the cheaper half of the same attack:
+// the identical packet repeated costs nothing with the cap, because trying it
+// twice can only fail twice.
+func TestDecryptIgnoresDuplicateCandidates(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a report behind copies of one forged packet"
+
+	der, deriver := testCertificate(t)
+
+	genuine := encryptTo(t, der, plaintext, false)
+	forged := corruptWrappedKey(t, firstPacket(t, genuine))
+
+	var message []byte
+	for range 30 {
+		message = append(message, forged...)
+	}
+
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	counting := &countingDeriver{SecretDeriver: deriver}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), counting, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("thirty copies of one packet hid the report: %v", err)
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+
+	// The duplicates collapse to one attempt, so the genuine packet is the
+	// second call rather than the thirty-first.
+	if counting.calls > 2 {
+		t.Errorf("the key service was called %d times for one duplicated packet", counting.calls)
+	}
+}
+
+// TestDecryptKeepsTheReasonWhenTheCapIsReached covers the failures the cap
+// discarded.
+//
+// Hitting the cap returned a bare ErrNotAddressed, throwing away the key-service
+// failure the loop had accumulated — so an unreachable key service was reported
+// as "this message is not for you" and the operator went hunting for a
+// different certificate while their credentials were the fault.
+func TestDecryptKeepsTheReasonWhenTheCapIsReached(t *testing.T) {
+	t.Parallel()
+
+	der, _ := testCertificate(t)
+	other, _ := testCertificate(t)
+
+	// More hidden candidates than the cap, none of them ours.
+	message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 30)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	outage := errors.New("kms: ExpiredTokenException: the security token has expired")
+
+	err = openpgp.Decrypt(t.Context(), &failingDeriverWith{err: outage}, recipient,
+		bytes.NewReader(message), io.Discard)
+	if err == nil {
+		t.Fatal("an unreachable key service was reported as success")
+	}
+
+	if !errors.Is(err, outage) {
+		t.Errorf("error = %v, want it to carry the key-service failure", err)
+	}
+
+	if errors.Is(err, openpgp.ErrNotAddressed) {
+		t.Error("a key-service outage was reported as the message being addressed elsewhere")
+	}
+}
+
+// failingDeriverWith fails every derivation with one error, standing in for
+// expired credentials or an unreachable endpoint.
+type failingDeriverWith struct{ err error }
+
+func (d *failingDeriverWith) DeriveSharedSecret(context.Context, []byte) ([]byte, error) {
+	return nil, d.err
+}
+
+func (d *failingDeriverWith) CoordinateBytes() int { return 32 }
