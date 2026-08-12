@@ -242,6 +242,23 @@ func unwrap(
 	}, params)
 }
 
+// Packets the format requires a reader to step over rather than act on.
+const (
+	// tagMarker is the obsolete Marker packet, RFC 9580 §5.8: "MUST be ignored
+	// when received". Emitted by some older tooling ahead of a message.
+	tagMarker = 10
+
+	// tagPadding is the version 6 Padding packet, RFC 9580 §5.14, which exists
+	// to be meaningless.
+	tagPadding = 21
+)
+
+// isIgnorablePacket reports whether a packet must be stepped over rather than
+// treated as the start of the encrypted data.
+func isIgnorablePacket(tag byte) bool {
+	return tag == tagMarker || tag == tagPadding
+}
+
 // wildcardKeyID is the all-zero key id RFC 9580 §5.1 reserves for a recipient
 // the sender chose not to name.
 var wildcardKeyID [8]byte
@@ -280,7 +297,24 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 		// which this package deliberately does not parse and go-crypto
 		// handles. So anything that is not a readable PKESK ends the scan and
 		// becomes the body, rather than being an error here.
-		if err != nil || pkt.Tag != encryption.TagPKESK {
+		if err != nil {
+			break
+		}
+
+		// Except the packets the format says to ignore. Ending the scan at one
+		// of those meant a marker placed before the session-key packets hid
+		// every one of them: the walk stopped, the body started at the marker,
+		// and a report addressed to this certificate was reported as somebody
+		// else's. RFC 9580 §5.8 is explicit that a marker MUST be ignored, and
+		// ten prepended octets were enough to exploit reading it as a
+		// terminator instead.
+		if isIgnorablePacket(pkt.Tag) {
+			body = pkt.Rest
+
+			continue
+		}
+
+		if pkt.Tag != encryption.TagPKESK {
 			break
 		}
 
