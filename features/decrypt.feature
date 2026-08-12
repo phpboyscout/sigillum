@@ -27,8 +27,14 @@ Feature: Reading an encrypted vulnerability report
     When I decrypt the report
     Then it fails saying the message is malformed
 
-  Scenario: A certificate that can receive nothing is rejected up front
+  Scenario: A certificate with no encryption subkey is rejected up front
     Given a signing-only certificate
+    And a report encrypted to somebody else's certificate
+    When I decrypt the report
+    Then it fails saying there is no encryption subkey
+
+  Scenario: A certificate whose encryption subkey is RSA is rejected up front
+    Given a certificate whose encryption subkey is RSA
     And a report encrypted to somebody else's certificate
     When I decrypt the report
     Then it fails saying there is no encryption subkey

@@ -40,12 +40,53 @@ func (w *world) aPublishedCertificate() error {
 	return os.WriteFile(filepath.Join(w.dir, "certificate.pgp"), der, 0o600)
 }
 
-// aSigningOnlyCertificate writes a certificate with no encryption subkey, which
-// parses perfectly and can receive nothing.
+// aSigningOnlyCertificate writes a certificate with no encryption subkey at
+// all, which parses perfectly and can receive nothing.
+//
+// The subkeys are dropped explicitly, and that is the point of this function
+// rather than an incidental detail. It used to serialise pgp.NewEntity's result
+// unchanged and call the result signing-only; NewEntity with a nil config adds
+// an RSA encryption subkey, so the certificate had one and the scenario
+// exercised the opposite of what it said. It passed because the refusal names
+// ECDH specifically and an RSA subkey is not ECDH — the right answer reached
+// through a case nobody meant to write.
+//
+// Both cases are worth covering, so the other one is now
+// [world.aCertificateWithAnRSAEncryptionSubkey] and this one is what its name
+// says.
 func (w *world) aSigningOnlyCertificate() error {
 	entity, err := pgp.NewEntity("signing only", "", "sign@example.invalid", nil)
 	if err != nil {
 		return err
+	}
+
+	entity.Subkeys = nil
+
+	return w.writeCertificate(entity, false)
+}
+
+// aCertificateWithAnRSAEncryptionSubkey writes a certificate that can receive
+// mail, but not from us.
+//
+// This module implements the RFC 6637 ECDH construction, so an RSA encryption
+// subkey is a certificate we cannot encrypt to even though it is perfectly
+// valid and other implementations can. Distinct from having no subkey at all,
+// and reached by a different branch.
+func (w *world) aCertificateWithAnRSAEncryptionSubkey() error {
+	entity, err := pgp.NewEntity("rsa recipient", "", "rsa@example.invalid", nil)
+	if err != nil {
+		return err
+	}
+
+	return w.writeCertificate(entity, true)
+}
+
+// writeCertificate serialises an entity and checks it carries the encryption
+// subkey the caller expected, because both fixtures above are defined by what
+// they do or do not have and neither test can see it.
+func (w *world) writeCertificate(entity *pgp.Entity, wantEncryptionSubkey bool) error {
+	if _, ok := entity.EncryptionKey(entity.PrimaryKey.CreationTime); ok != wantEncryptionSubkey {
+		return fmt.Errorf("the fixture has an encryption subkey = %t, want %t", ok, wantEncryptionSubkey)
 	}
 
 	var buf bytes.Buffer
@@ -202,6 +243,7 @@ func (w *world) noKeyServiceWasContacted() error {
 func registerDecryptSteps(ctx *godog.ScenarioContext, w *world) {
 	ctx.Given(`^a published certificate$`, w.aPublishedCertificate)
 	ctx.Given(`^a signing-only certificate$`, w.aSigningOnlyCertificate)
+	ctx.Given(`^a certificate whose encryption subkey is RSA$`, w.aCertificateWithAnRSAEncryptionSubkey)
 	ctx.Given(`^a report encrypted to somebody else's certificate$`, w.aReportForSomebodyElse)
 	ctx.Given(`^a report that is not an OpenPGP message$`, w.aReportThatIsNotOpenPGP)
 
