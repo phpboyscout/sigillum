@@ -2,9 +2,11 @@ package opfile_test
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/spf13/afero"
 
@@ -323,64 +325,77 @@ func (f *syncSpyFile) Sync() error {
 // one, and following it then chooses where a decrypted report lands.
 //
 // So the caller decides and the default is the safe half.
-func TestFollowSymlinksIsOptIn(t *testing.T) {
+func TestFollowSymlinksIsRefusedByDefault(t *testing.T) {
 	t.Parallel()
 
-	fsys := opfileafero.Wrap(afero.NewOsFs())
+	fsys, link, _ := symlinkedDestination(t)
+
+	if _, err := opfile.Create(fsys, link, 0o600); !errors.Is(err, opfile.ErrNotRegular) {
+		t.Fatalf("error = %v, want ErrNotRegular", err)
+	}
+}
+
+// TestFollowSymlinksWritesThroughOnRequest is the opted-in half: the link is
+// preserved and the content lands on its target.
+func TestFollowSymlinksWritesThroughOnRequest(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "the new report"
+
+	fsys, link, target := symlinkedDestination(t)
+
+	w, err := opfile.Create(fsys, link, 0o600, opfile.FollowSymlinks())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if got := w.Path(); got != target {
+		t.Errorf("Path() = %q, want the resolved %q — the caller cannot log where it went", got, target)
+	}
+
+	if _, err := w.Write([]byte(plaintext)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	if err := w.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// The link survives and points at the fresh content, which is the whole
+	// reason for following rather than replacing.
+	info, err := os.Lstat(link)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("the symbolic link did not survive being followed")
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("reading the target: %v", err)
+	}
+
+	if string(got) != plaintext {
+		t.Errorf("target holds %q, want %q", got, plaintext)
+	}
+}
+
+// symlinkedDestination builds a destination that is a symbolic link to an
+// existing file, on a real filesystem because MemMapFs has no way to make one.
+func symlinkedDestination(t *testing.T) (fsys opfile.FS, link, target string) {
+	t.Helper()
+
 	dir := t.TempDir()
 
-	target := filepath.Join(dir, "target.txt")
+	target = filepath.Join(dir, "target.txt")
 	if err := os.WriteFile(target, []byte("the previous report"), 0o600); err != nil {
 		t.Fatalf("write target: %v", err)
 	}
 
-	link := filepath.Join(dir, "report.txt")
+	link = filepath.Join(dir, "report.txt")
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlinks unavailable here: %v", err)
 	}
 
-	t.Run("refused by default", func(t *testing.T) {
-		if _, err := opfile.Create(fsys, link, 0o600); !errors.Is(err, opfile.ErrNotRegular) {
-			t.Fatalf("error = %v, want ErrNotRegular", err)
-		}
-	})
-
-	t.Run("followed on request", func(t *testing.T) {
-		const plaintext = "the new report"
-
-		w, err := opfile.Create(fsys, link, 0o600, opfile.FollowSymlinks())
-		if err != nil {
-			t.Fatalf("Create: %v", err)
-		}
-
-		if got := w.Path(); got != target {
-			t.Errorf("Path() = %q, want the resolved %q — the caller cannot log where it went", got, target)
-		}
-
-		if _, err := w.Write([]byte(plaintext)); err != nil {
-			t.Fatalf("Write: %v", err)
-		}
-
-		if err := w.Commit(); err != nil {
-			t.Fatalf("Commit: %v", err)
-		}
-
-		// The link survives and points at the fresh content, which is the whole
-		// reason for following rather than replacing.
-		info, err := os.Lstat(link)
-		if err != nil || info.Mode()&os.ModeSymlink == 0 {
-			t.Fatal("the symbolic link did not survive being followed")
-		}
-
-		got, err := os.ReadFile(target)
-		if err != nil {
-			t.Fatalf("reading the target: %v", err)
-		}
-
-		if string(got) != plaintext {
-			t.Errorf("target holds %q, want %q", got, plaintext)
-		}
-	})
+	return opfileafero.Wrap(afero.NewOsFs()), link, target
 }
 
 // TestFollowSymlinksRefusesWhatItCannotResolve covers the filesystem that can
@@ -393,15 +408,103 @@ func TestFollowSymlinksIsOptIn(t *testing.T) {
 func TestFollowSymlinksRefusesWhatItCannotResolve(t *testing.T) {
 	t.Parallel()
 
+	// The fixture is written here rather than borrowed from afero because the
+	// case needs a filesystem with one capability and not the other, and no
+	// real one is guaranteed to stay in that shape. An earlier version of this
+	// test used afero's in-memory filesystem and asserted only that an *absent*
+	// destination still worked — so it never reached a refusal at all, and the
+	// name promised a guarantee nothing checked.
+	for _, tc := range []struct {
+		name string
+		fsys opfile.FS
+	}{
+		{
+			// Says "this is a link", cannot say what it points at.
+			name: "no link resolution at all",
+			fsys: linkFS{},
+		},
+		{
+			name: "resolution that fails",
+			fsys: resolvingFS{readlink: func(string) (string, error) {
+				return "", errors.New("permission denied")
+			}},
+		},
+		{
+			// Every hop lands on another link, so resolution never terminates.
+			name: "a link that never resolves to a file",
+			fsys: resolvingFS{readlink: func(name string) (string, error) {
+				return name + ".next", nil
+			}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := opfile.Create(tc.fsys, "/reports/new.txt", 0o600, opfile.FollowSymlinks())
+			if !errors.Is(err, opfile.ErrUnresolvableLink) {
+				t.Fatalf("error = %v, want ErrUnresolvableLink — following wrote through a link "+
+					"whose target nobody established", err)
+			}
+		})
+	}
+}
+
+// TestFollowSymlinksLeavesAnAbsentDestinationAlone is the other half, and the
+// only thing the test above used to cover.
+//
+// Enabling the option must not turn "there is nothing here yet" into a
+// resolution failure: the ordinary case is a destination that does not exist.
+func TestFollowSymlinksLeavesAnAbsentDestinationAlone(t *testing.T) {
+	t.Parallel()
+
 	mem := afero.NewMemMapFs()
 
-	if _, ok := any(opfileafero.Wrap(mem)).(opfile.LinkReader); ok {
-		t.Skip("the in-memory filesystem gained link resolution; this case needs another fixture")
-	}
-
-	// Nothing to resolve, so the ordinary path is unaffected by the option.
 	if _, err := opfile.Create(opfileafero.Wrap(mem), "/reports/new.txt", 0o600,
 		opfile.FollowSymlinks()); err != nil {
 		t.Errorf("an absent destination was refused with following enabled: %v", err)
 	}
 }
+
+// linkFS reports every path as a symbolic link and cannot resolve one.
+//
+// It implements [opfile.Lstater] because it genuinely can distinguish a link,
+// and deliberately does NOT implement [opfile.LinkReader]. That split is the
+// thing under test: the estate's rule is that an implementation must not
+// satisfy an optional interface it cannot honour, and the refusal only happens
+// when a filesystem is honest about lacking the capability.
+//
+// The two are separate types rather than one with a nil func, because a method
+// set is fixed at the type: a linkFS carrying a Readlink method would satisfy
+// LinkReader whether or not the func behind it was set, and the first case
+// would then be unreachable while still reporting a pass.
+type linkFS struct{}
+
+func (linkFS) Open(string) (fs.File, error)                        { return nil, fs.ErrNotExist }
+func (linkFS) CreateExcl(string, fs.FileMode) (opfile.File, error) { return nil, fs.ErrPermission }
+func (linkFS) Stat(string) (fs.FileInfo, error)                    { return nil, fs.ErrNotExist }
+func (linkFS) Rename(string, string) error                         { return fs.ErrPermission }
+func (linkFS) Remove(string) error                                 { return nil }
+
+func (linkFS) Lstat(name string) (fs.FileInfo, error) {
+	return linkInfo{name: filepath.Base(name)}, nil
+}
+
+// resolvingFS is a linkFS that can also resolve, so it reaches the hops past
+// the capability check.
+type resolvingFS struct {
+	linkFS
+
+	readlink func(name string) (string, error)
+}
+
+func (r resolvingFS) Readlink(name string) (string, error) { return r.readlink(name) }
+
+// linkInfo is the metadata of a symbolic link and nothing else.
+type linkInfo struct{ name string }
+
+func (i linkInfo) Name() string     { return i.name }
+func (linkInfo) Size() int64        { return 0 }
+func (linkInfo) Mode() fs.FileMode  { return os.ModeSymlink | 0o777 }
+func (linkInfo) ModTime() time.Time { return time.Time{} }
+func (linkInfo) IsDir() bool        { return false }
+func (linkInfo) Sys() any           { return nil }
