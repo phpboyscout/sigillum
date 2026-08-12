@@ -122,6 +122,19 @@ go-fuzz:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
+# The test suite on a 32-bit target. See go/encryption's copy for why this runs
+# `go test` rather than `go vet`: a test that only means something on one
+# architecture has to be RUN there, or it is decoration.
+go-cross-arch:
+  stage: test
+  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.2
+  script:
+    - GOARCH=386 GOOS=linux go test ./internal/... ./pkg/...
+    - GOARCH=arm GOOS=linux go vet ./...
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 variables:
   # releaser-pleaser + goreleaser walk the full commit history.
   GIT_DEPTH: "0"

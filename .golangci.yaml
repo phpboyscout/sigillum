@@ -2,7 +2,11 @@ version: "2"
 run:
   modules-download-mode: mod
   issues-exit-code: 1
-  tests: false
+  # Test code is checked too. Roughly 2,900 lines of it were added on this
+  # branch and reviewed by nothing, while the two sibling modules lint theirs —
+  # and several defects this round were IN tests: assertions that could not
+  # fail, fixtures that did not build what they claimed.
+  tests: true
 linters:
   enable:
     - asasalint
@@ -67,6 +71,41 @@ linters:
       - comments
       - common-false-positives
       - legacy
+    rules:
+      # Test code is held to test standards, matching the two sibling modules
+      # in this family. These relax presentation and boilerplate rules; nothing
+      # that would hide a defect IN a test — the linters that catch an
+      # unreachable assertion or an unused fixture stay on, because several
+      # findings this round were exactly that.
+      - path: _test\.go
+        linters:
+          - dupl
+          - err113
+          - gochecknoglobals
+          - mnd
+          - nlreturn
+          - noctx
+          - prealloc
+          - unparam
+          - whitespace
+          - wsl_v5
+      # A test writing a fixture chooses its own modes and paths deliberately,
+      # and the e2e harness shells out to the built binary because that is what
+      # it exists to do.
+      - path: _test\.go
+        text: "G101|G102|G112|G204|G301|G302|G304|G306"
+        linters:
+          - gosec
+      # G703 reads the artefact names arriving from the feature files as taint
+      # reaching os.WriteFile, which is true. What it cannot see is world.path,
+      # which anchors every name inside the scenario's own temporary directory.
+      # Scoped to that one file, and the containment itself is asserted by
+      # TestPathKeepsArtefactsInsideTheScenarioDirectory in path_test.go — so
+      # this rests on a test rather than on this comment.
+      - path: test/e2e/steps/
+        text: "G703"
+        linters:
+          - gosec
     paths:
       - third_party$
       - builtin$
