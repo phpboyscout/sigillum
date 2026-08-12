@@ -141,12 +141,25 @@ func recoverSessionKey(
 ) (cipherID byte, sessionKey []byte, err error) {
 	var namedFailure, otherFailure error
 
-	for i, c := range candidates {
-		// Each attempt is one key-service call, and for a hidden recipient it
-		// is a guess. A message may carry any number of wildcard packets, so
-		// without a ceiling anyone who can write to the published address can
-		// bill us for as many derivations as they care to append.
-		if i >= maxDerivations {
+	guesses := 0
+
+	for _, c := range candidates {
+		// The ceiling applies to guesses only, and that distinction is the
+		// whole of it.
+		//
+		// A wildcard packet names nobody, so trying it is a guess — and anyone
+		// can send a message full of them without touching anything, which is
+		// what makes a cost ceiling necessary.
+		//
+		// A packet naming this certificate is different in the one way that
+		// matters. Forging one requires modifying a message in transit, and an
+		// attacker with that capability can simply delete the message instead.
+		// Capping those therefore protects nothing and loses genuine reports:
+		// it was counted three times across three review rounds, and each time
+		// eight forged packets pushed the real one out of reach. Deduplicating
+		// them did not help either, because every octet a duplicate is keyed on
+		// is an octet the attacker chose.
+		if overGuessLimit(c, &guesses) {
 			return 0, nil, exhausted(namedFailure, otherFailure, len(candidates))
 		}
 
@@ -193,17 +206,19 @@ func recoverSessionKey(
 // went looking for a different certificate while their credentials were the
 // fault. The cap is a statement about cost, not about who the message is for.
 func exhausted(namedFailure, otherFailure error, candidates int) error {
+	// First-wins, and named before other, so the message names the failure
+	// most likely to be actionable rather than the most recent one.
 	switch {
 	case namedFailure != nil:
-		return fmt.Errorf("gave up after %d of %d candidate session-key packets; the last failure was: %w",
-			maxDerivations, candidates, namedFailure)
+		return fmt.Errorf("gave up after %d hidden-recipient guesses of %d candidates; the first failure was: %w",
+			maxGuesses, candidates, namedFailure)
 	case otherFailure != nil:
-		return fmt.Errorf("gave up after %d of %d candidate session-key packets; the last failure was: %w",
-			maxDerivations, candidates, otherFailure)
+		return fmt.Errorf("gave up after %d hidden-recipient guesses of %d candidates; the first failure was: %w",
+			maxGuesses, candidates, otherFailure)
 	}
 
-	return fmt.Errorf("%w: gave up after trying %d of %d candidate session-key packets",
-		ErrNotAddressed, maxDerivations, candidates)
+	return fmt.Errorf("%w: gave up after %d hidden-recipient guesses of %d candidates",
+		ErrNotAddressed, maxGuesses, candidates)
 }
 
 // isUnwrapVerdict reports whether an error means "this packet was not ours"
@@ -212,13 +227,37 @@ func isUnwrapVerdict(err error) bool {
 	return errors.Is(err, encryption.ErrIntegrity) || errors.Is(err, encryption.ErrChecksum)
 }
 
-// maxDerivations bounds how many session-key packets Decrypt will try.
+// overGuessLimit reports whether trying this candidate would exceed the guess
+// ceiling, counting it when it is one.
+func overGuessLimit(c candidate, guesses *int) bool {
+	if c.named {
+		return false
+	}
+
+	if *guesses >= maxGuesses {
+		return true
+	}
+
+	*guesses++
+
+	return false
+}
+
+// maxGuesses bounds how many *wildcard* session-key packets Decrypt will try.
 //
-// Generous against real messages -- a report copied to a coordinating body and
-// a colleague carries a handful -- and small enough that a crafted message
-// cannot turn one inbound report into an unbounded run of billed key-service
-// calls.
-const maxDerivations = 8
+// Only guesses are bounded. A wildcard names nobody, so ruling it out costs a
+// billed key-service call, and anyone can send a message carrying any number of
+// them without modifying anything — so an unbounded walk turns one inbound
+// report into an unbounded run of billed calls.
+//
+// Packets naming this certificate are not bounded, because bounding them
+// protects nothing: forging one requires modifying a message in transit, and
+// that capability already permits deleting the message outright. What bounding
+// them did instead was lose genuine reports, three review rounds running.
+//
+// Generous against real messages: a report copied to a coordinating body and a
+// colleague carries a handful of hidden recipients at most.
+const maxGuesses = 8
 
 // unwrap recovers the session key from one candidate packet.
 func unwrap(
@@ -463,11 +502,14 @@ type candidateSet struct {
 func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candidate, []byte, error) {
 	candidates := make([]candidate, 0, len(c.ours)+len(c.hidden))
 
-	// Deduplicated as they are ordered, because the cap is a cost ceiling and
-	// duplicates buy nothing with it. Copying one packet is the cheapest way to
-	// push a genuine one past the cap: the wrapped key is public, so anyone who
-	// can touch the message can repeat it until the real candidate is never
-	// reached, and the operator is told the report was for somebody else.
+	// Deduplicated as they are ordered, because trying the same bytes twice can
+	// only fail twice.
+	//
+	// Deliberately not a defence. Every octet the key is built from is one the
+	// attacker chose, so varying a single byte defeats it — which is exactly
+	// what happened when this was relied on to stop a genuine candidate being
+	// crowded out. It survives as an efficiency, and the crowding problem is
+	// answered by bounding guesses rather than named packets. See maxGuesses.
 	seen := make(map[string]bool, len(c.ours)+len(c.hidden))
 
 	add := func(pkesk encryption.PKESK, named bool) {

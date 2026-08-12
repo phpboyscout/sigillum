@@ -411,21 +411,109 @@ func TestDecryptIsNotCrowdedOutByRepeatedPackets(t *testing.T) {
 
 	var got bytes.Buffer
 
-	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got)
-
-	// Either the genuine packet is reached, or the run stops at the cap — but
-	// it must not report the message as addressed elsewhere, which sends the
-	// operator to find a certificate that does not exist.
-	if err != nil {
-		if errors.Is(err, openpgp.ErrNotAddressed) {
-			t.Fatalf("a report behind forged packets was reported as somebody else's: %v", err)
-		}
-
-		return
+	// The report must be RECOVERED. An earlier version of this test accepted
+	// "either the genuine packet is reached, or the run stops at the cap",
+	// which made the defect one of its passing outcomes — the assertion was
+	// weakened until the code satisfied it, and the property fuzz target
+	// inherited the same weakness, so neither could ever have caught this.
+	//
+	// Forging a packet that names us requires modifying the message in
+	// transit, and an attacker with that capability can delete it outright.
+	// Losing the report to a cost ceiling is therefore never an acceptable
+	// outcome: the ceiling exists for unauthenticated senders, who cannot
+	// produce these at all.
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("a report behind %d forged packets was not recovered: %v", 12, err)
 	}
 
 	if got.String() != plaintext {
 		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+}
+
+// TestDecryptSurvivesManyForgedNamedPackets is the same attack at a scale no
+// tuning of a ceiling could absorb.
+//
+// Two hundred forged packets, each naming this certificate with a distinct
+// wrapped key so nothing collapses them. The point is that bounding named
+// candidates cannot be made safe by choosing a larger number — the attacker
+// picks the count — so the answer is not to bound them at all.
+//
+// Affordable to assert because the local backend makes an attempt free; against
+// a billed key service this test would be the very cost the ceiling exists to
+// prevent, which is precisely why the two properties had to be separated before
+// either could be tested honestly.
+func TestDecryptSurvivesManyForgedNamedPackets(t *testing.T) {
+	t.Parallel()
+
+	const (
+		plaintext = "a report behind two hundred forgeries"
+		forgeries = 200
+	)
+
+	der, deriver := testCertificate(t)
+
+	genuine := encryptTo(t, der, plaintext, false)
+	leading := firstPacket(t, genuine)
+
+	var message []byte
+
+	for i := range forgeries {
+		forged := append([]byte(nil), leading...)
+		forged[len(forged)-1] ^= byte(i%255 + 1)
+		message = append(message, forged...)
+	}
+
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("a report behind %d forged packets was not recovered: %v", forgeries, err)
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+}
+
+// TestDecryptStillBoundsHiddenRecipientGuesses is the other half, now testable
+// on its own.
+//
+// A wildcard names nobody, so ruling one out costs a billed call — and anyone
+// can send a message full of them without modifying anything. That is the case
+// the ceiling exists for, and it is unaffected by no longer bounding named
+// packets.
+func TestDecryptStillBoundsHiddenRecipientGuesses(t *testing.T) {
+	t.Parallel()
+
+	ours, deriver := testCertificate(t)
+	other, _ := testCertificate(t)
+
+	message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 60)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	counting := &countingDeriver{SecretDeriver: deriver}
+
+	if err := openpgp.Decrypt(t.Context(), counting, recipient,
+		bytes.NewReader(message), io.Discard); err == nil {
+		t.Fatal("a message for somebody else was accepted")
+	}
+
+	if counting.calls > 8 {
+		t.Errorf("the key service was called %d times for hidden recipients; the ceiling is 8", counting.calls)
+	}
+
+	if counting.calls == 0 {
+		t.Error("no guess was attempted, so the ceiling is not what stopped it")
 	}
 }
 

@@ -7,8 +7,12 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +23,7 @@ import (
 
 	"gitlab.com/phpboyscout/go/encryption"
 	"gitlab.com/phpboyscout/go/encryption/certificate"
+	_ "gitlab.com/phpboyscout/go/encryption/local"
 	openpgp "gitlab.com/phpboyscout/sigillum/internal/openpgp"
 )
 
@@ -166,23 +171,6 @@ func TestReadRecipientRejectsACertificateWithNoEncryptionSubkey(t *testing.T) {
 	}
 }
 
-// localDeriver holds its key in memory, standing in for the one call the real
-// key service makes.
-type localDeriver struct {
-	key *ecdh.PrivateKey
-}
-
-func (d localDeriver) DeriveSharedSecret(_ context.Context, peerPoint []byte) ([]byte, error) {
-	peer, err := ecdh.P256().NewPublicKey(peerPoint)
-	if err != nil {
-		return nil, err
-	}
-
-	return d.key.ECDH(peer)
-}
-
-func (d localDeriver) CoordinateBytes() int { return 32 }
-
 // countingDeriver records whether the key service was reached at all.
 type countingDeriver struct {
 	openpgp.SecretDeriver
@@ -239,7 +227,43 @@ func testCertificate(t *testing.T) ([]byte, openpgp.SecretDeriver) {
 		t.Fatalf("Assemble: %v", err)
 	}
 
-	return der, localDeriver{key: agreement}
+	return der, registeredDeriver(t, agreement)
+}
+
+// registeredDeriver returns the agreement half through the real key-service
+// registry rather than as a hand-rolled double.
+//
+// The double it replaces satisfied openpgp.SecretDeriver directly, so nothing
+// checked that the interface a real provider implements is the one these tests
+// exercise — a drift that would surface only in production. Going through the
+// registry means the tests reach the deriver exactly as the command does, and
+// the local backend is what makes that affordable: an attempt costs nothing, so
+// candidate-selection behaviour can be tested apart from the cost ceiling that
+// exists only because a KMS call is billed.
+func registeredDeriver(t *testing.T, key *ecdh.PrivateKey) openpgp.SecretDeriver {
+	t.Helper()
+
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshalling the agreement key: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "agreement.pem")
+	if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
+		t.Fatalf("writing the agreement key: %v", err)
+	}
+
+	service, err := encryption.LookupKeyService("local")
+	if err != nil {
+		t.Fatalf("the local backend is not registered: %v", err)
+	}
+
+	deriver, err := service.Deriver(t.Context(), path)
+	if err != nil {
+		t.Fatalf("Deriver: %v", err)
+	}
+
+	return deriver
 }
 
 // encryptTo composes a message addressed to the certificate, using an

@@ -3,7 +3,6 @@ package openpgp_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"testing"
@@ -155,15 +154,17 @@ func FuzzDecryptPrependedPackets(f *testing.F) {
 		err := openpgp.Decrypt(context.Background(), m.deriver, m.recipient,
 			bytes.NewReader(append(append([]byte(nil), prefix...), m.ciphertext...)), &got)
 
+		// The report must be RECOVERED, not merely not-misdiagnosed.
+		//
+		// An earlier version of this property allowed any error except
+		// ErrNotAddressed, which made losing the report a passing outcome. It
+		// inherited that weakness from a unit test whose assertion had been
+		// softened until the code satisfied it, so the two agreed with each
+		// other and neither could catch the defect they were both written for.
+		// A property that permits the failure it exists to detect is worse than
+		// no property, because it reads as coverage.
 		if err != nil {
-			// Refusing is allowed. Blaming the recipient is not: the message
-			// names this certificate, whatever was put in front of it.
-			if errors.Is(err, openpgp.ErrNotAddressed) {
-				t.Fatalf("%d prepended octets made a report for us look like somebody else's: %x",
-					len(prefix), prefix)
-			}
-
-			return
+			t.Fatalf("%d prepended octets lost a report addressed to us (%v): %x", len(prefix), err, prefix)
 		}
 
 		if got.String() != m.plaintext {

@@ -79,21 +79,26 @@ func packetsOrArmour(raw []byte, what string) ([]byte, error) {
 
 // isPacketStream reports whether the input already begins an OpenPGP packet.
 //
-// A definite answer rather than a heuristic: the first octet of a packet header
-// has its high bit set, and the tag must be one this exchange uses. Armour is
-// printable text, so it cannot satisfy either.
+// Parsing is the whole test, with no allowlist of tags. Every packet header has
+// its high bit set (RFC 9580 §4.2), and armour is printable text beginning with
+// a hyphen — 0x2D, high bit clear — so armour can never parse as a packet and
+// the question needs nothing else to answer it.
+//
+// An allowlist was tried and was wrong. Restricting the opening tag to a
+// session-key or public-key packet contradicted the walk that follows, which
+// deliberately steps over a marker or padding packet before the session keys —
+// so a message legitimately opening with a marker was refused as "neither
+// packets nor armour", losing a report addressed to this certificate. Five
+// octets were enough, and a property fuzz target found it immediately once the
+// property was strengthened to require the report be recovered rather than
+// merely not-misdiagnosed.
+//
+// Being permissive here costs nothing: input that parses as a packet but
+// carries no session key fails later with an error that says exactly that.
 func isPacketStream(raw []byte) bool {
-	pkt, err := encryption.ParsePacket(raw)
-	if err != nil {
-		return false
-	}
+	_, err := encryption.ParsePacket(raw)
 
-	switch pkt.Tag {
-	case encryption.TagPKESK, encryption.TagPublicKey:
-		return true
-	default:
-		return false
-	}
+	return err == nil
 }
 
 // dearmoured reads the decoded body of an armoured block, classifying a failure
