@@ -2,7 +2,6 @@ package openpgp
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -119,12 +118,12 @@ func Decrypt(
 		return fmt.Errorf("%w: no key service supplied", encryption.ErrMalformed)
 	}
 
-	candidates, rest, truncated, err := addressedToUs(message, recipient)
+	raw, err := readMessage(message)
 	if err != nil {
 		return err
 	}
 
-	cipherID, sessionKey, err := recoverSessionKey(ctx, deriver, recipient, candidates, truncated)
+	cipherID, sessionKey, rest, err := recoverSessionKey(ctx, deriver, recipient, raw)
 	if err != nil {
 		return err
 	}
@@ -145,83 +144,137 @@ func Decrypt(
 // What must not be lost is why. Two kinds of failure are worth reporting even
 // after a later candidate is tried and also fails, so they are kept as the run
 // goes on and reported in preference to a blanket verdict.
-func recoverSessionKey(
-	ctx context.Context,
-	deriver SecretDeriver,
-	recipient Recipient,
-	candidates []candidate,
-	truncated int,
-) (cipherID byte, sessionKey []byte, err error) {
-	var namedFailure, otherFailure error
+type attemptRun struct {
+	ctx       context.Context
+	recipient Recipient
+	billed    *billedOnce
 
-	// Scoped to this message, so nothing is remembered between calls and a key
-	// rotation between two messages is never served from a cache.
-	billed := newBilledOnce(deriver)
+	found                      candidateSet
+	namedFailure, otherFailure error
+	skipped, tried             int
 
-	// How many candidates the ceiling refused to pay for, which is what turns
-	// "none of them opened" into "we stopped before trying them all".
-	skipped := 0
+	cipherID   byte
+	sessionKey []byte
+}
 
-	for _, c := range candidates {
-		// One ceiling, on distinct billed derivations, applied to every
-		// candidate however it is addressed.
-		//
-		// The earlier rule bounded wildcard packets only, on the grounds that
-		// forging a packet naming this certificate requires modifying a message
-		// in transit and that such an attacker can delete the message anyway.
-		// That reasoning holds for suppressing a report and fails for cost: the
-		// key id is the tail of the PUBLISHED fingerprint, so any stranger can
-		// compose packets carrying it and send them to the address we publish.
-		//
-		// Since the derivation depends on the ephemeral point alone, cost is
-		// per distinct point and not per packet — so bounding distinct points
-		// is the whole of the cost story, and a candidate whose point has
-		// already been derived is free and never counted.
-		//
-		// What this gives up is bounded and already available to the same
-		// attacker: someone able to modify a message in transit can now bury a
-		// genuine report behind sixteen distinct forged points. They could
-		// delete the message outright instead, so the cap costs nothing against
-		// them, while its absence handed every stranger an amplifier of about a
-		// million billed calls per message.
-		//
-		// SKIPPED, not returned. This used to end the whole loop, which threw
-		// away every later candidate including the ones the ceiling does not
-		// govern at all: a packet whose point has already been derived is free,
-		// and a genuine report sitting behind sixteen distinct forged points was
-		// discarded without being tried. A bound that stops work it was never
-		// meant to bound is the exact shape this package keeps getting wrong.
-		if billed.wouldExceed(c.pkesk.EphemeralPoint) {
-			skipped++
+// attempt tries one candidate, unless the ceiling refuses to pay for it.
+//
+// SKIPPED, not returned, when the ceiling fires. A bound that stops work it was
+// never meant to govern is the shape this package keeps getting wrong: a packet
+// whose point is already derived costs nothing, and a genuine report sitting
+// behind sixteen distinct forged points must still be tried.
+func (r *attemptRun) attempt(pkesk encryption.PKESK, named bool) {
+	if r.billed.wouldExceed(pkesk.EphemeralPoint) {
+		r.skipped++
 
-			continue
+		return
+	}
+
+	r.tried++
+
+	cipher, key, err := unwrap(r.ctx, r.billed, r.recipient, pkesk)
+	if err == nil {
+		r.cipherID, r.sessionKey = cipher, key
+
+		return
+	}
+
+	r.namedFailure, r.otherFailure = recordFailure(named, err, r.namedFailure, r.otherFailure)
+}
+
+// named tries every packet addressing this certificate, and records what the
+// rest of the message was addressed to.
+func (r *attemptRun) named(raw []byte) []byte {
+	return eachSessionKey(raw, func(pkesk encryption.PKESK, pktBody []byte, parseErr error) {
+		switch {
+		case parseErr != nil:
+			r.found.fileUnreadable(pktBody, parseErr)
+
+		case r.sessionKey != nil:
+			return
+
+		case pkesk.KeyID == r.recipient.KeyID:
+			r.attempt(pkesk, true)
+
+		case pkesk.KeyID == wildcardKeyID:
+			r.found.hidden++
+
+		default:
+			r.found.recordOther(pkesk.KeyID)
+		}
+	})
+}
+
+// wildcards tries the packets naming nobody, held back until every named packet
+// has been read since one of those may match and cost nothing.
+func (r *attemptRun) wildcards(raw []byte) {
+	eachSessionKey(raw, func(pkesk encryption.PKESK, _ []byte, parseErr error) {
+		if parseErr != nil || pkesk.KeyID != wildcardKeyID || r.sessionKey != nil {
+			return
 		}
 
-		cipherID, sessionKey, err := unwrap(ctx, billed, recipient, c.pkesk)
-		if err == nil {
-			return cipherID, sessionKey, nil
-		}
+		r.attempt(pkesk, false)
+	})
+}
 
-		namedFailure, otherFailure = recordFailure(c, err, namedFailure, otherFailure)
+// outcome turns what the run learned into the error it should report.
+func (r *attemptRun) outcome() error {
+	if err := r.found.refuse(r.tried, r.recipient); err != nil {
+		return err
 	}
 
 	// Anything skipped means the run was cut short by cost, so it cannot be
 	// reported as a settled verdict about who the message is for.
-	if skipped > 0 || truncated > 0 {
-		return 0, nil, exhausted(namedFailure, otherFailure, len(candidates), skipped+truncated)
+	if r.skipped > 0 {
+		return exhausted(r.namedFailure, r.otherFailure, r.tried, r.skipped)
 	}
 
 	switch {
-	case namedFailure != nil:
-		return 0, nil, namedFailure
-	case otherFailure != nil:
-		return 0, nil, otherFailure
+	case r.namedFailure != nil:
+		return r.namedFailure
+	case r.otherFailure != nil:
+		return r.otherFailure
 	}
 
 	// Every candidate was a wildcard and every unwrap said no, which is exactly
 	// what a message for somebody else looks like.
-	return 0, nil, fmt.Errorf("%w: none of the %d candidate session-key packets unwrapped",
-		ErrNotAddressed, len(candidates))
+	return fmt.Errorf("%w: none of the %d candidate session-key packets unwrapped",
+		ErrNotAddressed, r.tried)
+}
+
+func recoverSessionKey(
+	ctx context.Context,
+	deriver SecretDeriver,
+	recipient Recipient,
+	raw []byte,
+) (cipherID byte, sessionKey []byte, body []byte, err error) {
+	// The memo is scoped to this message, so nothing is remembered between
+	// calls and a key rotation between two messages is never served from cache.
+	run := &attemptRun{ctx: ctx, recipient: recipient, billed: newBilledOnce(deriver)}
+
+	// Two passes over the message rather than one pass into a slice, and that
+	// is the whole of the memory story.
+	//
+	// Collecting candidates meant the message chose how much memory the walk
+	// held live, so a bound was put on the collection — and that bound then
+	// dropped genuine packets that cost nothing to try, which is the crowding
+	// defect this package has now produced at three separate bounds. Nothing is
+	// retained here, so there is nothing to bound and nothing to crowd out.
+	//
+	// The message is already in memory: readMessage read it whole, under its
+	// own bound. A second walk over bytes already held is cheap, and it is what
+	// preserves the ordering that keeps a message naming only other keys free.
+	body = run.named(raw)
+
+	if run.sessionKey == nil && run.found.hidden > 0 {
+		run.wildcards(raw)
+	}
+
+	if run.sessionKey != nil {
+		return run.cipherID, run.sessionKey, body, nil
+	}
+
+	return 0, nil, nil, run.outcome()
 }
 
 // exhausted reports running out of attempts without discarding what was learned
@@ -250,13 +303,13 @@ func exhausted(namedFailure, otherFailure error, candidates, skipped int) error 
 
 // recordFailure keeps the two kinds of failure worth reporting after a later
 // candidate has also failed, first-wins.
-func recordFailure(c candidate, err, namedFailure, otherFailure error) (named, other error) {
+func recordFailure(wasNamed bool, err, namedFailure, otherFailure error) (named, other error) {
 	switch {
 	// The message named this certificate and the unwrap still failed. That is a
 	// corrupt message or the wrong --key, not a message for somebody else, and
 	// reporting it as the latter sends the operator to find a different
 	// certificate when theirs is right.
-	case c.named && namedFailure == nil:
+	case wasNamed && namedFailure == nil:
 		return err, otherFailure
 
 	// Not an unwrap verdict at all — a key service that is unreachable or
@@ -274,24 +327,6 @@ func recordFailure(c candidate, err, namedFailure, otherFailure error) (named, o
 func isUnwrapVerdict(err error) bool {
 	return errors.Is(err, encryption.ErrIntegrity) || errors.Is(err, encryption.ErrChecksum)
 }
-
-// maxCandidates bounds how many session-key packets of each kind one message
-// may have retained from it.
-//
-// Not a cost bound — [maxDerivations] is that — but a memory one. Every
-// retained candidate is a struct and a dedup-map entry, and the message chooses
-// how many there are: a 24 MiB message of minimal session-key packets grew the
-// heap by 165 MiB, about sevenfold, and the message bound is 128 MiB. That is
-// an out-of-memory kill reachable by anyone who can send to the published
-// address, not a slow decrypt.
-//
-// Set far above any real message — a report copied to a coordinating body and a
-// colleague carries a handful of recipients — and far above what the derivation
-// ceiling could ever pay for, so nothing that could have been tried is dropped
-// unless its point was already going to be free. A message that exceeds it is
-// reported as cut short rather than as a settled verdict, because the walk did
-// not see all of it.
-const maxCandidates = 1024
 
 // maxDerivations bounds how many DISTINCT ephemeral points one message may
 // cost, which after memoisation is the same as how many billed key-service
@@ -503,14 +538,7 @@ var wildcardKeyID [8]byte
 //
 // The whole sequence is read before any key-service call, so a message that is
 // genuinely not ours still costs nothing.
-func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte, int, error) {
-	raw, err := readMessage(message)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-
-	var found candidateSet
-
+func eachSessionKey(raw []byte, visit func(pkesk encryption.PKESK, body []byte, err error)) []byte {
 	body := raw
 
 	for len(body) > 0 {
@@ -539,114 +567,29 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 		}
 
 		pkesk, err := encryption.ParsePKESK(pkt.Body)
-		if err != nil {
-			// A co-recipient's packet we cannot read is not a reason to refuse
-			// the message. RSA is still the most common key type and parses as
-			// unsupported here, as does a version 6 packet from a modern
-			// sender — so propagating this would fail a report over somebody
-			// else's key while ours sat in the very next packet.
-			//
-			// Which failure it was decides what the message is, so the two are
-			// counted apart.
-			//
-			// ErrUnsupported means a real recipient on an algorithm or version
-			// this package does not implement — genuinely somebody else's
-			// packet. Anything else means the bytes are not a session-key
-			// packet at all, which makes the message malformed rather than
-			// addressed elsewhere.
-			//
-			// Conflating them let an injected prefix — a garbage packet and an
-			// empty encrypted-data packet to cut the scan short — be reported
-			// as "the message is addressed to somebody else", sending the
-			// operator to find a certificate that was never involved.
-			found.fileUnreadable(pkt.Body, err)
-			body = pkt.Rest
 
-			continue
-		}
-
-		found.file(pkesk, recipient)
+		// A co-recipient's packet we cannot read is not a reason to refuse the
+		// message. RSA is still the most common key type and parses as
+		// unsupported here, as does a version 6 packet from a modern sender —
+		// so propagating this would fail a report over somebody else's key
+		// while ours sat in the very next packet. The caller decides what the
+		// failure means.
+		visit(pkesk, pkt.Body, err)
 
 		body = pkt.Rest
 	}
 
-	return chooseRecipients(found, body, recipient)
-}
-
-// candidate is a session-key packet worth attempting, and whether the message
-// named this certificate to reach it.
-//
-// The distinction decides what a failure means. A packet that named us and did
-// not open is a corrupt message or the wrong key; a wildcard that did not open
-// is simply not ours.
-type candidate struct {
-	pkesk encryption.PKESK
-	named bool
-}
-
-// file records one readable session-key packet under whichever heading it
-// belongs to.
-//
-// Separated from the walk because the two are different jobs: the walk decides
-// where the session-key packets end, this decides what each one means. Keeping
-// them together also put the walk over the complexity limit, which is the same
-// observation from the other direction.
-func (c *candidateSet) file(pkesk encryption.PKESK, recipient Recipient) {
-	switch pkesk.KeyID {
-	// Every packet naming us, not just the first. The key id is public — it is
-	// the tail of the certificate's own fingerprint — so anyone able to touch
-	// the message can prepend a packet carrying it and a wrapped key that will
-	// not open. Keeping only the first filed the genuine one under somebody
-	// else's recipients, where nothing could ever reach it.
-	//
-	// Bounded all the same, because "every packet" let the message choose how
-	// much memory the walk uses: a 24 MiB message of minimal session-key
-	// packets grew the heap by 165 MiB. See maxCandidates.
-	case recipient.KeyID:
-		if len(c.ours) >= maxCandidates {
-			c.truncated++
-
-			return
-		}
-
-		c.ours = append(c.ours, pkesk)
-
-	case wildcardKeyID:
-		// A hidden recipient names nobody, so the only way to know whether it
-		// is ours is to try it. Held back until every named packet has been
-		// read, since one of those may match and cost nothing.
-		if len(c.hidden) >= maxCandidates {
-			c.truncated++
-
-			return
-		}
-
-		c.hidden = append(c.hidden, pkesk)
-
-	default:
-		// Only as many DISTINCT ids as the error will ever render are kept; the
-		// rest are counted. The message chooses how many session-key packets it
-		// carries, so an attacker-sized list inside the 128 MiB bound would
-		// otherwise grow a slice of megabytes in order to print eight entries.
-		//
-		// Distinct, because the error tells an operator which certificate they
-		// should have used instead. Repeating one id eight times reads as eight
-		// certificates when there is one, which is worse than naming it once.
-		c.otherCount++
-
-		if len(c.others) < maxRenderedKeyIDs && !slices.Contains(c.others, pkesk.KeyID) {
-			c.others = append(c.others, pkesk.KeyID)
-		}
-	}
+	return body
 }
 
 // candidateSet is what one pass over the session-key packets found.
 type candidateSet struct {
-	ours   []encryption.PKESK
-	hidden []encryption.PKESK
+	// hidden counts wildcard packets seen, so the second pass is skipped
+	// entirely when there are none.
+	hidden int
 
-	// others holds at most [maxRenderedKeyIDs] of the key ids the message
-	// names, and otherCount how many there were altogether.
+	// others holds at most [maxRenderedKeyIDs] DISTINCT key ids the message
+	// names, and otherCount how many named packets there were altogether.
 	others     [][8]byte
 	otherCount int
 
@@ -655,110 +598,51 @@ type candidateSet struct {
 	// be ours, but they say the message was addressed to somebody.
 	unreadable int
 
-	// truncated counts candidates dropped for exceeding [maxCandidates], which
-	// means the walk did not see the whole message and cannot report a settled
-	// verdict about who it is for.
-	truncated int
-
 	// malformed counts packets in the session-key position that are not
 	// session-key packets at all. They say nothing about who the message is
 	// for, only that it is damaged.
 	malformed int
 }
 
-// chooseRecipients orders the packets worth trying, once the sequence has been
-// read.
+// recordOther notes a packet addressed to somebody else, for the error that
+// tells an operator which certificate they should have used.
+func (c *candidateSet) recordOther(id [8]byte) {
+	c.otherCount++
+
+	if len(c.others) < maxRenderedKeyIDs && !slices.Contains(c.others, id) {
+		c.others = append(c.others, id)
+	}
+}
+
+// refuse reports why nothing could be tried, or nil when something was.
 //
-// A packet naming us comes first, because a named match is certain where a
-// hidden one is a guess that costs a key-service call to disprove. Every hidden
-// packet follows, in the order the sender wrote them: taking only the first
-// means two hidden recipients with ours second fail with a checksum error on a
-// message that is genuinely ours.
-func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candidate, []byte, int, error) {
-	candidates := make([]candidate, 0, len(c.ours)+len(c.hidden))
-
-	// Deduplicated as they are ordered, because trying the same bytes twice can
-	// only fail twice.
-	//
-	// Deliberately not a defence AGAINST evasion. Every octet the key is built
-	// from is one the attacker chose, so varying a single byte defeats it —
-	// which is exactly what happened when this was relied on to stop a genuine
-	// candidate being crowded out. It survives as an efficiency, and the
-	// crowding problem is answered by bounding distinct billed derivations. See
-	// maxDerivations.
-	//
-	// It must still be injective, which is the opposite direction and was not
-	// true. The two parts were joined by a single 0x00 octet, and since both are
-	// attacker-chosen the split could be moved: given a genuine packet whose
-	// wrapped key is A‖0x00‖B and whose point is P, a forged packet with wrapped
-	// key A and point B‖0x00‖P produced the identical string. Ordered first, the
-	// forgery made the genuine packet look like a duplicate and it was dropped —
-	// the report unreadable, with no error naming the cause, because from the
-	// walk's point of view it was never there.
-	seen := make(map[string]bool, len(c.ours)+len(c.hidden))
-
-	add := func(pkesk encryption.PKESK, named bool) {
-		key := dedupKey(pkesk)
-		if seen[key] {
-			return
-		}
-
-		seen[key] = true
-
-		candidates = append(candidates, candidate{pkesk: pkesk, named: named})
-	}
-
-	for _, pkesk := range c.ours {
-		add(pkesk, true)
-	}
-
-	for _, pkesk := range c.hidden {
-		add(pkesk, false)
-	}
-
+// Separated from the walk because it is a different question: the walk finds
+// what is there, this decides what the absence of a usable candidate means. The
+// order matters and is the reverse of how the cases were first written — a
+// malformed message is a fact about the bytes, while "addressed elsewhere" is a
+// claim about who the sender chose, and claiming the second when the first is
+// true sends an operator to find a certificate that was never involved.
+func (c *candidateSet) refuse(tried int, recipient Recipient) error {
 	switch {
-	case len(candidates) > 0:
-		return candidates, body, c.truncated, nil
+	case tried > 0:
+		return nil
 
 	case c.malformed > 0:
-		return nil, nil, 0, fmt.Errorf(
-			"%w: %d packets before the encrypted data are not session-key packets",
+		return fmt.Errorf("%w: %d packets before the encrypted data are not session-key packets",
 			ErrMalformedMessage, c.malformed)
 
 	case c.otherCount == 0 && c.unreadable == 0:
-		return nil, nil, 0, fmt.Errorf(
-			"%w: no session-key packet at the start of the message", ErrMalformedMessage)
+		return fmt.Errorf("%w: no session-key packet at the start of the message", ErrMalformedMessage)
 
 	case c.otherCount == 0:
-		return nil, nil, 0, fmt.Errorf(
+		return fmt.Errorf(
 			"%w: its %d session-key packets are all of a kind this cannot read, so none names this certificate (%x)",
 			ErrNotAddressed, c.unreadable, recipient.KeyID)
 
 	default:
-		return nil, nil, 0, fmt.Errorf("%w: addressed to %s, this certificate is %x",
+		return fmt.Errorf("%w: addressed to %s, this certificate is %x",
 			ErrNotAddressed, keyIDs(c.others, c.otherCount), recipient.KeyID)
 	}
-}
-
-// dedupKey identifies a session-key packet by the bytes an attempt depends on.
-//
-// Length-prefixed rather than delimited, so the encoding is injective: a
-// delimiter can be forged into either part, a length cannot.
-func dedupKey(pkesk encryption.PKESK) string {
-	var key strings.Builder
-
-	// Enough for the two parts and their prefixes, so the builder does not
-	// grow while an attacker-sized packet is being encoded.
-	key.Grow(len(pkesk.WrappedKey) + len(pkesk.EphemeralPoint) + 2*binary.MaxVarintLen64)
-
-	var prefix [binary.MaxVarintLen64]byte
-
-	for _, part := range [][]byte{pkesk.WrappedKey, pkesk.EphemeralPoint} {
-		key.Write(prefix[:binary.PutUvarint(prefix[:], uint64(len(part)))])
-		key.Write(part)
-	}
-
-	return key.String()
 }
 
 // keyIDs renders the recipients a message names, so the error says which
