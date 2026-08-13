@@ -2,8 +2,13 @@ package decrypt
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"gitlab.com/phpboyscout/go/encryption"
+
+	"gitlab.com/phpboyscout/sigillum/internal/openpgp"
 )
 
 // TestCheckFlagsRefusesStdinTwice covers the flag combination the reference
@@ -189,3 +194,44 @@ func TestTooManyArgumentsNamesThemAll(t *testing.T) {
 		}
 	}
 }
+
+// TestNotesReachTheOperator covers the last link in the chain the parser
+// changes opened.
+//
+// certificate.Parse now reports findings it has no standing to decide about: a
+// revocation it cannot evaluate, or a certificate that stopped parsing before
+// its end. Both are deliberately not refusals — refusing an unverifiable
+// revocation would let a stranger retire a published key by appending a packet.
+//
+// That only helps if something reads them. A note nobody logs is the same
+// silence the parser was changed to break, so this pins that the command
+// actually surfaces them.
+func TestNotesReachTheOperator(t *testing.T) {
+	t.Parallel()
+
+	logged := &recordingWarner{}
+
+	recipient := openpgp.Recipient{
+		Notes: []error{
+			fmt.Errorf("%w: version 6", encryption.ErrUnverifiableRevocation),
+			fmt.Errorf("%w: stopped at a bad packet", encryption.ErrIncompleteCertificate),
+		},
+	}
+
+	reportNotes(logged, recipient)
+
+	for _, want := range []string{"version 6", "stopped at a bad packet"} {
+		if !strings.Contains(logged.String(), want) {
+			t.Errorf("the operator is never told %q; logged: %s", want, logged.String())
+		}
+	}
+}
+
+// recordingWarner captures what would have been warned.
+type recordingWarner struct{ lines []string }
+
+func (w *recordingWarner) Warn(msg string, args ...any) {
+	w.lines = append(w.lines, fmt.Sprint(append([]any{msg}, args...)...))
+}
+
+func (w *recordingWarner) String() string { return strings.Join(w.lines, "\n") }

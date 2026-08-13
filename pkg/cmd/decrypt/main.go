@@ -77,6 +77,8 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
+	reportNotes(p.GetLogger(), recipient)
+
 	message, closeMsg, err := openMessage(fsys, args)
 	if err != nil {
 		return err
@@ -127,6 +129,32 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	}
 
 	return nil
+}
+
+// warner is the sliver of the logger this needs.
+//
+// Narrowed so the reporting can be tested without standing up a logger, which
+// is the difference between this having a test and not.
+type warner interface {
+	Warn(msg string, args ...any)
+}
+
+// reportNotes tells the operator what the parser found and could not decide.
+//
+// Warnings, not Debug, and not swallowed. certificate.Parse reports a
+// revocation it cannot evaluate, and a certificate that did not parse to its
+// end, as notes rather than refusals — refusing the first would let anyone
+// retire a published encryption key by appending a packet, and refusing the
+// second would make a stray trailing octet fatal. Neither is a decision the
+// library can make, and the operator is who can: they may hold the revoker's
+// key, or know the certificate was truncated in transit.
+//
+// A note nobody reads is the same silence this was changed to break, which is
+// why it is a function with a test rather than a loop inside a long one.
+func reportNotes(log warner, recipient openpgp.Recipient) {
+	for _, note := range recipient.Notes {
+		log.Warn("the certificate carries something worth checking", "note", note)
+	}
 }
 
 // lazyDeriver defers wiring the key service until a secret is actually needed.
