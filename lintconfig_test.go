@@ -37,7 +37,21 @@ func TestEveryLintExclusionGovernsAnEnabledLinter(t *testing.T) {
 
 	enabled, excluded := parseLintConfig(string(raw))
 
+	// A skip here would be the one way this test goes quiet while still
+	// reporting success, and the parser it depends on is indentation-sensitive:
+	// a full YAML round-trip rewrites the exclusion lists as indentless
+	// sequences, parseLintConfig then finds nothing, and a suite that had been
+	// checking every exclusion silently checks none.
+	//
+	// So: no exclusions is only believable if the file says none. Anything else
+	// means the parser lost them, which is a failure of this test rather than a
+	// property of the config.
 	if len(excluded) == 0 {
+		if strings.Contains(string(raw), "- path:") {
+			t.Fatal("the config declares path exclusions but none were parsed; parseLintConfig " +
+				"has lost track of the file's shape and this test is no longer checking anything")
+		}
+
 		t.Skip("no file-scoped exclusions to check")
 	}
 

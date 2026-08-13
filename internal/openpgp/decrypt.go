@@ -411,14 +411,21 @@ func unwrap(
 	}, params)
 }
 
-// countUnparsed files a session-key packet this cannot read under whichever of
+// fileUnreadable files a session-key packet this cannot read under whichever of
 // the two counts it belongs to.
-func countUnparsed(body []byte, err error, unreadable, malformed int) (int, int) {
+//
+// A method for the same reason file() is one, and it was a free function taking
+// and returning both counters positionally — four untyped ints of the same type
+// across a call, where transposing a pair would compile, pass every test, and
+// change only which error an operator is shown.
+func (c *candidateSet) fileUnreadable(body []byte, err error) {
 	if isRealRecipientPacket(body, err) {
-		return unreadable + 1, malformed
+		c.unreadable++
+
+		return
 	}
 
-	return unreadable, malformed + 1
+	c.malformed++
 }
 
 // isRealRecipientPacket reports whether a session-key packet this cannot parse
@@ -552,7 +559,7 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 			// empty encrypted-data packet to cut the scan short — be reported
 			// as "the message is addressed to somebody else", sending the
 			// operator to find a certificate that was never involved.
-			found.unreadable, found.malformed = countUnparsed(pkt.Body, err, found.unreadable, found.malformed)
+			found.fileUnreadable(pkt.Body, err)
 			body = pkt.Rest
 
 			continue
@@ -757,14 +764,14 @@ func dedupKey(pkesk encryption.PKESK) string {
 // keyIDs renders the recipients a message names, so the error says which
 // certificate should have been used rather than only that this one was wrong.
 func keyIDs(ids [][8]byte, total int) string {
-	// Capped here as well as at the point of retention, so neither bound is
-	// load-bearing alone. They guard different things — this one an error
-	// string that reaches a log and a terminal, the other a slice that reaches
-	// memory — and a change to one should not silently undo the other.
-	if len(ids) > maxRenderedKeyIDs {
-		ids = ids[:maxRenderedKeyIDs]
-	}
-
+	// Deliberately NOT capped again here. candidateSet.file already refuses to
+	// retain more than maxRenderedKeyIDs, so a second cap could never execute —
+	// and worse, if that retention bound ever regressed this would silently
+	// absorb the regression rather than let it show. A guard nothing can reach
+	// is a guard nothing can test, and this estate has been bitten by those.
+	//
+	// TestDecryptDoesNotRetainEveryKeyIDItSaw holds the retention bound
+	// instead. A failing test is louder than a reslice nobody sees.
 	out := make([]string, 0, len(ids)+1)
 	for _, id := range ids {
 		out = append(out, fmt.Sprintf("%x", id))

@@ -103,7 +103,18 @@ func packetsOrArmour(raw []byte, what string) ([]byte, error) {
 // the ordinary arrival shape this ordering exists to keep working.
 //
 // So: walk, stepping over exactly what the candidate walk steps over, and
-// answer yes only on reaching a packet that carries something. A header with
+// answer yes only on reaching a packet that carries something.
+//
+// That "exactly" is an invariant between two functions, and it is held by a
+// test rather than by care: TestDecryptStepsOverInertPackets runs markers,
+// trust, padding and unknown packets through the whole path at every position
+// they can occupy, so the two walks drifting apart fails there.
+//
+// Keeping them as two walks is deliberate. They answer different questions —
+// "is this binary at all?" and "which packets are candidates?" — and fusing
+// them to save a parse would recouple decisions that were separated because
+// holding both in one place is what produced three rounds of findings. The
+// duplicate is one ParsePacket over one header on the ordinary path. A header with
 // nothing behind it establishes nothing, which is the property the comment
 // above claims and this is what makes it true.
 func isPacketStream(raw []byte) bool {
