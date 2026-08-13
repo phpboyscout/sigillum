@@ -144,10 +144,22 @@ func framePacket(t *testing.T, tag byte, body []byte) []byte {
 	const (
 		newFormat   = 0xC0
 		maxTag      = 63
-		oneOctetMax = 192     // the one-octet form covers 0..191
-		twoOctetMax = 8384    // the two-octet form covers 192..8383
-		fiveOctet   = 0xFF    // the marker introducing a four-octet length
-		maxLength   = 1 << 32 // the five-octet form's ceiling, exclusive
+		oneOctetMax = 192  // the one-octet form covers 0..191
+		twoOctetMax = 8384 // the two-octet form covers 192..8383
+		fiveOctet   = 0xFF // the marker introducing a four-octet length
+
+		// The five-octet form's ceiling, exclusive, as an int64.
+		//
+		// Written for comparison against a WIDENED n rather than as an untyped
+		// constant compared to an int. `1 << 32` is not representable as an int
+		// on a 32-bit target, so the comparison below was a compile error for
+		// GOARCH=386 and arm — which broke the cross-arch CI job this branch
+		// itself added, in the one file that job existed to protect.
+		//
+		// go/encryption/internal/num documents this exact trap and exists to
+		// stop it. The lesson did not travel because this is a test helper in
+		// another module, which is precisely how a defect class comes back.
+		maxLength int64 = 1 << 32
 	)
 
 	if tag > maxTag {
@@ -166,7 +178,7 @@ func framePacket(t *testing.T, tag byte, body []byte) []byte {
 		offset := n - oneOctetMax
 		out = append(out, byte(offset>>8)+oneOctetMax, byte(offset&0xFF))
 
-	case n < maxLength:
+	case int64(n) < maxLength:
 		out = append(out, fiveOctet)
 		out = binary.BigEndian.AppendUint32(out, uint32(n))
 
