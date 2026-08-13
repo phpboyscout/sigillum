@@ -170,6 +170,21 @@ const (
 	encryptAlias = "alias/encrypt"
 )
 
+// decryptTwoReports names two messages, which the command silently used to
+// half-do: it read the first, reported success and said nothing about the
+// second.
+func (w *world) decryptTwoReports() error {
+	return w.run("decrypt",
+		"--certificate", filepath.Join(w.dir, "certificate.pgp"),
+		"--key", encryptAlias,
+		filepath.Join(w.dir, "report.pgp"),
+		filepath.Join(w.dir, "second.pgp"))
+}
+
+func (w *world) failsTooManyMessages() error {
+	return w.failsSaying("only one message can be decrypted at a time")
+}
+
 func (w *world) decryptWithoutACertificate() error {
 	return w.run("decrypt", "--key", encryptAlias)
 }
@@ -254,7 +269,9 @@ func registerDecryptSteps(ctx *godog.ScenarioContext, w *world) {
 
 	ctx.Then(`^it fails saying the message is addressed elsewhere$`, w.failsAddressedElsewhere)
 	ctx.Then(`^it fails saying the message is malformed$`, w.failsMalformed)
+	ctx.When(`^I decrypt two reports at once$`, w.decryptTwoReports)
 	ctx.Then(`^it fails saying there is no encryption subkey$`, w.failsNoEncryptionSubkey)
+	ctx.Then(`^it fails saying only one message can be decrypted$`, w.failsTooManyMessages)
 	ctx.Then(`^it fails naming the missing flag "([^"]*)"$`, w.failsNamingFlag)
 	ctx.Then(`^it fails listing "([^"]*)" as available$`, w.failsListingBackend)
 	ctx.Then(`^no key service was contacted$`, w.noKeyServiceWasContacted)

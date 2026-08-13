@@ -127,3 +127,64 @@ func TestCheckFlagsReportsTheSameMissingFlagEveryTime(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckFlagsRefusesMoreThanOneMessage covers the arguments that were
+// silently discarded.
+//
+// The command reads args[0] and nothing else, and its generated Use string
+// declares no positional arguments at all. So `sigillum decrypt a.pgp b.pgp`
+// decrypted a.pgp, reported success, and said nothing whatever about b.pgp —
+// an operator running it over a directory of reports would have been told
+// every one of them succeeded.
+//
+// Refusing is the only honest answer available: there is a single --output, so
+// decrypting several in one run was never something this command could do.
+func TestCheckFlagsRefusesMoreThanOneMessage(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{"none, meaning stdin", nil, false},
+		{"the stdin sentinel", []string{"-"}, false},
+		{"one message", []string{"report.pgp"}, false},
+		{"two messages", []string{"report.pgp", "other.pgp"}, true},
+		{"a directory's worth", []string{"a.pgp", "b.pgp", "c.pgp"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := &DecryptOptions{Certificate: "certificate.pgp", Key: "alias/encrypt"}
+
+			err := checkFlags(opts, tc.args)
+
+			switch {
+			case tc.wantErr && !errors.Is(err, ErrTooManyArguments):
+				t.Errorf("error = %v, want ErrTooManyArguments", err)
+			case !tc.wantErr && errors.Is(err, ErrTooManyArguments):
+				t.Errorf("%v were refused as too many", tc.args)
+			}
+		})
+	}
+}
+
+// TestTooManyArgumentsNamesThemAll is what makes the refusal actionable: the
+// operator has to be able to see which invocation was wrong.
+func TestTooManyArgumentsNamesThemAll(t *testing.T) {
+	t.Parallel()
+
+	opts := &DecryptOptions{Certificate: "certificate.pgp", Key: "alias/encrypt"}
+
+	err := checkFlags(opts, []string{"first.pgp", "second.pgp"})
+	if err == nil {
+		t.Fatal("two messages were accepted")
+	}
+
+	for _, name := range []string{"first.pgp", "second.pgp"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("the refusal does not name %s: %v", name, err)
+		}
+	}
+}

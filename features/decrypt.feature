@@ -52,3 +52,9 @@ Feature: Reading an encrypted vulnerability report
     When I assemble a certificate without a creation time
     Then it fails naming the missing flag "--created"
     And it explains that the time is part of the certificate's identity
+
+  Scenario: Naming more than one message is refused rather than half-done
+    Given a published certificate
+    And a report that is not an OpenPGP message
+    When I decrypt two reports at once
+    Then it fails saying only one message can be decrypted

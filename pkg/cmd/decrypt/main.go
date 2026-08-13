@@ -30,6 +30,15 @@ var (
 	// ErrStdinTwice means both the certificate and the message were asked for
 	// from stdin, which cannot work: reading the first drains it.
 	ErrStdinTwice = errors.New("the certificate and the message cannot both come from stdin")
+
+	// ErrTooManyArguments means more than one message was named.
+	//
+	// Only the first was ever read and the rest were discarded without a word,
+	// so an operator who ran the command over a directory of reports was shown
+	// one success and told nothing about the others. Refusing is the only
+	// honest answer: there is one --output, so decrypting several in one run
+	// was never something this could do.
+	ErrTooManyArguments = errors.New("only one message can be decrypted at a time")
 )
 
 // RunDecrypt reads an encrypted report and writes its plaintext out.
@@ -241,6 +250,10 @@ func openInput(fsys opfile.FS, path string) (io.Reader, func(), error) {
 // Refused here rather than left to fail, because the failure names the wrong
 // thing and there is no arrangement of the two that works.
 func checkFlags(opts *DecryptOptions, args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("%w: %d were named (%s)", ErrTooManyArguments, len(args), strings.Join(args, ", "))
+	}
+
 	if opts.Certificate == "" {
 		return fmt.Errorf("%w: --certificate", ErrMissingFlag)
 	}
