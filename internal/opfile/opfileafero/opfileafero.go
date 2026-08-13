@@ -24,8 +24,9 @@ import (
 
 // Wrap adapts an afero filesystem to [opfile.FS].
 //
-// The result satisfies [opfile.Lstater] and [opfile.LinkReader] only where the
-// wrapped filesystem genuinely provides each. Both are optional in afero too,
+// The result always satisfies [opfile.Chmoder], since afero requires Chmod of
+// every filesystem, and satisfies [opfile.Lstater] and [opfile.LinkReader] only
+// where the wrapped filesystem genuinely provides each. Both are optional in afero too,
 // and an adapter that always had the methods would make every filesystem look
 // able to tell a link from its target and to resolve it — which is precisely
 // the rule that an implementation must not satisfy an optional interface it
@@ -62,8 +63,13 @@ func (w wrapper) CreateExcl(name string, perm fs.FileMode) (opfile.File, error) 
 }
 
 func (w wrapper) Stat(name string) (fs.FileInfo, error) { return w.fsys.Stat(name) }
-func (w wrapper) Rename(oldpath, newpath string) error  { return w.fsys.Rename(oldpath, newpath) }
-func (w wrapper) Remove(name string) error              { return w.fsys.Remove(name) }
+
+// Chmod satisfies [opfile.Chmoder] on every shape, because afero.Fs requires it
+// of every filesystem — unlike lstat and readlink, it is not optional there, so
+// no extra shape is needed to express its absence.
+func (w wrapper) Chmod(name string, mode fs.FileMode) error { return w.fsys.Chmod(name, mode) }
+func (w wrapper) Rename(oldpath, newpath string) error      { return w.fsys.Rename(oldpath, newpath) }
+func (w wrapper) Remove(name string) error                  { return w.fsys.Remove(name) }
 
 func (w wrapper) lstat(name string) (fs.FileInfo, error) {
 	info, _, err := w.fsys.(afero.Lstater).LstatIfPossible(name)

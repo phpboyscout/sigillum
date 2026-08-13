@@ -80,6 +80,25 @@ type LinkReader interface {
 	Readlink(name string) (string, error)
 }
 
+// Chmoder optionally sets a file's mode after it has been created.
+//
+// Optional for the same reason [Lstater] is: not every filesystem has POSIX
+// modes to set, and one that does not must not claim it can.
+//
+// Needed because CreateExcl's perm is a request, not an instruction — the
+// process umask masks it, so an operator with `umask 077` publishing a
+// certificate at the documented 0644 got 0600 and a web server that could not
+// read it. The staged file is chmod'd immediately after creation and before any
+// content is written, so the mode is exact without ever widening a file that
+// holds a report.
+//
+// Where it is absent the requested mode is subject to the umask, which narrows
+// and never widens — the safe direction, and the one that matters for a
+// decrypted report.
+type Chmoder interface {
+	Chmod(name string, mode fs.FileMode) error
+}
+
 // Lstater optionally reports on a path without following a symbolic link.
 //
 // Optional because a filesystem with no notion of links cannot honour it, and
@@ -113,11 +132,12 @@ func (osFS) CreateExcl(name string, perm fs.FileMode) (File, error) {
 	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, perm)
 }
 
-func (osFS) Stat(name string) (fs.FileInfo, error)  { return os.Stat(name) }
-func (osFS) Rename(oldpath, newpath string) error   { return os.Rename(oldpath, newpath) }
-func (osFS) Remove(name string) error               { return os.Remove(name) }
-func (osFS) Lstat(name string) (fs.FileInfo, error) { return os.Lstat(name) }
-func (osFS) Readlink(name string) (string, error)   { return os.Readlink(name) }
+func (osFS) Stat(name string) (fs.FileInfo, error)     { return os.Stat(name) }
+func (osFS) Rename(oldpath, newpath string) error      { return os.Rename(oldpath, newpath) }
+func (osFS) Remove(name string) error                  { return os.Remove(name) }
+func (osFS) Lstat(name string) (fs.FileInfo, error)    { return os.Lstat(name) }
+func (osFS) Chmod(name string, mode fs.FileMode) error { return os.Chmod(name, mode) }
+func (osFS) Readlink(name string) (string, error)      { return os.Readlink(name) }
 
 // stage creates a uniquely named file beside the destination.
 //
@@ -134,6 +154,15 @@ func stage(fsys FS, dir, name string, perm fs.FileMode) (File, string, error) {
 
 		switch {
 		case err == nil:
+			// The umask masked perm on the way in, so the mode is set again
+			// here — while the file is still empty, so nothing is ever exposed
+			// at a mode broader than it will end up with.
+			if err := setMode(fsys, path, perm); err != nil {
+				_ = f.Close()
+
+				return nil, "", err
+			}
+
 			return f, path, nil
 		case errors.Is(err, fs.ErrExist):
 			continue
@@ -154,4 +183,19 @@ func randomSuffix() string {
 	_, _ = rand.Read(b[:])
 
 	return strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:]))
+}
+
+// setMode makes a staged file's mode exactly what the caller asked for, where
+// the filesystem can.
+func setMode(fsys FS, path string, perm fs.FileMode) error {
+	chmoder, ok := fsys.(Chmoder)
+	if !ok {
+		return nil
+	}
+
+	if err := chmoder.Chmod(path, perm); err != nil {
+		return fmt.Errorf("setting the mode of the staged file: %w", err)
+	}
+
+	return nil
 }
