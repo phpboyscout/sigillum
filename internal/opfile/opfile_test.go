@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -508,3 +510,224 @@ func (linkInfo) Mode() fs.FileMode  { return os.ModeSymlink | 0o777 }
 func (linkInfo) ModTime() time.Time { return time.Time{} }
 func (linkInfo) IsDir() bool        { return false }
 func (linkInfo) Sys() any           { return nil }
+
+// TestFollowSymlinksResolvesAChainWithinItsBudget covers the off-by-one in the
+// hop limit.
+//
+// Each pass inspects a path and then follows at most one link, so resolving a
+// chain of exactly maxHops links needs one more inspection than there are
+// links. Looping maxHops times refused a chain of eight that had in fact
+// resolved to a regular file well inside its budget — the operator was told
+// their destination "leads through more than 8 links" when it led through
+// exactly eight and ended somewhere perfectly writable.
+func TestFollowSymlinksResolvesAChainWithinItsBudget(t *testing.T) {
+	t.Parallel()
+
+	const maxHops = 8
+
+	for _, tc := range []struct {
+		name    string
+		links   int
+		wantErr bool
+	}{
+		{"one short of the limit", maxHops - 1, false},
+		{"exactly the limit", maxHops, false},
+		{"one past the limit", maxHops + 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+
+			target := filepath.Join(dir, "target.txt")
+			if err := os.WriteFile(target, []byte("the previous report"), 0o600); err != nil {
+				t.Fatalf("write target: %v", err)
+			}
+
+			// A chain of tc.links symbolic links ending at the regular file.
+			at := target
+
+			for i := range tc.links {
+				link := filepath.Join(dir, "link"+strconv.Itoa(i))
+				if err := os.Symlink(at, link); err != nil {
+					t.Skipf("symlinks unavailable here: %v", err)
+				}
+
+				at = link
+			}
+
+			_, err := opfile.Create(opfileafero.Wrap(afero.NewOsFs()), at, 0o600, opfile.FollowSymlinks())
+
+			switch {
+			case tc.wantErr && !errors.Is(err, opfile.ErrUnresolvableLink):
+				t.Errorf("a chain of %d links: error = %v, want ErrUnresolvableLink", tc.links, err)
+			case !tc.wantErr && err != nil:
+				t.Errorf("a chain of %d links resolved to a regular file but was refused: %v", tc.links, err)
+			}
+		})
+	}
+}
+
+// TestRefusalNamesThePathTheOperatorTyped covers the diagnostic.
+//
+// Every error from the resolver used to read the walking variable, so from the
+// second hop onwards it named an intermediate link the operator had never
+// typed and that appeared nowhere in their command.
+func TestRefusalNamesThePathTheOperatorTyped(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// A chain ending at a directory, which cannot be replaced atomically — so
+	// the refusal comes from deep in the walk rather than the first pass.
+	destination := filepath.Join(dir, "a-directory")
+	if err := os.Mkdir(destination, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	at := destination
+
+	for i := range 3 {
+		link := filepath.Join(dir, "link"+strconv.Itoa(i))
+		if err := os.Symlink(at, link); err != nil {
+			t.Skipf("symlinks unavailable here: %v", err)
+		}
+
+		at = link
+	}
+
+	_, err := opfile.Create(opfileafero.Wrap(afero.NewOsFs()), at, 0o600, opfile.FollowSymlinks())
+	if err == nil {
+		t.Fatal("a chain ending at a directory was accepted")
+	}
+
+	if !strings.Contains(err.Error(), at) {
+		t.Errorf("the refusal does not name %s, the path the operator typed: %v", at, err)
+	}
+}
+
+// TestCleanupHappensOnceOnEveryFailurePath covers the double-cleanup that the
+// committed flag did not guard against.
+//
+// Both commands defer Abandon unconditionally, which is deliberate: without it
+// a failed run leaves its temporary behind, and the common failures here are
+// routine. But Commit's three failure branches each cleaned up by hand and left
+// the flag false, so the deferred Abandon ran the cleanup a second time —
+// closing an already-closed handle and removing an already-removed path.
+//
+// Nothing was lost with the filesystems in this tree, because both second calls
+// return errors that are discarded and the staged name is unique. It is pinned
+// anyway: File's contract does not promise Close-once, so an implementation
+// that counted on it — a pooled handle, a strict double — would break on a
+// failed sync, and that is exactly the kind of thing nobody would connect back
+// to this function.
+func TestCleanupHappensOnceOnEveryFailurePath(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		fail func(f *countingFile, fsys *countingFS)
+	}{
+		{"sync fails", func(f *countingFile, _ *countingFS) { f.syncErr = errors.New("disk went away") }},
+		{"close fails", func(f *countingFile, _ *countingFS) { f.closeErr = errors.New("cannot close") }},
+		{"rename fails", func(_ *countingFile, fsys *countingFS) { fsys.renameErr = errors.New("cross-device") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fsys := &countingFS{FS: opfileafero.Wrap(afero.NewMemMapFs())}
+
+			w, err := opfile.Create(fsys, "/reports/report.txt", 0o600)
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+
+			tc.fail(fsys.file, fsys)
+
+			if _, err := w.Write([]byte("a report")); err != nil {
+				t.Fatalf("Write: %v", err)
+			}
+
+			if err := w.Commit(); err == nil {
+				t.Fatal("Commit reported success although the run failed")
+			}
+
+			// What both commands do, unconditionally.
+			w.Abandon()
+
+			if fsys.file.closes > 1 {
+				t.Errorf("the staged handle was closed %d times", fsys.file.closes)
+			}
+
+			if fsys.removes > 1 {
+				t.Errorf("the staged file was removed %d times", fsys.removes)
+			}
+
+			if fsys.removes == 0 {
+				t.Error("the staged file was never removed, so a failed run leaves it behind")
+			}
+		})
+	}
+}
+
+// countingFS counts the cleanup operations and can fail a rename.
+type countingFS struct {
+	opfile.FS
+
+	file      *countingFile
+	removes   int
+	renameErr error
+}
+
+func (f *countingFS) CreateExcl(name string, perm fs.FileMode) (opfile.File, error) {
+	inner, err := f.FS.CreateExcl(name, perm)
+	if err != nil {
+		return nil, err
+	}
+
+	f.file = &countingFile{File: inner}
+
+	return f.file, nil
+}
+
+func (f *countingFS) Remove(name string) error {
+	f.removes++
+
+	return f.FS.Remove(name)
+}
+
+func (f *countingFS) Rename(oldpath, newpath string) error {
+	if f.renameErr != nil {
+		return f.renameErr
+	}
+
+	return f.FS.Rename(oldpath, newpath)
+}
+
+// countingFile counts closes and can fail either of the two operations Commit
+// performs before the rename.
+type countingFile struct {
+	opfile.File
+
+	closes   int
+	syncErr  error
+	closeErr error
+}
+
+func (f *countingFile) Sync() error {
+	if f.syncErr != nil {
+		return f.syncErr
+	}
+
+	return f.File.Sync()
+}
+
+func (f *countingFile) Close() error {
+	f.closes++
+
+	if f.closeErr != nil {
+		return f.closeErr
+	}
+
+	return f.File.Close()
+}

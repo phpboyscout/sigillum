@@ -107,9 +107,23 @@ type Writer struct {
 
 	final string
 
-	// committed makes Abandon a genuine no-op afterwards rather than one that
-	// happens to remove a path nothing is using.
-	committed bool
+	// done means the staged file has been dealt with — committed or discarded —
+	// so any further cleanup is a genuine no-op rather than one that happens to
+	// remove a path nothing is using.
+	//
+	// It covers both outcomes deliberately. It used to be a `committed` flag
+	// guarding only the success path, while all three of Commit's failure
+	// branches left it false and cleaned up by hand — so the unconditional
+	// deferred Abandon that both commands make ran the cleanup a second time.
+	// Nothing was lost, because a second Close and a second Remove both return
+	// errors that are discarded and the staged name is unique, but File's
+	// contract does not promise Close-once and an implementation that counted
+	// on it would have been broken by a failed sync.
+	done bool
+
+	// closed tracks the staged handle separately, so a Close that already
+	// happened — or already failed — is not attempted again on the way out.
+	closed bool
 }
 
 // Create prepares to write path, without disturbing whatever is already there.
@@ -168,7 +182,21 @@ func resolveDestination(fsys FS, path string, cfg options) (string, error) {
 	// Bounded, because a link may point at another and eventually at itself.
 	const maxHops = 8
 
-	for range maxHops {
+	// The path the caller named, kept apart from the one being walked.
+	//
+	// Every error here used to read the walking variable, so from the second
+	// hop onwards they named an intermediate link the operator had never typed
+	// and that appeared nowhere in their command, with nothing connecting the
+	// two. Both are reported now: the destination they asked for, and where the
+	// walk was when it gave up.
+	named := path
+
+	// maxHops+1 passes, not maxHops: each pass inspects a path and then follows
+	// at most one link, so resolving a chain of exactly maxHops links needs one
+	// more inspection than there are links. Looping maxHops times refused a
+	// chain of eight that had in fact resolved to a regular file well inside
+	// its budget.
+	for range maxHops + 1 {
 		info, err := lstat(fsys, path)
 
 		switch {
@@ -176,7 +204,7 @@ func resolveDestination(fsys FS, path string, cfg options) (string, error) {
 			// Nothing there: the ordinary case.
 			return path, nil
 		case err != nil:
-			return "", fmt.Errorf("inspecting %s: %w", path, err)
+			return "", fmt.Errorf("inspecting %s: %w", describePath(named, path), err)
 		case info.Mode().IsRegular():
 			return path, nil
 		case info.Mode()&os.ModeSymlink == 0:
@@ -184,11 +212,11 @@ func resolveDestination(fsys FS, path string, cfg options) (string, error) {
 			// whatever the caller asked for, so following does not arise.
 			return "", fmt.Errorf("%w: %s is %s; this command replaces its destination atomically "+
 				"and cannot write through it — write to stdout and pipe instead",
-				ErrNotRegular, path, describe(info.Mode()))
+				ErrNotRegular, describePath(named, path), describe(info.Mode()))
 		case !cfg.followSymlinks:
 			return "", fmt.Errorf("%w: %s is %s; replacing it atomically would remove the link. "+
 				"Pass --follow-symlinks to write through it, or name the file it points at",
-				ErrNotRegular, path, describe(info.Mode()))
+				ErrNotRegular, describePath(named, path), describe(info.Mode()))
 		}
 
 		target, err := readlink(fsys, path)
@@ -204,7 +232,21 @@ func resolveDestination(fsys FS, path string, cfg options) (string, error) {
 		path = filepath.Clean(target)
 	}
 
-	return "", fmt.Errorf("%w: %s leads through more than %d links", ErrUnresolvableLink, path, maxHops)
+	return "", fmt.Errorf("%w: %s leads through more than %d links", ErrUnresolvableLink,
+		describePath(named, path), maxHops)
+}
+
+// describePath names a path the way an operator can act on it.
+//
+// While the walk is still on the path they typed, that alone. Once it has
+// followed a link, both — the destination they named is what connects the
+// message to their command, and where the walk reached is what explains it.
+func describePath(named, at string) string {
+	if named == at {
+		return named
+	}
+
+	return fmt.Sprintf("%s (via %s)", named, at)
 }
 
 // readlink resolves one hop, where the filesystem can.
@@ -284,21 +326,32 @@ func (w *Writer) Commit() error {
 		return fmt.Errorf("flushing %s: %w", w.final, err)
 	}
 
-	if err := w.tmp.Close(); err != nil {
-		_ = w.fsys.Remove(w.tmpPath)
+	if err := w.closeTemp(); err != nil {
+		w.discard()
 
 		return fmt.Errorf("closing %s: %w", w.final, err)
 	}
 
 	if err := w.fsys.Rename(w.tmpPath, w.final); err != nil {
-		_ = w.fsys.Remove(w.tmpPath)
+		w.discard()
 
 		return fmt.Errorf("replacing %s: %w", w.final, err)
 	}
 
-	w.committed = true
+	w.done = true
 
 	return nil
+}
+
+// closeTemp closes the staged handle at most once.
+func (w *Writer) closeTemp() error {
+	if w.closed {
+		return nil
+	}
+
+	w.closed = true
+
+	return w.tmp.Close()
 }
 
 // Abandon discards the temporary file, leaving the destination untouched.
@@ -307,11 +360,13 @@ func (w *Writer) Commit() error {
 func (w *Writer) Abandon() { w.discard() }
 
 func (w *Writer) discard() {
-	if w.committed {
+	if w.done {
 		return
 	}
 
-	_ = w.tmp.Close()
+	w.done = true
+
+	_ = w.closeTemp()
 	_ = w.fsys.Remove(w.tmpPath)
 }
 
