@@ -263,3 +263,47 @@ func (endlessReader) Read(p []byte) (int, error) {
 
 	return len(p), nil
 }
+
+// TestDecryptReadsAMessageOpeningWithAMarker covers the shape that made two
+// functions disagree about which packets may open the input.
+//
+// The candidate walk deliberately steps over a marker or padding packet before
+// the session keys. The gate deciding "packets or armour?" once answered the
+// same question with a two-tag allowlist, so a binary message opening with a
+// marker never reached that walk: it was refused as "neither OpenPGP packets
+// nor an armoured block", which points the operator at the wrong problem
+// entirely and loses a report addressed to this certificate.
+//
+// Marker packets (tag 10) are what PGP 2.x-era senders and some mail gateways
+// emit, so this is a sender-produced shape rather than a hostile one. A fuzz
+// target found it in five octets once the property was strengthened to require
+// the report be RECOVERED rather than merely not-misdiagnosed; this is the
+// named regression test for it, because a seed corpus entry does not say what
+// it is for.
+func TestDecryptReadsAMessageOpeningWithAMarker(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a report from a sender whose client still emits markers"
+
+	der, deriver := testCertificate(t)
+
+	// A marker packet carries the three octets "PGP" and nothing else.
+	const tagMarker = 10
+
+	message := framePacket(t, tagMarker, []byte("PGP"))
+	message = append(message, encryptTo(t, der, plaintext, false)...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("a binary message opening with a marker packet was refused: %v", err)
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+}
