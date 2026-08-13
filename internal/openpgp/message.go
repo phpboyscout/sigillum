@@ -301,9 +301,18 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 	// keys and the encrypted data, and this one had no bound at all while its
 	// twin did. Reaching the limit is not a verdict about the message's
 	// contents, only about how far this will look.
+	// Set when an unprotected packet was seen and stepped over, so that a
+	// message carrying ONLY unprotected packets still reports the specific
+	// refusal rather than the generic "no encrypted-data packet".
+	var unprotected bool
+
 	for range maxPacketsInspected {
 		p, err := reader.Next()
 		if err != nil {
+			if unprotected {
+				return ErrUnprotected
+			}
+
 			return fmt.Errorf("%w: no encrypted-data packet after the session key: %w",
 				ErrMalformedMessage, err)
 		}
@@ -321,8 +330,28 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 		// reading packets directly means re-establishing that guard here.
 		// The certificate this package publishes advertises SEIPD support, so
 		// a well-behaved sender never produces the unprotected form.
+		//
+		// Noted and stepped over rather than returned on. The guard governs
+		// THIS packet — which is never decrypted, then or now — and says
+		// nothing about the packets after it. Returning here meant anyone who
+		// could prepend one junk SED packet made a genuine protected report
+		// undecryptable, and the operator was told the message had no integrity
+		// protection, which was false of the message they were sent.
+		//
+		// If the walk ends having seen nothing else, the refusal is still the
+		// answer and still absolute: see the return below.
 		if !se.IntegrityProtected {
-			return ErrUnprotected
+			unprotected = true
+
+			// Drained before moving on. go-crypto hands back the packet body as
+			// a stream, and its reader cannot advance past a packet whose body
+			// was never consumed — skipping without this left the walk stuck on
+			// the packet it had just declined to read.
+			if _, err := io.Copy(io.Discard, se.Contents); err != nil {
+				return fmt.Errorf("%w: unreadable unprotected packet: %w", ErrMalformedMessage, err)
+			}
+
+			continue
 		}
 
 		body, err := se.Decrypt(cipher, sessionKey)
@@ -331,6 +360,10 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 		}
 
 		return copyAuthenticated(body, out)
+	}
+
+	if unprotected {
+		return ErrUnprotected
 	}
 
 	return fmt.Errorf("%w: no encrypted-data packet in the first %d packets after the session key",
@@ -428,7 +461,19 @@ const maxPacketsInspected = 64
 // copyLiteral walks the packets inside the encrypted data — compressed or not —
 // and writes the literal contents to out, refusing anything over maxPlaintext.
 func copyLiteral(body io.Reader, out io.Writer) error {
-	reader := packet.NewReader(body)
+	// A STACK of readers, not one reader replaced in place.
+	//
+	// Descending into a compressed packet used to overwrite the reader and never
+	// return, so every packet following the compressed one in the outer stream
+	// was abandoned. An empty compressed packet in front of the real literal data
+	// therefore made the report unreadable, and the operator was told there was
+	// no literal data in a message that plainly contained some — the same shape
+	// as a guard that stops work it was never meant to govern.
+	//
+	// Exhausting a nested reader now pops back to its parent and carries on
+	// where it left off. The depth bound is unchanged and still counts how deep
+	// the descent went, because that is what bounds the work.
+	readers := []*packet.Reader{packet.NewReader(body)}
 
 	depth := 0
 
@@ -438,8 +483,16 @@ func copyLiteral(body io.Reader, out io.Writer) error {
 				ErrMalformedMessage, maxPacketsInspected)
 		}
 
-		p, err := reader.Next()
+		p, err := readers[len(readers)-1].Next()
 		if err != nil {
+			// This stream is finished. If it was nested, the packets after the
+			// one we descended into are still unread.
+			if len(readers) > 1 {
+				readers = readers[:len(readers)-1]
+
+				continue
+			}
+
 			return fmt.Errorf("%w: no literal data inside the encrypted packet: %w",
 				ErrMalformedMessage, err)
 		}
@@ -452,7 +505,7 @@ func copyLiteral(body io.Reader, out io.Writer) error {
 					ErrMalformedMessage, maxCompressionDepth)
 			}
 
-			reader = packet.NewReader(typed.Body)
+			readers = append(readers, packet.NewReader(typed.Body))
 		case *packet.LiteralData:
 			// One octet beyond the limit is read deliberately, so hitting it
 			// exactly is distinguishable from exceeding it.

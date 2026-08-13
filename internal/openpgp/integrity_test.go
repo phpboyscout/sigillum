@@ -319,3 +319,171 @@ func TestDecryptReadsAMessageOpeningWithAMarker(t *testing.T) {
 		t.Errorf("recovered %q, want %q", got.String(), plaintext)
 	}
 }
+
+// TestUnprotectedPacketDoesNotHideAProtectedOne covers round-8 finding 12.
+//
+// decryptBody returned ErrUnprotected on the FIRST SymmetricallyEncrypted packet
+// it met that carried no integrity protection, abandoning the rest of the walk.
+// The guard governs that packet — it must never be decrypted — and says nothing
+// whatever about the packets after it.
+//
+// So a genuine, integrity-protected report became undecryptable to anyone who
+// could prepend one junk SED packet to it, and the operator was told the message
+// had no integrity protection, which was false of the message they were actually
+// sent. That is the shape this codebase has now produced seven times: a guard
+// fires and the code stops instead of continuing down the path the guard does
+// not govern.
+//
+// The refusal itself is unchanged and still absolute — see the sibling test.
+func TestUnprotectedPacketDoesNotHideAProtectedOne(t *testing.T) {
+	t.Parallel()
+
+	der, deriver := testCertificate(t)
+	message := encryptTo(t, der, "a genuine report behind a junk packet", false)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	// A junk SED packet spliced in immediately before the real encrypted-data
+	// packet, leaving the genuine one untouched behind it.
+	const tagSED = 9
+
+	junk := framePacket(t, tagSED, []byte{0x00, 0x01, 0x02, 0x03})
+
+	spliced := spliceBeforeEncryptedData(t, message, junk)
+
+	var out bytes.Buffer
+
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(spliced), &out)
+	if err != nil {
+		t.Fatalf("a genuine protected report behind one junk unprotected packet was refused: %v.\n"+
+			"Prepending a packet must not be able to make a report undecryptable", err)
+	}
+
+	if got := out.String(); got != "a genuine report behind a junk packet" {
+		t.Errorf("plaintext = %q, want the report", got)
+	}
+}
+
+// spliceBeforeEncryptedData inserts body immediately before the message's
+// encrypted-data packet.
+func spliceBeforeEncryptedData(t *testing.T, message, body []byte) []byte {
+	t.Helper()
+
+	const (
+		tagSEIPD = 18
+		tagSED   = 9
+	)
+
+	var out []byte
+
+	for rest := message; len(rest) > 0; {
+		pkt, err := encryption.ParsePacket(rest)
+		if err != nil {
+			t.Fatalf("ParsePacket: %v", err)
+		}
+
+		consumed := len(rest) - len(pkt.Rest)
+
+		if pkt.Tag == tagSEIPD || pkt.Tag == tagSED {
+			out = append(out, body...)
+		}
+
+		out = append(out, rest[:consumed]...)
+		rest = pkt.Rest
+	}
+
+	return out
+}
+
+// TestScanStoppedByDamageIsNotReportedAsNotAddressed covers round-8 finding 22.
+//
+// eachSessionKey ended its walk on any ParsePacket failure with `break`, keeping
+// no record that it had happened. Its comment justified this — anything that is
+// not a readable PKESK becomes the body — and that reasoning holds for the
+// encrypted data, which legitimately uses a partial length this package does not
+// parse. It does not hold for damage.
+//
+// So one malformed packet planted ahead of the genuine session-key packets ended
+// the scan before reaching them, and the operator was told the message was not
+// addressed to this certificate: a verdict about WHO the message is for, issued
+// by code that never got far enough to look. They go hunting for a certificate
+// that may not exist, when what they have is a message somebody tampered with.
+func TestScanStoppedByDamageIsNotReportedAsNotAddressed(t *testing.T) {
+	t.Parallel()
+
+	der, deriver := testCertificate(t)
+	message := encryptTo(t, der, "a report behind a damaged packet", false)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	// A PKESK header declaring a body far longer than the input holds, so
+	// ParsePacket refuses it — the shape a truncated or edited message has.
+	damaged := []byte{0xC1, 0xFF, 0x7F, 0xFF, 0xFF, 0xFF, 0x01, 0x02}
+
+	// A readable co-recipient packet goes IN FRONT of the damage, and it has to.
+	//
+	// With the damaged packet first, isPacketStream cannot get past it either,
+	// so the message is refused as "neither packets nor armour" long before the
+	// candidate walk runs — a pass that proves nothing about the walk. Putting a
+	// well-formed foreign packet first makes the message recognisably binary and
+	// puts the damage where this test means it: between the walk's start and our
+	// own session-key packet.
+	spliced := foreignPKESK(t, message)
+	spliced = append(spliced, damaged...)
+	spliced = append(spliced, message...)
+
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(spliced), io.Discard)
+	if err == nil {
+		t.Fatal("a message with a damaged packet decrypted")
+	}
+
+	if errors.Is(err, openpgp.ErrNotAddressed) {
+		t.Fatalf("a scan stopped by damage was reported as a verdict about the recipient: %v.\n"+
+			"The walk never reached the session-key packets, so it cannot say who the message is for", err)
+	}
+
+	if !errors.Is(err, openpgp.ErrMalformedMessage) {
+		t.Errorf("error = %v, want ErrMalformedMessage naming the damage", err)
+	}
+
+}
+
+// foreignPKESK returns the message's first session-key packet with its key id
+// changed, so it parses cleanly and belongs to somebody else.
+func foreignPKESK(t *testing.T, message []byte) []byte {
+	t.Helper()
+
+	const (
+		tagPKESK    = 1
+		keyIDOffset = 1
+		keyIDOctets = 8
+	)
+
+	for rest := message; len(rest) > 0; {
+		pkt, err := encryption.ParsePacket(rest)
+		if err != nil {
+			t.Fatalf("ParsePacket: %v", err)
+		}
+
+		if pkt.Tag == tagPKESK {
+			body := bytes.Clone(pkt.Body)
+			for i := range keyIDOctets {
+				body[keyIDOffset+i] ^= 0xFF
+			}
+
+			return framePacket(t, tagPKESK, body)
+		}
+
+		rest = pkt.Rest
+	}
+
+	t.Fatal("the fixture has no PKESK packet")
+
+	return nil
+}

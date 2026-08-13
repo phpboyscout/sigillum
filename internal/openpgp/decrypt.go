@@ -145,6 +145,15 @@ func Decrypt(
 // after a later candidate is tried and also fails, so they are kept as the run
 // goes on and reported in preference to a blanket verdict.
 type attemptRun struct {
+	// scanStopped is why the packet walk ended early, when it ended on damage
+	// rather than on the encrypted data. nil for an ordinary message.
+	//
+	// Held because "the walk stopped" and "the walk finished and found nothing
+	// for us" are different answers, and reporting the second for the first sent
+	// operators hunting for a certificate when what they had was a tampered
+	// message.
+	scanStopped error
+
 	ctx       context.Context
 	recipient Recipient
 	billed    *billedOnce
@@ -185,7 +194,7 @@ func (r *attemptRun) attempt(pkesk encryption.PKESK, named bool) {
 // named tries every packet addressing this certificate, and records what the
 // rest of the message was addressed to.
 func (r *attemptRun) named(raw []byte) []byte {
-	return eachSessionKey(raw, func(pkesk encryption.PKESK, pktBody []byte, parseErr error) {
+	body, stopped := eachSessionKey(raw, func(pkesk encryption.PKESK, pktBody []byte, parseErr error) {
 		switch {
 		case parseErr != nil:
 			r.found.fileUnreadable(pktBody, parseErr)
@@ -203,12 +212,16 @@ func (r *attemptRun) named(raw []byte) []byte {
 			r.found.recordOther(pkesk.KeyID)
 		}
 	})
+
+	r.scanStopped = stopped
+
+	return body
 }
 
 // wildcards tries the packets naming nobody, held back until every named packet
 // has been read since one of those may match and cost nothing.
 func (r *attemptRun) wildcards(raw []byte) {
-	eachSessionKey(raw, func(pkesk encryption.PKESK, _ []byte, parseErr error) {
+	_, _ = eachSessionKey(raw, func(pkesk encryption.PKESK, _ []byte, parseErr error) {
 		if parseErr != nil || pkesk.KeyID != wildcardKeyID || r.sessionKey != nil {
 			return
 		}
@@ -219,6 +232,18 @@ func (r *attemptRun) wildcards(raw []byte) {
 
 // outcome turns what the run learned into the error it should report.
 func (r *attemptRun) outcome() error {
+	// First, because everything below it is a verdict about WHO the message is
+	// for, and a walk cut short by damage never got far enough to have one — the
+	// packets that would say may be sitting behind the damage. Reporting
+	// "addressed to somebody else" here named a recipient read from the packets
+	// before the break and sent the operator looking for a certificate, when
+	// what they had was a message somebody had edited.
+	if r.scanStopped != nil {
+		return fmt.Errorf("%w: the packet stream is damaged after %d readable session-key packets, "+
+			"so who this message is addressed to cannot be established: %w",
+			ErrMalformedMessage, r.tried, r.scanStopped)
+	}
+
 	if err := r.found.refuse(r.tried, r.recipient); err != nil {
 		return err
 	}
@@ -538,8 +563,11 @@ var wildcardKeyID [8]byte
 //
 // The whole sequence is read before any key-service call, so a message that is
 // genuinely not ours still costs nothing.
-func eachSessionKey(raw []byte, visit func(pkesk encryption.PKESK, body []byte, err error)) []byte {
-	body := raw
+func eachSessionKey(
+	raw []byte,
+	visit func(pkesk encryption.PKESK, body []byte, err error),
+) (body []byte, stopped error) {
+	body = raw
 
 	for len(body) > 0 {
 		pkt, err := encryption.ParsePacket(body)
@@ -549,7 +577,18 @@ func eachSessionKey(raw []byte, visit func(pkesk encryption.PKESK, body []byte, 
 		// which this package deliberately does not parse and go-crypto
 		// handles. So anything that is not a readable PKESK ends the scan and
 		// becomes the body, rather than being an error here.
+		//
+		// The REASON is carried out, though, and that is the whole change. The
+		// scan ending here is ordinary when it is the encrypted data; it is
+		// damage when the framing is broken. Ending both ways silently meant one
+		// malformed packet planted ahead of the genuine session-key packets got
+		// reported as "not addressed to this certificate" — a verdict about who
+		// the message is for, from code that never reached the packets that
+		// would say. The operator went looking for a certificate instead of at
+		// a message somebody had edited.
 		if err != nil {
+			stopped = err
+
 			break
 		}
 
@@ -579,7 +618,7 @@ func eachSessionKey(raw []byte, visit func(pkesk encryption.PKESK, body []byte, 
 		body = pkt.Rest
 	}
 
-	return body
+	return body, stopped
 }
 
 // candidateSet is what one pass over the session-key packets found.

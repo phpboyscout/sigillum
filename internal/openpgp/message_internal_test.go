@@ -303,3 +303,49 @@ func TestPKESKFixedOctetsMatchesTheCore(t *testing.T) {
 			pkeskFixedOctets, coreMinimum)
 	}
 }
+
+// TestCopyLiteralKeepsWalkingPastAnEmptyCompressedPacket covers round-8
+// finding 23.
+//
+// copyLiteral replaced its reader on the first Compressed packet:
+//
+//	reader = packet.NewReader(typed.Body)
+//
+// and never came back. Every packet that followed the compressed one in the
+// OUTER stream was abandoned, so descending into a compressed packet holding
+// nothing useful discarded the literal data sitting right behind it.
+//
+// The same shape as decryptBody's SED refusal and the revocation-filing defect
+// before it: the branch handles one packet correctly and takes the rest of the
+// walk down with it. An attacker who can prepend one empty compressed packet to
+// the plaintext stream makes the report unreadable, and the operator is told
+// there is no literal data in a message that plainly contains some.
+func TestCopyLiteralKeepsWalkingPastAnEmptyCompressedPacket(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "the report that follows an empty compressed packet"
+
+	// An empty compressed packet: valid, well-formed, and holding no literal.
+	var empty bytes.Buffer
+
+	w, err := packet.SerializeCompressed(nopWriteCloser{&empty}, packet.CompressionZIP, nil)
+	if err != nil {
+		t.Fatalf("SerializeCompressed: %v", err)
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing the compressed packet: %v", err)
+	}
+
+	body := append(empty.Bytes(), nestedCompressed(t, 0, plaintext)...)
+
+	var out bytes.Buffer
+	if err := copyLiteral(bytes.NewReader(body), &out); err != nil {
+		t.Fatalf("literal data behind an empty compressed packet was abandoned: %v.\n"+
+			"Descending into one packet must not discard the packets after it", err)
+	}
+
+	if out.String() != plaintext {
+		t.Errorf("plaintext = %q, want %q", out.String(), plaintext)
+	}
+}
