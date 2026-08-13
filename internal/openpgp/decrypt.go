@@ -2,9 +2,11 @@ package openpgp
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
@@ -117,12 +119,12 @@ func Decrypt(
 		return fmt.Errorf("%w: no key service supplied", encryption.ErrMalformed)
 	}
 
-	candidates, rest, err := addressedToUs(message, recipient)
+	candidates, rest, truncated, err := addressedToUs(message, recipient)
 	if err != nil {
 		return err
 	}
 
-	cipherID, sessionKey, err := recoverSessionKey(ctx, deriver, recipient, candidates)
+	cipherID, sessionKey, err := recoverSessionKey(ctx, deriver, recipient, candidates, truncated)
 	if err != nil {
 		return err
 	}
@@ -148,6 +150,7 @@ func recoverSessionKey(
 	deriver SecretDeriver,
 	recipient Recipient,
 	candidates []candidate,
+	truncated int,
 ) (cipherID byte, sessionKey []byte, err error) {
 	var namedFailure, otherFailure error
 
@@ -204,8 +207,8 @@ func recoverSessionKey(
 
 	// Anything skipped means the run was cut short by cost, so it cannot be
 	// reported as a settled verdict about who the message is for.
-	if skipped > 0 {
-		return 0, nil, exhausted(namedFailure, otherFailure, len(candidates), skipped)
+	if skipped > 0 || truncated > 0 {
+		return 0, nil, exhausted(namedFailure, otherFailure, len(candidates), skipped+truncated)
 	}
 
 	switch {
@@ -271,6 +274,24 @@ func recordFailure(c candidate, err, namedFailure, otherFailure error) (named, o
 func isUnwrapVerdict(err error) bool {
 	return errors.Is(err, encryption.ErrIntegrity) || errors.Is(err, encryption.ErrChecksum)
 }
+
+// maxCandidates bounds how many session-key packets of each kind one message
+// may have retained from it.
+//
+// Not a cost bound — [maxDerivations] is that — but a memory one. Every
+// retained candidate is a struct and a dedup-map entry, and the message chooses
+// how many there are: a 24 MiB message of minimal session-key packets grew the
+// heap by 165 MiB, about sevenfold, and the message bound is 128 MiB. That is
+// an out-of-memory kill reachable by anyone who can send to the published
+// address, not a slow decrypt.
+//
+// Set far above any real message — a report copied to a coordinating body and a
+// colleague carries a handful of recipients — and far above what the derivation
+// ceiling could ever pay for, so nothing that could have been tried is dropped
+// unless its point was already going to be free. A message that exceeds it is
+// reported as cut short rather than as a settled verdict, because the walk did
+// not see all of it.
+const maxCandidates = 1024
 
 // maxDerivations bounds how many DISTINCT ephemeral points one message may
 // cost, which after memoisation is the same as how many billed key-service
@@ -475,10 +496,10 @@ var wildcardKeyID [8]byte
 //
 // The whole sequence is read before any key-service call, so a message that is
 // genuinely not ours still costs nothing.
-func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte, error) {
+func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte, int, error) {
 	raw, err := readMessage(message)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	var found candidateSet
@@ -570,23 +591,43 @@ func (c *candidateSet) file(pkesk encryption.PKESK, recipient Recipient) {
 	// the message can prepend a packet carrying it and a wrapped key that will
 	// not open. Keeping only the first filed the genuine one under somebody
 	// else's recipients, where nothing could ever reach it.
+	//
+	// Bounded all the same, because "every packet" let the message choose how
+	// much memory the walk uses: a 24 MiB message of minimal session-key
+	// packets grew the heap by 165 MiB. See maxCandidates.
 	case recipient.KeyID:
+		if len(c.ours) >= maxCandidates {
+			c.truncated++
+
+			return
+		}
+
 		c.ours = append(c.ours, pkesk)
 
 	case wildcardKeyID:
 		// A hidden recipient names nobody, so the only way to know whether it
 		// is ours is to try it. Held back until every named packet has been
 		// read, since one of those may match and cost nothing.
+		if len(c.hidden) >= maxCandidates {
+			c.truncated++
+
+			return
+		}
+
 		c.hidden = append(c.hidden, pkesk)
 
 	default:
-		// Only as many as the error will ever render are kept; the rest are
-		// counted. The message chooses how many session-key packets it carries,
-		// so an attacker-sized list inside the 128 MiB bound would otherwise
-		// grow a slice of megabytes in order to print eight entries from it.
+		// Only as many DISTINCT ids as the error will ever render are kept; the
+		// rest are counted. The message chooses how many session-key packets it
+		// carries, so an attacker-sized list inside the 128 MiB bound would
+		// otherwise grow a slice of megabytes in order to print eight entries.
+		//
+		// Distinct, because the error tells an operator which certificate they
+		// should have used instead. Repeating one id eight times reads as eight
+		// certificates when there is one, which is worse than naming it once.
 		c.otherCount++
 
-		if len(c.others) < maxRenderedKeyIDs {
+		if len(c.others) < maxRenderedKeyIDs && !slices.Contains(c.others, pkesk.KeyID) {
 			c.others = append(c.others, pkesk.KeyID)
 		}
 	}
@@ -607,6 +648,11 @@ type candidateSet struct {
 	// be ours, but they say the message was addressed to somebody.
 	unreadable int
 
+	// truncated counts candidates dropped for exceeding [maxCandidates], which
+	// means the walk did not see the whole message and cannot report a settled
+	// verdict about who it is for.
+	truncated int
+
 	// malformed counts packets in the session-key position that are not
 	// session-key packets at all. They say nothing about who the message is
 	// for, only that it is damaged.
@@ -621,21 +667,31 @@ type candidateSet struct {
 // packet follows, in the order the sender wrote them: taking only the first
 // means two hidden recipients with ours second fail with a checksum error on a
 // message that is genuinely ours.
-func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candidate, []byte, error) {
+func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candidate, []byte, int, error) {
 	candidates := make([]candidate, 0, len(c.ours)+len(c.hidden))
 
 	// Deduplicated as they are ordered, because trying the same bytes twice can
 	// only fail twice.
 	//
-	// Deliberately not a defence. Every octet the key is built from is one the
-	// attacker chose, so varying a single byte defeats it — which is exactly
-	// what happened when this was relied on to stop a genuine candidate being
-	// crowded out. It survives as an efficiency, and the crowding problem is
-	// answered by bounding distinct billed derivations. See maxDerivations.
+	// Deliberately not a defence AGAINST evasion. Every octet the key is built
+	// from is one the attacker chose, so varying a single byte defeats it —
+	// which is exactly what happened when this was relied on to stop a genuine
+	// candidate being crowded out. It survives as an efficiency, and the
+	// crowding problem is answered by bounding distinct billed derivations. See
+	// maxDerivations.
+	//
+	// It must still be injective, which is the opposite direction and was not
+	// true. The two parts were joined by a single 0x00 octet, and since both are
+	// attacker-chosen the split could be moved: given a genuine packet whose
+	// wrapped key is A‖0x00‖B and whose point is P, a forged packet with wrapped
+	// key A and point B‖0x00‖P produced the identical string. Ordered first, the
+	// forgery made the genuine packet look like a duplicate and it was dropped —
+	// the report unreadable, with no error naming the cause, because from the
+	// walk's point of view it was never there.
 	seen := make(map[string]bool, len(c.ours)+len(c.hidden))
 
 	add := func(pkesk encryption.PKESK, named bool) {
-		key := string(pkesk.WrappedKey) + "\x00" + string(pkesk.EphemeralPoint)
+		key := dedupKey(pkesk)
 		if seen[key] {
 			return
 		}
@@ -655,26 +711,47 @@ func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candi
 
 	switch {
 	case len(candidates) > 0:
-		return candidates, body, nil
+		return candidates, body, c.truncated, nil
 
 	case c.malformed > 0:
-		return nil, nil, fmt.Errorf(
+		return nil, nil, 0, fmt.Errorf(
 			"%w: %d packets before the encrypted data are not session-key packets",
 			ErrMalformedMessage, c.malformed)
 
 	case c.otherCount == 0 && c.unreadable == 0:
-		return nil, nil, fmt.Errorf(
+		return nil, nil, 0, fmt.Errorf(
 			"%w: no session-key packet at the start of the message", ErrMalformedMessage)
 
 	case c.otherCount == 0:
-		return nil, nil, fmt.Errorf(
+		return nil, nil, 0, fmt.Errorf(
 			"%w: its %d session-key packets are all of a kind this cannot read, so none names this certificate (%x)",
 			ErrNotAddressed, c.unreadable, recipient.KeyID)
 
 	default:
-		return nil, nil, fmt.Errorf("%w: addressed to %s, this certificate is %x",
+		return nil, nil, 0, fmt.Errorf("%w: addressed to %s, this certificate is %x",
 			ErrNotAddressed, keyIDs(c.others, c.otherCount), recipient.KeyID)
 	}
+}
+
+// dedupKey identifies a session-key packet by the bytes an attempt depends on.
+//
+// Length-prefixed rather than delimited, so the encoding is injective: a
+// delimiter can be forged into either part, a length cannot.
+func dedupKey(pkesk encryption.PKESK) string {
+	var key strings.Builder
+
+	// Enough for the two parts and their prefixes, so the builder does not
+	// grow while an attacker-sized packet is being encoded.
+	key.Grow(len(pkesk.WrappedKey) + len(pkesk.EphemeralPoint) + 2*binary.MaxVarintLen64)
+
+	var prefix [binary.MaxVarintLen64]byte
+
+	for _, part := range [][]byte{pkesk.WrappedKey, pkesk.EphemeralPoint} {
+		key.Write(prefix[:binary.PutUvarint(prefix[:], uint64(len(part)))])
+		key.Write(part)
+	}
+
+	return key.String()
 }
 
 // keyIDs renders the recipients a message names, so the error says which

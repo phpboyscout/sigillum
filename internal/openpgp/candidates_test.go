@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -959,4 +961,265 @@ func TestDecryptBillsOneDerivationPerPointEvenWhenItFails(t *testing.T) {
 	if !errors.Is(err, outage) {
 		t.Errorf("error = %v, want it to carry the key-service failure", err)
 	}
+}
+
+// TestDecryptIsNotDisplacedByAColligingDedupKey covers the candidate
+// deduplication silently dropping the genuine packet.
+//
+// chooseRecipients keys the dedup on the wrapped key and the ephemeral point,
+// joined by a single 0x00 octet. That join is not injective: every octet of
+// both parts is attacker-chosen, so whenever either contains a 0x00 the split
+// can be moved. Given a genuine packet whose wrapped key is A‖0x00‖B and whose
+// point is P, a forged packet with wrapped key A and point B‖0x00‖P produces
+// the identical key string.
+//
+// The forgery is added first, the genuine packet is then seen as a duplicate
+// and dropped, and the report is unreadable — with no error naming the cause,
+// because from the walk's point of view it simply was not there.
+//
+// The dedup's own comment says it is "deliberately not a defence" and that
+// varying a byte defeats it. That is about an attacker EVADING the dedup. This
+// is the opposite direction: an attacker INVOKING it against a packet they did
+// not write.
+func TestDecryptIsNotDisplacedByAColligingDedupKey(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a report displaced by a colliding dedup key"
+
+	der, deriver := testCertificate(t)
+
+	// A genuine message whose PKESK carries a 0x00 somewhere the split can be
+	// moved to. Roughly a third of them do; regenerate until one does.
+	var (
+		genuine []byte
+		pkesk   encryption.PKESK
+		found   bool
+	)
+
+	for range 40 {
+		genuine = encryptTo(t, der, plaintext, false)
+
+		pkt, err := encryption.ParsePacket(genuine)
+		if err != nil {
+			t.Fatalf("ParsePacket: %v", err)
+		}
+
+		pkesk, err = encryption.ParsePKESK(pkt.Body)
+		if err != nil {
+			t.Fatalf("ParsePKESK: %v", err)
+		}
+
+		if bytes.IndexByte(pkesk.WrappedKey, 0x00) >= 0 {
+			found = true
+
+			break
+		}
+	}
+
+	if !found {
+		t.Skip("no generated wrapped key contained a 0x00 to move the split to")
+	}
+
+	// Split the wrapped key at its first 0x00: A‖0x00‖B.
+	at := bytes.IndexByte(pkesk.WrappedKey, 0x00)
+	a := pkesk.WrappedKey[:at]
+	b := pkesk.WrappedKey[at+1:]
+
+	// The forgery: wrapped key A, point B‖0x00‖P. Its dedup key is
+	// A ‖ 0x00 ‖ B ‖ 0x00 ‖ P — byte for byte the genuine packet's.
+	collidingPoint := make([]byte, 0, len(b)+1+len(pkesk.EphemeralPoint))
+	collidingPoint = append(collidingPoint, b...)
+	collidingPoint = append(collidingPoint, 0x00)
+	collidingPoint = append(collidingPoint, pkesk.EphemeralPoint...)
+
+	forged := pkeskWith(t, pkesk.KeyID, collidingPoint, a)
+
+	message := make([]byte, 0, len(forged)+len(genuine))
+	message = append(message, forged...)
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("a report was displaced by a packet whose dedup key collides with it: %v", err)
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+}
+
+// pkeskWith builds a version 3 ECDH session-key packet with the given key id,
+// ephemeral point and wrapped key, none of which need be meaningful.
+func pkeskWith(t *testing.T, keyID [8]byte, point, wrapped []byte) []byte {
+	t.Helper()
+
+	const (
+		version3 = 3
+		algoECDH = 18
+		bitsPer  = 8
+	)
+
+	body := []byte{version3}
+	body = append(body, keyID[:]...)
+	body = append(body, algoECDH)
+
+	// The point travels as an MPI: a two-octet significant-bit count, then the
+	// octets. Declaring the full width keeps the parser's ceil() arithmetic
+	// landing on exactly len(point).
+	bits, ok := u16(len(point) * bitsPer)
+	if !ok {
+		t.Fatalf("ephemeral point is %d octets, too many for a two-octet MPI header", len(point))
+	}
+
+	wrappedLen, ok := u8(len(wrapped))
+	if !ok {
+		t.Fatalf("wrapped key is %d octets; the length is a single octet", len(wrapped))
+	}
+
+	body = binary.BigEndian.AppendUint16(body, bits)
+	body = append(body, point...)
+	body = append(body, wrappedLen)
+	body = append(body, wrapped...)
+
+	return framePacket(t, encryption.TagPKESK, body)
+}
+
+// TestDecryptDoesNotLetAMessageChooseItsOwnMemory covers the candidate walk
+// allocating in proportion to a message an unauthenticated stranger composes.
+//
+// The key-id retention was bounded last round; the candidate slices and the
+// dedup map were not. Every session-key packet naming us became a retained
+// candidate and a map entry, so a message chose how much memory the walk used.
+//
+// Measured before the bound: a 24 MiB message of minimal session-key packets
+// grew the heap by 165 MiB — about sevenfold. The message bound is 128 MiB, so
+// the reachable figure was of the order of a gigabyte, from one message sent to
+// the address we publish for exactly this purpose. That is an out-of-memory
+// kill rather than a slow decrypt.
+//
+// The ratio is asserted rather than an absolute figure, so the test says
+// something stable about the shape of the growth rather than about this
+// machine. The threshold is deliberately loose — the defect was 7x and the
+// bound brings it near 1x, so anything under 3x distinguishes them without
+// being brittle.
+func TestDecryptDoesNotLetAMessageChooseItsOwnMemory(t *testing.T) {
+	t.Parallel()
+
+	if raceDetector {
+		// The detector instruments every allocation, so this would measure the
+		// instrumentation rather than the walk — about 21x either way.
+		t.Skip("heap growth is not measurable under the race detector")
+	}
+
+	const packets = 200_000
+
+	der, deriver := testCertificate(t)
+
+	genuine := encryptTo(t, der, "a report behind a great many packets", false)
+	leading := firstPacket(t, genuine)
+
+	var message []byte
+
+	for i := range packets {
+		forged := append([]byte(nil), leading...)
+		forged[len(forged)-1] ^= byte(i % 251)
+		forged[len(forged)-2] ^= byte((i / 251) % 251)
+		message = append(message, forged...)
+	}
+
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var before, after runtime.MemStats
+
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
+	_ = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), io.Discard)
+
+	runtime.ReadMemStats(&after)
+
+	grew := after.TotalAlloc - before.TotalAlloc
+	if ratio := float64(grew) / float64(len(message)); ratio > 3 {
+		t.Errorf("decrypting a %d MiB message allocated %d MiB, %.1fx its size — the message "+
+			"chooses how much memory the walk uses", len(message)>>20, grew>>20, ratio)
+	}
+}
+
+// TestDecryptNamesEachOtherRecipientOnce covers the error that tells an
+// operator which certificate they should have used.
+//
+// The first eight other-recipient key ids are retained to be rendered, but they
+// were not deduplicated — so a message repeating one key id was reported as
+// "addressed to X, X, X, X, X, X, X, X, and 40 more", which reads as forty-eight
+// certificates when there is one. The operator is being told who to go and ask;
+// telling them the same name eight times is worse than telling them once.
+func TestDecryptNamesEachOtherRecipientOnce(t *testing.T) {
+	t.Parallel()
+
+	ours, deriver := testCertificate(t)
+	other, _ := testCertificate(t)
+
+	// Twenty copies of one other recipient's packet, so one key id repeats.
+	message := repeatFirstPKESK(t, encryptToMany(t, "not for us", other), 20)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), io.Discard)
+	if !errors.Is(err, openpgp.ErrNotAddressed) {
+		t.Fatalf("error = %v, want ErrNotAddressed", err)
+	}
+
+	// Whatever the id is, it must appear once.
+	addressed, _, _ := strings.Cut(strings.TrimPrefix(err.Error(), "message is not addressed to this certificate: addressed to "), ", this certificate is")
+
+	names := strings.Split(addressed, ", ")
+	seen := map[string]bool{}
+
+	for _, name := range names {
+		if strings.HasPrefix(name, "and ") {
+			continue
+		}
+
+		if seen[name] {
+			t.Errorf("the error names %s more than once, so one recipient reads as several: %v", name, err)
+		}
+
+		seen[name] = true
+	}
+}
+
+// u16 and u8 narrow a length to the width the field it goes into carries.
+//
+// They mirror go/encryption/internal/num, which sigillum cannot import because
+// it is internal to that module. The shape is deliberate rather than
+// stylistic: the bound and the conversion in one small function is what lets
+// the overflow linter see that the conversion cannot overflow, and it is the
+// same reason the core wrote them that way.
+func u16(n int) (uint16, bool) {
+	if n < 0 || n > math.MaxUint16 {
+		return 0, false
+	}
+
+	return uint16(n), true
+}
+
+func u8(n int) (byte, bool) {
+	if n < 0 || n > math.MaxUint8 {
+		return 0, false
+	}
+
+	return byte(n), true
 }
