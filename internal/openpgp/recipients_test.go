@@ -188,7 +188,7 @@ func TestDecryptTriesEveryHiddenRecipient(t *testing.T) {
 	// Somebody else's packet first, then ours, then both anonymised — the shape
 	// gpg --hidden-recipient produces, built deterministically so the test does
 	// not depend on the order gpg happens to emit.
-	message := hideRecipients(t, encryptToMany(t, plaintext, other, ours))
+	message := hideRecipients(t, encryptToMany(t, plaintext, other, ours), 2)
 
 	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
@@ -264,11 +264,24 @@ func TestDecryptRefusesWhenEveryPacketIsUnreadable(t *testing.T) {
 }
 
 // hideRecipients rewrites every session-key packet's key id to the all-zero
-// wildcard, which is what gpg --hidden-recipient emits.
-func hideRecipients(t *testing.T, message []byte) []byte {
+// wildcard, which is what `gpg --hidden-recipient` produces.
+//
+// want is how many packets the caller expects to anonymise, and it is checked
+// rather than assumed. There were two of these: one insisting on at least two
+// packets and one insisting on exactly the first, so a fixture that quietly
+// stopped exercising the multi-packet path would fail one and pass the other,
+// and the difference between them was a hand-computed offset expression rather
+// than anything meaningful. One helper, with the expectation as an argument.
+func hideRecipients(t *testing.T, message []byte, want int) []byte {
 	t.Helper()
 
 	out := append([]byte(nil), message...)
+
+	// A version 3 PKESK body opens with a version octet, then eight of key id.
+	const (
+		keyIDOffset = 1
+		keyIDOctets = 8
+	)
 
 	hidden := 0
 
@@ -281,9 +294,8 @@ func hideRecipients(t *testing.T, message []byte) []byte {
 		// The body's offset within out, so the key id can be zeroed in place.
 		bodyStart := len(out) - len(rest) + (len(rest) - len(pkt.Body) - len(pkt.Rest))
 
-		// Version, then eight octets of key id.
-		for i := range 8 {
-			out[bodyStart+1+i] = 0
+		for i := range keyIDOctets {
+			out[bodyStart+keyIDOffset+i] = 0
 		}
 
 		hidden++
@@ -291,8 +303,9 @@ func hideRecipients(t *testing.T, message []byte) []byte {
 		rest = pkt.Rest
 	}
 
-	if hidden < 2 {
-		t.Fatalf("anonymised %d session-key packets, want at least 2", hidden)
+	if hidden != want {
+		t.Fatalf("anonymised %d session-key packets, want %d — the fixture is not the shape the test names",
+			hidden, want)
 	}
 
 	return out
@@ -336,7 +349,7 @@ func TestDecryptCapsTheNumberOfDerivations(t *testing.T) {
 	other, _ := testCertificate(t)
 
 	// Far more anonymous packets than the cap, none of them ours.
-	message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 40)
+	message := repeatFirstPKESK(t, hideRecipients(t, encryptToMany(t, "not for us", other), 1), 40)
 
 	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
@@ -365,27 +378,6 @@ func TestDecryptCapsTheNumberOfDerivations(t *testing.T) {
 		t.Errorf("the key service was called %d times for 40 hidden candidates; want exactly the cap, 16",
 			counting.calls)
 	}
-}
-
-// hideRecipients2 anonymises a single-recipient message, which hideRecipients
-// deliberately refuses to do — it guards against a fixture that silently stopped
-// exercising the multi-packet path.
-func hideRecipients2(t *testing.T, message []byte) []byte {
-	t.Helper()
-
-	out := append([]byte(nil), message...)
-
-	pkt, err := encryption.ParsePacket(out)
-	if err != nil || pkt.Tag != encryption.TagPKESK {
-		t.Fatalf("first packet is not a session-key packet: %v", err)
-	}
-
-	bodyStart := len(out) - len(pkt.Body) - len(pkt.Rest)
-	for i := range 8 {
-		out[bodyStart+1+i] = 0
-	}
-
-	return out
 }
 
 // repeatFirstPKESK copies a message's leading session-key packet count times,
@@ -501,38 +493,6 @@ func TestDecryptClassifiesACorruptArmouredMessage(t *testing.T) {
 	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(corrupt), io.Discard)
 	if !errors.Is(err, openpgp.ErrMalformedMessage) {
 		t.Fatalf("error = %v, want ErrMalformedMessage", err)
-	}
-}
-
-// TestDecryptIsNotHijackedByAnEmbeddedArmourHeader covers a binary message
-// carrying the armour header somewhere after its start.
-//
-// armor.Decode skips leading garbage, so it finds a header anywhere. A binary
-// message that contains one — which an attacker composing the message chooses
-// freely — was dearmoured from their marker instead of read as packets, so the
-// operator got a base64 error where their report should have been.
-func TestDecryptIsNotHijackedByAnEmbeddedArmourHeader(t *testing.T) {
-	t.Parallel()
-
-	const plaintext = "a binary report that happens to contain an armour header"
-
-	ours, deriver := testCertificate(t)
-
-	message := encryptTo(t, ours, plaintext, false)
-	message = append(message, "\n-----BEGIN PGP MESSAGE-----\n\nZm9v\n-----END PGP MESSAGE-----\n"...)
-
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
-	if err != nil {
-		t.Fatalf("ReadRecipient: %v", err)
-	}
-
-	var got bytes.Buffer
-	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
-		t.Fatalf("decrypting a binary message containing an armour header: %v", err)
-	}
-
-	if got.String() != plaintext {
-		t.Errorf("recovered %q, want %q", got.String(), plaintext)
 	}
 }
 

@@ -99,11 +99,12 @@ func TestStdinTwiceErrorSaysWhatToDo(t *testing.T) {
 
 // TestCheckFlagsReportsTheSameMissingFlagEveryTime guards this command against
 // the defect finding 25 found in the certificate command, whose checkFlags
-// reports the first missing flag by ranging over a map literal.
+// used to range over a map literal — Go randomises map iteration order, so
+// which missing flag was named varied between runs.
 //
-// This command's checkFlags tests its flags in a fixed order, so the message is
-// stable. Pinned here so a future refactor toward a map does not reintroduce it
-// on this side.
+// This command's checkFlags has always tested its flags in a fixed order, so
+// the message is stable. Pinned here so a future refactor toward a map does not
+// introduce on this side what has since been fixed on the other.
 func TestCheckFlagsReportsTheSameMissingFlagEveryTime(t *testing.T) {
 	t.Parallel()
 

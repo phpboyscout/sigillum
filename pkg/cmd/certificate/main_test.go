@@ -7,13 +7,16 @@ import (
 
 // TestCheckFlagsReportsTheSameMissingFlagEveryTime covers finding 25.
 //
-// checkFlags reports the first missing flag by ranging over a map literal, and
-// Go randomises map iteration order — so with more than one flag missing, which
-// one is named varies between runs.
+// checkFlags USED TO range over a map literal, and Go randomises map iteration
+// order — so with more than one flag missing, which one was named varied
+// between runs. An operator who omitted two flags was told about a different
+// one each time they re-ran, which makes reproducible support guesswork, and
+// any test asserting a specific message was flaky by construction rather than
+// by accident.
 //
-// An operator who omits two flags is told about a different one each time they
-// re-run, which makes reproducible support guesswork; and any test asserting a
-// specific message is flaky by construction rather than by accident.
+// It ranges over a slice now and reports every missing flag, so the message is
+// determined. This is what keeps it that way: the defect is invisible in a
+// single run, so only repetition can catch its return.
 func TestCheckFlagsReportsTheSameMissingFlagEveryTime(t *testing.T) {
 	t.Parallel()
 

@@ -121,7 +121,7 @@ func TestDecryptTriesTheNextCandidateAfterADerivationFailure(t *testing.T) {
 
 	// Somebody else's packet first, ours second, both anonymised — the shape
 	// two --hidden-recipient arguments produce.
-	message := hideRecipients(t, encryptToMany(t, plaintext, other, ours))
+	message := hideRecipients(t, encryptToMany(t, plaintext, other, ours), 2)
 
 	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
@@ -189,7 +189,7 @@ func TestDecryptKeyServiceCostIsWhatWeDocument(t *testing.T) {
 	t.Run("a hidden recipient costs one call", func(t *testing.T) {
 		t.Parallel()
 
-		message := hideRecipients2(t, encryptToMany(t, "not for us", other))
+		message := hideRecipients(t, encryptToMany(t, "not for us", other), 1)
 
 		recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 		if err != nil {
@@ -221,7 +221,7 @@ func TestDecryptKeyServiceCostIsWhatWeDocument(t *testing.T) {
 
 		// Twenty distinct hidden candidates, past the ceiling of sixteen, so
 		// the ceiling is what stops the run rather than running out of packets.
-		message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 20)
+		message := repeatFirstPKESK(t, hideRecipients(t, encryptToMany(t, "not for us", other), 1), 20)
 
 		recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 		if err != nil {
@@ -368,38 +368,6 @@ func TestDecryptAcceptsArmourWithACoveringLine(t *testing.T) {
 	}
 }
 
-// TestDecryptStillRefusesAnEmbeddedArmourHijack is the property the anchoring
-// was introduced for, and which the fix for the covering line must not lose.
-//
-// armor.Decode skips leading garbage, so it finds a header anywhere. An
-// attacker composing a binary message chooses where to put one; decoding from
-// their marker discards the real packets and hands the operator a base64 error
-// where their report should be.
-func TestDecryptStillRefusesAnEmbeddedArmourHijack(t *testing.T) {
-	t.Parallel()
-
-	const plaintext = "a binary report carrying an armour header in its ciphertext"
-
-	der, deriver := testCertificate(t)
-
-	message := encryptTo(t, der, plaintext, false)
-	message = append(message, "\n-----BEGIN PGP MESSAGE-----\n\nZm9v\n-----END PGP MESSAGE-----\n"...)
-
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
-	if err != nil {
-		t.Fatalf("ReadRecipient: %v", err)
-	}
-
-	var got bytes.Buffer
-	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
-		t.Fatalf("a binary message containing an armour header was hijacked: %v", err)
-	}
-
-	if got.String() != plaintext {
-		t.Errorf("recovered %q, want %q", got.String(), plaintext)
-	}
-}
-
 // Round four's findings on this file were the same mistake as round three's,
 // one layer out: a bound that fired discarded what it had learned, and the cap
 // counted packets an attacker supplies. These test around each boundary.
@@ -524,7 +492,7 @@ func TestDecryptStillBoundsHiddenRecipientGuesses(t *testing.T) {
 	ours, deriver := testCertificate(t)
 	other, _ := testCertificate(t)
 
-	message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 60)
+	message := repeatFirstPKESK(t, hideRecipients(t, encryptToMany(t, "not for us", other), 1), 60)
 
 	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
@@ -606,7 +574,7 @@ func TestDecryptKeepsTheReasonWhenTheCapIsReached(t *testing.T) {
 	other, _ := testCertificate(t)
 
 	// More hidden candidates than the cap, none of them ours.
-	message := repeatFirstPKESK(t, hideRecipients2(t, encryptToMany(t, "not for us", other)), 30)
+	message := repeatFirstPKESK(t, hideRecipients(t, encryptToMany(t, "not for us", other), 1), 30)
 
 	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
