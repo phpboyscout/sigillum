@@ -71,9 +71,22 @@ structured log lines on stderr instead.
 
 ## Backends
 
-`--backend` on `sign`, `keys mint` and `keys minisign` selects a signing backend
-**compiled into the binary**. sigillum ships two, activated by blank imports in
-its `main` package:
+`--backend` selects a key service **compiled into the binary**, activated by
+blank imports in the `main` package. There are two independent registries and
+the same flag name selects from whichever the command needs:
+
+| Commands | Registry | Backends shipped |
+|---|---|---|
+| `sign`, `keys mint`, `keys minisign` | signing | `aws-kms`, `local` |
+| `decrypt`, `certificate` | encryption | `aws-kms` |
+
+They are separate because the operations are: signing needs a key that signs,
+and `decrypt` and `certificate` need one that performs ECDH key agreement. A
+name present in one registry is not automatically present in the other — there
+is currently no `local` encryption backend compiled in, so `sigillum sign
+--backend local` works and `sigillum decrypt --backend local` does not.
+
+### Signing backends
 
 | Backend | `--key-id` is | Key algorithms accepted | Extra flags |
 |---------|---------------|-------------------------|-------------|

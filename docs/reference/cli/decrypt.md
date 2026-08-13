@@ -51,8 +51,23 @@ not have to know which you have.
 | `--key` | **yes** | — | Key service identifier for the encryption subkey |
 | `--backend` | when several are compiled in | the only one | Which key service to use |
 | `--output` | no | stdout | Write plaintext here, created mode `0600` |
+| `--follow-symlinks` | no | off | Write *through* a symbolic link named by `--output` rather than refusing it |
 
 `--help` is authoritative for the flags this build actually carries.
+
+### `--follow-symlinks`
+
+Off by default, and the default is the safe half. Writing the output replaces
+the destination by renaming over it, so a symbolic link named as `--output`
+would be removed and a regular file left in its place — which for a decrypted
+vulnerability report is a confidentiality question, not a tidiness one. An
+operator who pointed through a link into an encrypted volume would find the
+plaintext on local disk instead.
+
+Turning it on writes through the link and leaves the link in place. When the
+resolved destination differs from what you typed, the command says so at
+`Info` — silence is the failure mode of following, and that part is cheap to
+remove.
 
 ## Why the certificate is a flag and the parameters are not
 
@@ -63,28 +78,68 @@ for the curve or the hash would only be a way to get it wrong.
 
 ## What costs a key-service call, and what does not
 
-A message addressed to a different certificate is rejected **before** the key
-service is contacted, and the backend is wired lazily so that no API call and
-no credentials are needed to reach that conclusion. Several certificates in
-play is a normal situation; rejecting a message that is not yours should be
-free.
+A message whose recipients are all **named**, and none of them yours, is
+rejected before the key service is contacted. The backend is wired lazily, so
+no API call and no credentials are needed to reach that conclusion. Several
+certificates in play is a normal situation, and rejecting a message that is
+not yours should be free.
 
-Malformed input and a certificate with no encryption subkey are likewise
-decided locally.
+Malformed input, a certificate with no encryption subkey, and more than one
+message named on the command line are likewise decided locally.
+
+**A hidden recipient is not free**, and this is the one case where the rule
+above does not hold. `gpg --hidden-recipient` — which disclosure advice
+reasonably recommends, so that an intercepted message does not reveal who it
+was for — writes an all-zero key id. A packet naming nobody can only be ruled
+out by attempting it, and each attempt is one billed key-service call.
+
+Two bounds keep that from being unbounded:
+
+- Attempts are counted per **distinct ephemeral point**, not per packet. Any
+  number of packets sharing a point cost one call between them, because the
+  derivation depends on the point alone.
+- At most **16** distinct points are derived for one message.
+
+Reaching that ceiling stops the run with `stopped before trying every
+recipient`, which is deliberately *not* "addressed to somebody else": packets
+left untried might have been yours, and saying otherwise would send you looking
+for a certificate that may not exist. The message names how many went untried.
 
 ## Errors
 
 | Message contains | Means | Reached the key service? |
 |---|---|---|
 | `required flag not set` | `--certificate` or `--key` missing | no |
+| `only one message can be decrypted at a time` | More than one message named; there is a single `--output` | no |
 | `cannot both come from stdin` | `--certificate -` with the message also on stdin | no |
 | `no key service "..."` | `--backend` names something not compiled in | no |
-| `certificate has no ECDH encryption subkey` | Signing-only certificate | no |
-| `key is revoked` | The certificate's holder has withdrawn its encryption subkey; fetch a current certificate | no |
-| `message is not addressed to this certificate` | Encrypted to somebody else | **no** |
+| `certificate has no ECDH encryption subkey` | Signing-only certificate, or one whose subkey is RSA | no |
+| `certificate did not parse to its end` | Reported as a warning, not a failure — see below | no |
+| `key is revoked` | The holder has withdrawn the encryption subkey; fetch a current certificate | no |
+| `key has expired` | The holder time-boxed the subkey and that date has passed | no |
+| `message is not addressed to this certificate` | Every recipient was named, and none was you | no, unless the message also carried hidden recipients |
 | `malformed message` | Not readable as OpenPGP | no |
+| `message is larger than this will decrypt` | Beyond the 128 MiB bound, before or after decompression | no |
+| `message has no integrity protection` | The legacy unprotected packet, which is refused rather than read | no |
+| `stopped before trying every recipient` | The 16-derivation ceiling was reached with candidates left untried | yes |
 | `deriving the shared secret` | The key service refused or was unreachable | yes |
 | `checksum` | Session key unwrapped wrongly — usually the wrong certificate | yes |
+| `integrity check failed` | The plaintext was altered in transit; nothing is written out | yes |
+
+### Warnings
+
+Two things are reported at `Warn` and do not stop the run, because they are
+findings the tool has no standing to decide about:
+
+| Warning contains | Means | What to do |
+|---|---|---|
+| `certificate carries a revocation this cannot evaluate` | The certificate holds a revocation-shaped signature of a version or algorithm this build cannot verify | Check out of band whether the key was withdrawn before relying on it |
+| `certificate did not parse to its end` | The certificate stopped parsing before its input ran out; what was read is intact and usable | Re-fetch it — a later subkey may supersede the one used |
+
+Neither refuses the certificate on purpose. A revocation-shaped packet costs
+nothing to append to a published certificate and nothing verifies it before it
+is counted, so honouring one that cannot be checked would let any stranger
+retire a security contact's encryption key.
 
 ## Example
 

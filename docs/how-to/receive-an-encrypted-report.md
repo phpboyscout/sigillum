@@ -111,7 +111,8 @@ quoting it.
 
 | Message | Means |
 |---|---|
-| `addressed to key ...` | Encrypted to a different certificate. **No key-service call was made** |
+| `addressed to ...` | Encrypted to a different certificate. No key-service call was made, unless the message also carried hidden recipients |
+| `stopped before trying every recipient` | The message carried more hidden recipients than the 16-derivation ceiling allows; some were never tried |
 | `certificate has no ECDH encryption subkey` | A signing-only certificate |
 | `malformed message` | Truncated paste, or not OpenPGP at all |
 | `AccessDenied` | The role is missing a grant — check the reader policy |

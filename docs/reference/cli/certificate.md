@@ -32,6 +32,7 @@ sigillum certificate --user-id <id> --certify-key <id> --encrypt-key <id> \
 | `--backend` | when several are compiled in | the only one | Which key service to use |
 | `--armor` | no | `false` | Emit ASCII armour instead of binary |
 | `--output` | no | stdout | Write here, created mode `0644` |
+| `--follow-symlinks` | no | off | Write *through* a symbolic link named by `--output` rather than refusing it |
 
 ## `--created` is required on purpose
 
@@ -64,7 +65,35 @@ signature is PKCS#1 v1.5, which is what a KMS will produce.
 | `backend cannot expose the encryption key's public half` | The chosen key service cannot supply the subkey point |
 | `unsupported curve` | The encryption key is not on P-256, P-384 or P-521 |
 | `certification key is ...` | The certification key is not RSA |
+| `cannot predate the key it covers` | `--created` is in the future relative to the clock signing the certificate. See below |
 | `wiring the certification key` | The key service refused or was unreachable |
+
+### A signature that would predate its keys
+
+`--created` stamps the key packets and is hashed into the fingerprint, so it is
+yours to choose. The signatures over those packets are stamped from the clock at
+the moment you run the command.
+
+Choosing a `--created` in the future therefore produces a certificate whose
+signatures are older than the keys they cover. GnuPG and other implementations
+treat that as invalid and silently drop the encryption subkey on import — so the
+certificate imports, looks fine, and nobody can encrypt to it. It is refused
+here instead, because a certificate that fails at every correspondent is worse
+than one that fails at you.
+
+The remedy is to pass a `--created` that is not in the future.
+
+### The output mode is exact
+
+`--output` creates the file at `0644` regardless of the process umask. A
+published certificate that a web server cannot read is a certificate nobody can
+encrypt to, so the mode is set explicitly rather than left to whatever `umask`
+happens to be in force.
+
+On a filesystem that cannot change file modes — vfat or exfat, which is what a
+USB stick is usually formatted as — the file is written at whatever the
+filesystem allows and the difference is reported. It is never *broader* than
+requested.
 
 ## Verify before publishing
 
