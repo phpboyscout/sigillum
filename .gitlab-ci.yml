@@ -125,6 +125,48 @@ go-fuzz:
 # The test suite on a 32-bit target. See go/encryption's copy for why this runs
 # `go test` rather than `go vet`: a test that only means something on one
 # architecture has to be RUN there, or it is decoration.
+# Mutation testing: a ratchet, not a detector.
+#
+# Honest about what this is worth, because it was added while hunting the
+# defect class that produced six rounds of findings and it did NOT find it.
+# Tested directly: with the historical weak fixture in place — the one that let
+# four ceiling tests pass at any ceiling value — every mutant still died, 100%
+# efficacy, no signal. Same with the historical weak assertions. Removing the
+# two tests that uniquely pin the ceiling changed nothing either.
+#
+# The reason is that mutation testing asks "does some test fail when this line
+# changes", and our failures were "the fixture never put the code in the state
+# where that line matters". The line was covered; the state was not. That is
+# what the structural properties in internal/openpgp/structure_test.go are for,
+# and they do catch it.
+#
+# Kept anyway, because it is twelve seconds and it pins current efficacy at
+# 100%: a future change that leaves a mutant alive will fail here rather than
+# be noticed six rounds later. Do not mistake a green run for evidence the
+# suite is adequate.
+#
+# `Lived` is the number that matters: a mutant nothing noticed. `Not covered`
+# is a coverage signal, reported by the coverage job already.
+go-mutation:
+  stage: test
+  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.2
+  script:
+    - |
+      status=0
+      for pkg in ./internal/openpgp ./internal/opfile ./internal/opdest ./pkg/cmd/decrypt ./pkg/cmd/certificate; do
+        echo "--- $pkg ---"
+        out=$(go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0 unleash --workers 4 "$pkg" 2>&1) || true
+        echo "$out" | grep -E '^\s+LIVED|^Killed:|^Test efficacy' || true
+        if echo "$out" | grep -qE '^\s+LIVED'; then
+          echo "a mutation survived in $pkg: the suite does not notice that change"
+          status=1
+        fi
+      done
+      exit $status
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 go-cross-arch:
   stage: test
   image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.2
