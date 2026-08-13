@@ -1,6 +1,7 @@
 package certificate
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -51,9 +52,98 @@ func TestCheckFlagsNamesEveryMissingFlag(t *testing.T) {
 		t.Fatal("no flags supplied, but checkFlags was content")
 	}
 
-	for _, flag := range []string{"--user-id", "--certify-key", "--encrypt-key"} {
+	for _, flag := range []string{"--user-id", "--certify-key", "--encrypt-key", "--created"} {
 		if !strings.Contains(err.Error(), flag) {
 			t.Errorf("error %q does not name the missing %s", err, flag)
 		}
 	}
 }
+
+// TestCheckFlagsRefusesAnOutputThatNamesAKey covers round-8 finding 1, which is
+// the most destructive defect any review of this workstream has produced.
+//
+// The local backend's key identifiers ARE filesystem paths — its own package doc
+// says so: "The key identifier is a path to an unencrypted PEM file". So
+// `--encrypt-key encrypt.pem --output encrypt.pem` is a plausible slip, and it
+// used to succeed: both PEMs are read into memory before the destination is even
+// opened, the certificate assembles, and the staged file is renamed over the
+// private key. The command exited 0 having destroyed it, and every report
+// already encrypted to the published certificate became undecryptable at the
+// same moment.
+//
+// decrypt grew ErrOutputOverInput for exactly this shape one round earlier. The
+// guard was written for the command that reads two inputs and never given to the
+// command that can overwrite a private key.
+func TestCheckFlagsRefusesAnOutputThatNamesAKey(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		opts  CertificateOptions
+		named string
+	}{
+		{
+			name: "the encryption key",
+			opts: CertificateOptions{
+				UserId: "Security <security@example.com>", CertifyKey: "certify.pem",
+				EncryptKey: "encrypt.pem", Created: validCreated, Output: "encrypt.pem",
+			},
+			named: "--encrypt-key",
+		},
+		{
+			name: "the certification key",
+			opts: CertificateOptions{
+				UserId: "Security <security@example.com>", CertifyKey: "certify.pem",
+				EncryptKey: "encrypt.pem", Created: validCreated, Output: "certify.pem",
+			},
+			named: "--certify-key",
+		},
+		{
+			// Cleaned before comparison, or the same file typed two ways walks
+			// straight past the guard.
+			name: "the same key by a non-canonical path",
+			opts: CertificateOptions{
+				UserId: "Security <security@example.com>", CertifyKey: "./keys/encrypt.pem",
+				EncryptKey: "keys/encrypt.pem", Created: validCreated, Output: "keys/../keys/encrypt.pem",
+			},
+			named: "--encrypt-key",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := checkFlags(&tc.opts)
+			if !errors.Is(err, ErrOutputOverInput) {
+				t.Fatalf("--output %q names %s and was accepted: err = %v",
+					tc.opts.Output, tc.named, err)
+			}
+
+			if !strings.Contains(err.Error(), tc.named) {
+				t.Errorf("error %q does not name which input was hit (%s)", err, tc.named)
+			}
+		})
+	}
+}
+
+// TestCheckFlagsAllowsAnOutputThatNamesNoInput is the other half, and it asserts
+// the positive rather than "not this one error".
+//
+// A guard that refuses everything satisfies the test above perfectly.
+func TestCheckFlagsAllowsAnOutputThatNamesNoInput(t *testing.T) {
+	t.Parallel()
+
+	for _, output := range []string{"", "-", "security-contact.asc", "./out/cert.asc"} {
+		opts := CertificateOptions{
+			UserId: "Security <security@example.com>", CertifyKey: "certify.pem",
+			EncryptKey: "encrypt.pem", Created: validCreated, Output: output,
+		}
+
+		if _, err := checkFlags(&opts); err != nil {
+			t.Errorf("--output %q names no input but was refused: %v", output, err)
+		}
+	}
+}
+
+// validCreated keeps the fixtures above from tripping the --created check and
+// reporting a pass for the wrong reason.
+const validCreated = "2026-01-01T00:00:00Z"

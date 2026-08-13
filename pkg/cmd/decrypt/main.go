@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"gitlab.com/phpboyscout/go-tool-base/pkg/props"
@@ -31,19 +30,6 @@ var (
 	// ErrStdinTwice means both the certificate and the message were asked for
 	// from stdin, which cannot work: reading the first drains it.
 	ErrStdinTwice = errors.New("the certificate and the message cannot both come from stdin")
-
-	// ErrOutputOverInput means --output names a file this run is reading.
-	//
-	// The certificate is read before the output is staged, so without this the
-	// run succeeds and the commit replaces the certificate with the decrypted
-	// report — the operator loses the certificate correspondents encrypt to, in
-	// a command that exits zero. Naming the message is the same shape: the
-	// report is replaced by its own plaintext, so a second run has nothing to
-	// decrypt.
-	//
-	// signing-cli refuses the equivalent, so this is the estate's own rule
-	// applied to the command that lacked it.
-	ErrOutputOverInput = errors.New("--output names a file this command is reading")
 
 	// ErrTooManyArguments means more than one message was named.
 	//
@@ -331,39 +317,29 @@ func openInput(fsys opfile.FS, path string) (io.Reader, func(), error) {
 	return f, func() { _ = f.Close() }, nil
 }
 
+// ErrOutputOverInput means --output names a file this run is reading.
+//
+// Re-exported from opdest, which owns both the guard and the destination it
+// protects. It used to be declared here, and the certificate command declared
+// its own copy of nothing at all: that command staged its output over an input
+// with no check for a whole release, because a guard written into one command
+// has to be remembered separately for the next.
+var ErrOutputOverInput = opdest.ErrOutputOverInput
+
 // checkOutput refuses an --output that names a file this run reads.
 //
-// Compared on the cleaned paths, because "security.asc" and "./security.asc"
-// are the same file and an operator who typed one of each would otherwise get
-// the destructive case with no warning. Not resolved through the filesystem —
-// symlinks and hard links can make two different names the same file, and
-// catching every one of those needs a stat of a file that may not exist yet.
-// This catches the case people actually hit.
-//
-// Standard output is not a file and cannot collide.
+// The inputs are passed in a fixed order. This function used to build a map and
+// range over it, and Go randomises map iteration order, so with both the
+// certificate and the message colliding the error named a different one on each
+// run — the same defect checkFlags was fixed for, reintroduced two hundred lines
+// below the test that guards against it.
 func checkOutput(opts *DecryptOptions, args []string) error {
-	if opts.Output == "" || opts.Output == "-" {
-		return nil
-	}
-
-	out := filepath.Clean(opts.Output)
-
-	inputs := map[string]string{opts.Certificate: "--certificate"}
+	inputs := []opdest.Input{{Flag: "--certificate", Path: opts.Certificate}}
 	if len(args) == 1 {
-		inputs[args[0]] = "the message"
+		inputs = append(inputs, opdest.Input{Flag: "the message", Path: args[0]})
 	}
 
-	for path, what := range inputs {
-		if path == "" || path == "-" {
-			continue
-		}
-
-		if filepath.Clean(path) == out {
-			return fmt.Errorf("%w: %s is also %s", ErrOutputOverInput, opts.Output, what)
-		}
-	}
-
-	return nil
+	return opdest.CheckNotInput(opts.Output, inputs...)
 }
 
 // checkFlags refuses the arguments that cannot produce a plaintext.

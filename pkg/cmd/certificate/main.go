@@ -36,6 +36,14 @@ var (
 	ErrNoPublicKey = errors.New("backend cannot expose the encryption key's public half")
 )
 
+// ErrOutputOverInput means --output names a key file this run is reading.
+//
+// Re-exported from opdest so `errors.Is(err, certificate.ErrOutputOverInput)`
+// works for a caller holding this package, and so it is the SAME sentinel the
+// decrypt command uses. Two independently declared errors with identical text
+// is how the guard came to exist in one command and not the other.
+var ErrOutputOverInput = opdest.ErrOutputOverInput
+
 // RunCertificate assembles a publishable OpenPGP certificate whose primary and
 // encryption subkey are both held by a key service.
 //
@@ -158,8 +166,32 @@ func checkFlags(opts *CertificateOptions) (time.Time, error) {
 		}
 	}
 
+	// --created is checked here rather than only by creationTime below, because
+	// creationTime ran after this function had already returned. The doc above
+	// promises "three omissions should cost one round trip, not three" and
+	// --created was the one omission that always cost its own: an operator who
+	// left out --user-id and --created was told about --user-id, fixed it, and
+	// was then told about --created.
+	//
+	// Only its absence is reported here. Whether a supplied value parses, and
+	// whether it predates the signature that will cover it, is creationTime's
+	// question and needs the value it is complaining about.
+	if opts.Created == "" {
+		missing = append(missing, "--created")
+	}
+
 	if len(missing) > 0 {
 		return time.Time{}, fmt.Errorf("%w: %s", ErrMissingFlag, strings.Join(missing, ", "))
+	}
+
+	// Before the key service is reached and before anything is staged. With the
+	// local backend these two flags name PEM files on disk, so this is the check
+	// that stands between a mistyped --output and an unrecoverable private key.
+	if err := opdest.CheckNotInput(opts.Output,
+		opdest.Input{Flag: "--certify-key", Path: opts.CertifyKey},
+		opdest.Input{Flag: "--encrypt-key", Path: opts.EncryptKey},
+	); err != nil {
+		return time.Time{}, err
 	}
 
 	return creationTime(opts.Created)

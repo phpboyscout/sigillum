@@ -117,27 +117,65 @@ func TestStdinTwiceErrorSaysWhatToDo(t *testing.T) {
 // This command's checkFlags has always tested its flags in a fixed order, so
 // the message is stable. Pinned here so a future refactor toward a map does not
 // introduce on this side what has since been fixed on the other.
+//
+// Round-8 finding 40: the fixture below USED TO supply no flags at all, so
+// checkFlags returned at the missing-flag stage on every one of its 200
+// iterations and never reached the map that was, by then, actually there —
+// checkOutput built one and ranged over it. A test named for keeping a map out
+// of this command's flag checking ran two hundred times against the one path
+// that had none. Both paths are exercised now.
 func TestCheckFlagsReportsTheSameMissingFlagEveryTime(t *testing.T) {
 	t.Parallel()
 
-	var first string
+	for _, tc := range []struct {
+		name string
+		opts DecryptOptions
+		args []string
+	}{
+		{
+			name: "the missing-flag path",
+			opts: DecryptOptions{},
+		},
+		{
+			// Both inputs collide with --output, and they are spelled
+			// DIFFERENTLY on purpose.
+			//
+			// The obvious fixture gives both inputs the same path, and it does
+			// not work: a map keyed by path collapses them to a single entry,
+			// so there is nothing for iteration order to shuffle and the test
+			// passes against the very implementation it exists to reject. Two
+			// spellings that clean to one file keep two distinct keys, which is
+			// what makes the randomisation observable.
+			name: "the output-collision path",
+			opts: DecryptOptions{Certificate: "./report.pgp", Key: "alias/e", Output: "report.pgp"},
+			args: []string{"report.pgp"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	for i := range 200 {
-		err := checkFlags(&DecryptOptions{}, nil)
-		if err == nil {
-			t.Fatal("no flags supplied, but checkFlags was content")
-		}
+			var first string
 
-		if i == 0 {
-			first = err.Error()
+			for i := range 200 {
+				opts := tc.opts
 
-			continue
-		}
+				err := checkFlags(&opts, tc.args)
+				if err == nil {
+					t.Fatal("the fixture was accepted, so this iterates over nothing")
+				}
 
-		if err.Error() != first {
-			t.Fatalf("iteration %d reported %q, iteration 0 reported %q — map iteration order leaks into the message",
-				i, err.Error(), first)
-		}
+				if i == 0 {
+					first = err.Error()
+
+					continue
+				}
+
+				if err.Error() != first {
+					t.Fatalf("iteration %d reported %q, iteration 0 reported %q — map iteration order leaks into the message",
+						i, err.Error(), first)
+				}
+			}
+		})
 	}
 }
 
@@ -387,8 +425,15 @@ func TestCheckFlagsAllowsAnOrdinaryOutput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
+			// Asserted as "no error", not as "not THIS error".
+			//
+			// This used to read errors.Is(err, ErrOutputOverInput), which meant
+			// any other refusal counted as allowed — a checkFlags that rejected
+			// every ordinary invocation for some unrelated reason passed this
+			// test, so the half that proves the guard is not simply refusing
+			// everything could not fail.
 			opts := tc.opts
-			if err := checkFlags(&opts, tc.args); errors.Is(err, ErrOutputOverInput) {
+			if err := checkFlags(&opts, tc.args); err != nil {
 				t.Errorf("an ordinary invocation was refused: %v", err)
 			}
 		})
