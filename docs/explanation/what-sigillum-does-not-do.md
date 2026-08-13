@@ -15,8 +15,9 @@ current release, not a roadmap.
 
 ## There is no `sigillum verify` command
 
-sigillum signs. It does not verify. `sigillum --help` lists `sign` and `keys`
-and nothing else of its own, and there is no subcommand that checks a signature.
+sigillum signs, and it decrypts. It does not verify. `sigillum --help` lists
+`sign`, `keys`, `decrypt` and `certificate` of its own, and none of them checks
+a signature.
 
 This is not an oversight, but it is a genuine asymmetry, and the project
 description ("signing and verification CLI") reads more broadly than the command
@@ -89,10 +90,16 @@ Private-half files are written mode `0600`; public halves and signatures are
 
 ## The backend set is fixed at build time, not chosen at run time
 
-`--backend` selects from the backends **compiled into the binary**. The
-distributed sigillum ships two: `aws-kms` and `local`. There is no plugin
-directory, no `--backend-path`, and no configuration key that adds one. An
-unknown name fails immediately and lists what is available:
+`--backend` selects from the backends **compiled into the binary**. There is no
+plugin directory, no `--backend-path`, and no configuration key that adds one.
+
+There are two independent registries, and the same flag name selects from
+whichever the command needs — signing for `sign` and `keys`, encryption for
+`decrypt` and `certificate`. The distributed sigillum ships `aws-kms` and
+`local` in both, and `--backend` is required rather than defaulting, because
+more than one is present.
+
+An unknown name fails immediately and lists what is available:
 
 ```
 "vault" (available: aws-kms, local): unknown signing backend

@@ -19,10 +19,14 @@ defaults, failure modes and flag combinations that `--help` has no room for.
 | [`decrypt`](decrypt.md) | Read an OpenPGP message addressed to a KMS-backed certificate. |
 | [`certificate`](certificate.md) | Assemble a publishable certificate whose keys both live in a key service. |
 
-Both are attached from
+`sign` and `keys` are attached from
 [`gitlab.com/phpboyscout/go/signing-cli`](https://signing-cli.go.phpboyscout.uk/)
-as **top-level** commands, which is the point of sigillum existing separately
-from gtb.
+as **top-level** commands rather than reimplemented, which is the point of
+sigillum existing separately from gtb.
+
+`decrypt` and `certificate` are sigillum's own, in `pkg/cmd`. The split matters
+when something goes wrong: a signing defect belongs upstream in signing-cli, a
+decryption defect belongs in this repository.
 
 ## Which framework built-ins are present
 
@@ -59,10 +63,14 @@ Registered on the root command; available to every subcommand.
 
 ### Why `--output` means two different things
 
-The global `--output` selects an output *format*. But `sign` and every `keys`
-subcommand define their own local `--output`, which is a *file path*, and a local
-flag shadows the global one — those commands do not even list the global
-`--output` in their help.
+The global `--output` selects an output *format*. But `sign`, every `keys`
+subcommand, `decrypt` and `certificate` all define their own local `--output`,
+which is a *file path*, and a local flag shadows the global one — those commands
+do not even list the global `--output` in their help.
+
+`decrypt` is the one where this bites hardest. `sigillum decrypt --output json
+…` does not produce JSON diagnostics; it writes the decrypted vulnerability
+report to a file named `json` in the working directory.
 
 So `sigillum --output json config list` prints JSON, while
 `sigillum sign --output json …` writes a signature to a file named `json`. There
@@ -75,16 +83,21 @@ structured log lines on stderr instead.
 blank imports in the `main` package. There are two independent registries and
 the same flag name selects from whichever the command needs:
 
-| Commands | Registry | Backends shipped |
-|---|---|---|
-| `sign`, `keys mint`, `keys minisign` | signing | `aws-kms`, `local` |
-| `decrypt`, `certificate` | encryption | `aws-kms` |
+| Commands | Registry | Backends shipped | `--backend` |
+|---|---|---|---|
+| `sign`, `keys mint`, `keys minisign` | signing | `aws-kms`, `local` | required |
+| `decrypt`, `certificate` | encryption | `aws-kms`, `local` | required |
 
-They are separate because the operations are: signing needs a key that signs,
-and `decrypt` and `certificate` need one that performs ECDH key agreement. A
-name present in one registry is not automatically present in the other — there
-is currently no `local` encryption backend compiled in, so `sigillum sign
---backend local` works and `sigillum decrypt --backend local` does not.
+They are separate registries because the operations are: signing needs a key
+that signs, and `decrypt` and `certificate` need one that performs ECDH key
+agreement. A name present in one is not automatically present in the other —
+they happen to ship the same two today, but that is a fact about this build
+rather than a rule.
+
+`--backend` is **required** for every one of these commands. It defaults only
+when exactly one backend is compiled in, which is no longer the case for either
+registry — and a default whose meaning changes as backends are linked into the
+binary is a worse thing to rely on than an explicit flag.
 
 ### Signing backends
 

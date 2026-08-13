@@ -119,12 +119,32 @@ for a certificate that may not exist. The message names how many went untried.
 | `key has expired` | The holder time-boxed the subkey and that date has passed | no |
 | `message is not addressed to this certificate` | Every recipient was named, and none was you | no, unless the message also carried hidden recipients |
 | `malformed message` | Not readable as OpenPGP | no |
-| `message is larger than this will decrypt` | Beyond the 128 MiB bound, before or after decompression | no |
+| `message is larger than this will decrypt` (before decryption) | The message itself exceeds the 128 MiB bound | no |
+| `message is larger than this will decrypt` (after decryption) | What it decompresses to exceeds the 64 MiB plaintext bound — a compression bomb | **yes** |
 | `message has no integrity protection` | The legacy unprotected packet, which is refused rather than read | no |
 | `stopped before trying every recipient` | The 16-derivation ceiling was reached with candidates left untried | yes |
 | `deriving the shared secret` | The key service refused or was unreachable | yes |
-| `checksum` | Session key unwrapped wrongly — usually the wrong certificate | yes |
-| `integrity check failed` | The plaintext was altered in transit; nothing is written out | yes |
+| `key unwrap integrity check failed` | The wrong certificate or the wrong `--key` — the session key did not unwrap | yes |
+| `session key checksum mismatch` | The unwrap succeeded but the payload underneath is wrong; a damaged packet rather than a wrong key | yes |
+| `message integrity check failed` | The plaintext was altered in transit. Nothing is written out | yes |
+
+### Two different integrity checks
+
+Three of the rows above concern integrity and they mean quite different things.
+The distinction matters because the first is almost always an operator mistake
+and the third is almost always an attacker.
+
+- **`key unwrap integrity check failed`** is the AES key-wrap check on the
+  session key. It fails when the key that unwrapped it is not the key that
+  wrapped it — so in practice, the wrong `--certificate`, the wrong `--key`, or
+  a rotation that moved the encryption subkey. It is not evidence of tampering.
+- **`session key checksum mismatch`** means the unwrap succeeded, so the key was
+  right, and the session key underneath is still wrong. That is a damaged
+  packet.
+- **`message integrity check failed`** is OpenPGP's modification detection code
+  over the plaintext, verified after the whole message has been read. This is
+  the one that means the report was altered on its way here, and the plaintext
+  is deliberately not written out.
 
 ### Warnings
 

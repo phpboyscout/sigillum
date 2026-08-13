@@ -1,13 +1,21 @@
 # sigillum
 
-**Standalone artefact signing CLI for the phpboyscout ecosystem.**
+**Standalone artefact signing and encrypted-report CLI for the phpboyscout ecosystem.**
 
-`sigillum` is a small, single-purpose command-line tool that produces and
-publishes signatures over release artefacts — OpenPGP for checksum manifests,
-minisign for the artefacts themselves. It exposes the ecosystem's `sign` and
-`keys` commands as first-class, **top-level** commands — the same command
-surface as `gtb sign` / `gtb keys`, but as a purpose-built utility you can drop
-into any release pipeline, Go or not.
+`sigillum` is a small command-line tool that does two things for a project's
+security surface.
+
+It produces and publishes **signatures** over release artefacts — OpenPGP for
+checksum manifests, minisign for the artefacts themselves — exposing the
+ecosystem's `sign` and `keys` commands as first-class, **top-level** commands,
+the same surface as `gtb sign` / `gtb keys` but as a utility you can drop into
+any release pipeline, Go or not.
+
+It also **receives encrypted vulnerability reports**. `certificate` assembles
+the OpenPGP certificate you publish at your security contact address, and
+`decrypt` reads the reports researchers send to it. Both halves of that
+certificate live in a key service: the private key never leaves it, so
+decrypting a report is a key-service call rather than a key on a laptop.
 
 The binary's own description string still reads "signing and verification CLI",
 which the command surface does not bear out: there is no verify command. See
@@ -33,10 +41,18 @@ and sign, with no framework build required.
   pin (cargo-binstall, rtb-update).
 - **`sigillum keys publish`** — stage a minisign public key into a static keys
   site with a machine-readable `keys.json` manifest.
+- **`sigillum certificate`** — assemble the OpenPGP certificate to publish at
+  your security contact address, from a certification key and an encryption
+  subkey that both live in a key service. Reproducible: the same `--created`
+  and the same keys give byte-identical output, because the creation time is
+  hashed into the fingerprint.
+- **`sigillum decrypt <message>`** — read a vulnerability report encrypted to
+  that certificate. A message addressed to a different certificate is refused
+  before any key-service call is made.
 
 ## What it does not do
 
-**There is no `sigillum verify`.** sigillum signs; verification happens
+**There is no `sigillum verify`.** sigillum signs and decrypts; verification happens
 elsewhere — `gpg --verify` for OpenPGP output, `minisign -Vm` (or the consumers
 themselves) for `.minisig` output, and the Go library
 `gitlab.com/phpboyscout/go/signing/verify` for tools checking their own
@@ -48,22 +64,35 @@ in [`docs/explanation/what-sigillum-does-not-do.md`](docs/explanation/what-sigil
 
 ## Architecture
 
-sigillum is deliberately thin. All signing logic is upstream; sigillum wires the
-command surface together and ships the backends:
+sigillum is deliberately thin. The signing logic is upstream; the encryption
+logic is upstream too. sigillum wires the command surface together and ships the
+backends:
 
 ```
-sigillum  →  go/signing-cli  →  go/signing  (+ go/signing/openpgpkey, .../verify)
-   │              (sign / keys        (all signing &
-   │               cobra builders)     verification logic)
+sigillum
+   ├─ sign, keys      →  go/signing-cli  →  go/signing  (+ openpgpkey, verify)
+   │                         (cobra builders)   (all signing & verification logic)
+   │       ├─ go/signing-aws-kms   AWS KMS backend   (blank-imported)
+   │       └─ go/signing/local     local PEM backend (blank-imported)
    │
-   ├─ go/signing-aws-kms   AWS KMS backend   (blank-imported)
-   └─ go/signing/local     local PEM backend (blank-imported)
+   └─ decrypt,        →  go/encryption   (certificate assembly and parsing,
+      certificate           │             ECDH key derivation, key unwrap)
+       (sigillum's own      ├─ go/encryption-aws-kms   AWS KMS backend
+        pkg/cmd)            └─ go/encryption/local     local PEM backend
 ```
+
+The two sides are separate all the way down, including their key-service
+registries: signing needs a key that signs, decryption needs one that performs
+ECDH key agreement, and `--backend` selects from whichever the command needs.
 
 - **`go/signing`** holds all signing/verification logic.
 - **`go/signing-cli`** holds only the cobra command builders (`sign`, `keys`);
   it depends on `go/signing` + cobra and nothing else, so there is no module
   cycle back to gtb or sigillum.
+- **`go/encryption`** holds the OpenPGP certificate assembler and parser, the
+  RFC 6637 key derivation and the AES key unwrap. The `decrypt` and
+  `certificate` commands live in sigillum's own `pkg/cmd` rather than upstream,
+  because they are the only consumers.
 - **sigillum** attaches those commands to its root and blank-imports the backends
   it ships. Which backends are compiled in is a build-time decision — a regulated
   build can drop a blank import and rebuild, and linker dead-code elimination

@@ -112,7 +112,7 @@ quoting it.
 | Message | Means |
 |---|---|
 | `addressed to ...` | Encrypted to a different certificate. No key-service call was made, unless the message also carried hidden recipients |
-| `stopped before trying every recipient` | The message carried more hidden recipients than the 16-derivation ceiling allows; some were never tried |
+| `stopped before trying every recipient` | The message carried session-key packets on more than 16 distinct ephemeral points, so some were never tried. Not only hidden recipients: the ceiling applies to every packet however it is addressed, and anyone can compose packets naming your key id because it is the tail of your published fingerprint |
 | `certificate has no ECDH encryption subkey` | A signing-only certificate |
 | `malformed message` | Truncated paste, or not OpenPGP at all |
 | `AccessDenied` | The role is missing a grant — check the reader policy |
