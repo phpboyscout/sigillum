@@ -2,6 +2,7 @@ package opfile_test
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -312,10 +313,21 @@ func assertCreatingAnExistingNameIsRefused(t *testing.T, b backend) {
 
 	seed(t, in.fsys, path, "the previous report")
 
-	if f, err := in.fsys.CreateExcl(path, 0o600); err == nil {
+	f, err := in.fsys.CreateExcl(path, 0o600)
+	if err == nil {
 		_ = f.Close()
 
-		t.Error("CreateExcl overwrote an existing file")
+		t.Fatal("CreateExcl overwrote an existing file")
+	}
+
+	// fs.ErrExist specifically, not merely "an error". stage() retries a name
+	// collision by branching on errors.Is(err, fs.ErrExist), so a backend that
+	// reports collisions any other way turns the retry into an immediate
+	// failure — and would sail through a check that only asked whether
+	// something went wrong.
+	if !errors.Is(err, fs.ErrExist) {
+		t.Errorf("CreateExcl on an existing name: error = %v, want it to wrap fs.ErrExist, "+
+			"which is what the staging retry branches on", err)
 	}
 
 	if got := readBack(t, in.fsys, path); got != "the previous report" {
@@ -426,9 +438,17 @@ func readBack(t *testing.T, fsys opfile.FS, path string) string {
 		t.Fatalf("stat %s: %v", path, err)
 	}
 
-	buf := make([]byte, info.Size())
-	if _, err := f.Read(buf); err != nil && info.Size() > 0 {
+	// io.ReadAll rather than one Read into a size-derived buffer. A short read
+	// is legal for any io.Reader, and would have returned truncated content —
+	// failing whichever assertion used it, with a message about the content
+	// rather than about the read.
+	buf, err := io.ReadAll(f)
+	if err != nil {
 		t.Fatalf("reading %s: %v", path, err)
+	}
+
+	if int64(len(buf)) != info.Size() {
+		t.Fatalf("read %d octets from %s, which reports %d", len(buf), path, info.Size())
 	}
 
 	return string(buf)

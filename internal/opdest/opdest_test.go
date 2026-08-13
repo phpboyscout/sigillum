@@ -180,3 +180,46 @@ func TestOrdinaryDestinationsAreNotReportedAsResolved(t *testing.T) {
 		})
 	}
 }
+
+// TestResolvedIgnoresMerelyNonCanonicalPaths covers the warning crying wolf.
+//
+// Resolved() drives an Info-level warning telling the operator the report did
+// not land where they typed. It compared the path opfile had cleaned against
+// the raw string, so `--output ./reports/x.txt` — or any path with a doubled
+// slash, a `.` or a `..` — reported as resolved-elsewhere even with symlink
+// following switched off and no link in sight.
+//
+// A warning that fires on ordinary input is worse than no warning: the one
+// case worth surfacing is a report written through a planted link, and it
+// cannot be seen among false alarms.
+func TestResolvedIgnoresMerelyNonCanonicalPaths(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	if err := mem.MkdirAll("/reports", 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	for _, path := range []string{
+		"/reports/report.txt",
+		"/reports/./report.txt",
+		"/reports//report.txt",
+		"/reports/../reports/report.txt",
+	} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := opdest.Open(opfileafero.Wrap(mem), path, 0o600, false)
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+
+			defer out.Abandon()
+
+			if out.Resolved() {
+				t.Errorf("%s was reported as having landed elsewhere; it is the same file, "+
+					"spelled differently", path)
+			}
+		})
+	}
+}

@@ -99,11 +99,28 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 	// Info rather than Debug: the operator asked to follow a link, so the
 	// one thing worth surfacing without --verbose is that the certificate is
 	// not where they typed.
-	if out.Resolved() {
-		p.GetLogger().Info("certificate written", "path", out.Path(), "requested", out.Requested())
+	return commitAndReport(out, p.GetLogger())
+}
+
+// commitAndReport puts the certificate in place and then says where it went.
+//
+// In that order. Announcing first meant a failed commit still told the operator
+// the certificate had been written — and the one case this line exists for, a
+// certificate that landed somewhere other than they typed, is exactly the case
+// where they would go and act on it.
+func commitAndReport(out opdest.Destination, log interface {
+	Info(msg string, args ...any)
+},
+) error {
+	if err := out.Commit(); err != nil {
+		return err
 	}
 
-	return out.Commit()
+	if out.Resolved() {
+		log.Info("certificate written", "path", out.Path(), "requested", out.Requested())
+	}
+
+	return nil
 }
 
 // checkFlags refuses the arguments that cannot produce a certificate, and

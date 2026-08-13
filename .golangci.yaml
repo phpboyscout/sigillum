@@ -81,7 +81,6 @@ linters:
         linters:
           - dupl
           - err113
-          - gochecknoglobals
           - mnd
           - nlreturn
           - noctx

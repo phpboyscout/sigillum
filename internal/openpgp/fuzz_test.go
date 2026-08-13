@@ -232,7 +232,9 @@ func carriesEncryptedData(prefix []byte) bool {
 // and only then report the failure. Whatever is done to the ciphertext, a
 // successful return must mean the plaintext is the one that was sent.
 func FuzzDecryptNeverEmitsUnauthenticatedPlaintext(f *testing.F) {
-	f.Add(0, byte(0))
+	// Both seeds must survive the target's own guard below, which returns
+	// early on flip == 0. A seed of (0, 0) exercised nothing at all.
+	f.Add(0, byte(0x01))
 	f.Add(1, byte(0xFF))
 
 	f.Fuzz(func(t *testing.T, offset int, flip byte) {

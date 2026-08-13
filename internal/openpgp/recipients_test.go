@@ -435,8 +435,10 @@ func repeatFirstPKESK(t *testing.T, message []byte, count int) []byte {
 		// memo cannot collapse, which costs the attacker one EC keypair each.
 		replaceEphemeralPoint(t, body, freshPoint(t, len(pkesk.EphemeralPoint)))
 
-		// The wrapped key varies too, so the candidates stay distinct for the
-		// dedup as well as for the memo.
+		// The wrapped key varies too. Not for the dedup — the fresh point above
+		// already makes every dedup key distinct — but so that each copy is a
+		// different packet rather than the genuine one repeated, which is what
+		// a caller passing this fixture expects it to be.
 		body[len(body)-1] ^= byte(i)
 		if len(body) > 1 {
 			body[len(body)-2] ^= byte(i >> 8)

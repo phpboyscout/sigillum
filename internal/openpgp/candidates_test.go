@@ -376,113 +376,6 @@ func TestDecryptAcceptsArmourWithACoveringLine(t *testing.T) {
 // one layer out: a bound that fired discarded what it had learned, and the cap
 // counted packets an attacker supplies. These test around each boundary.
 
-// TestDecryptIsNotCrowdedOutByRepeatedPackets covers the cap being used as the
-// attack rather than the defence.
-//
-// maxDerivations counts every candidate, including ones naming our key id — and
-// the key id is public. Copying the message's own session-key packet eight
-// times, with the wrapped key corrupted, pushes the genuine packet past the cap
-// so it is never tried, and the operator is told the report was for somebody
-// else. That is finding 02 again at a threshold of eight instead of one.
-func TestDecryptIsNotCrowdedOutByRepeatedPackets(t *testing.T) {
-	t.Parallel()
-
-	const plaintext = "a report behind a pile of forged packets"
-
-	der, deriver := testCertificate(t)
-
-	genuine := encryptTo(t, der, plaintext, false)
-	leading := firstPacket(t, genuine)
-
-	// Twelve distinct forgeries, past the cap of eight, each naming our key id
-	// with a wrapped key that will not open.
-	var message []byte
-
-	for i := range 12 {
-		forged := append([]byte(nil), leading...)
-		forged[len(forged)-1] ^= byte(i + 1)
-		message = append(message, forged...)
-	}
-
-	message = append(message, genuine...)
-
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
-	if err != nil {
-		t.Fatalf("ReadRecipient: %v", err)
-	}
-
-	var got bytes.Buffer
-
-	// The report must be RECOVERED. An earlier version of this test accepted
-	// "either the genuine packet is reached, or the run stops at the cap",
-	// which made the defect one of its passing outcomes — the assertion was
-	// weakened until the code satisfied it, and the property fuzz target
-	// inherited the same weakness, so neither could ever have caught this.
-	//
-	// Forging a packet that names us requires modifying the message in
-	// transit, and an attacker with that capability can delete it outright.
-	// Losing the report to a cost ceiling is therefore never an acceptable
-	// outcome: the ceiling exists for unauthenticated senders, who cannot
-	// produce these at all.
-	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
-		t.Fatalf("a report behind %d forged packets was not recovered: %v", 12, err)
-	}
-
-	if got.String() != plaintext {
-		t.Errorf("recovered %q, want %q", got.String(), plaintext)
-	}
-}
-
-// TestDecryptSurvivesManyForgedNamedPackets is the same attack at a scale no
-// tuning of a ceiling could absorb.
-//
-// Two hundred forged packets, each naming this certificate with a distinct
-// wrapped key so nothing collapses them. The point is that bounding named
-// candidates cannot be made safe by choosing a larger number — the attacker
-// picks the count — so the answer is not to bound them at all.
-//
-// Affordable to assert because the local backend makes an attempt free; against
-// a billed key service this test would be the very cost the ceiling exists to
-// prevent, which is precisely why the two properties had to be separated before
-// either could be tested honestly.
-func TestDecryptSurvivesManyForgedNamedPackets(t *testing.T) {
-	t.Parallel()
-
-	const (
-		plaintext = "a report behind two hundred forgeries"
-		forgeries = 200
-	)
-
-	der, deriver := testCertificate(t)
-
-	genuine := encryptTo(t, der, plaintext, false)
-	leading := firstPacket(t, genuine)
-
-	var message []byte
-
-	for i := range forgeries {
-		forged := append([]byte(nil), leading...)
-		forged[len(forged)-1] ^= byte(i%255 + 1)
-		message = append(message, forged...)
-	}
-
-	message = append(message, genuine...)
-
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
-	if err != nil {
-		t.Fatalf("ReadRecipient: %v", err)
-	}
-
-	var got bytes.Buffer
-	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), &got); err != nil {
-		t.Fatalf("a report behind %d forged packets was not recovered: %v", forgeries, err)
-	}
-
-	if got.String() != plaintext {
-		t.Errorf("recovered %q, want %q", got.String(), plaintext)
-	}
-}
-
 // TestDecryptStillBoundsHiddenRecipientGuesses is the other half, now testable
 // on its own.
 //
@@ -518,49 +411,6 @@ func TestDecryptStillBoundsHiddenRecipientGuesses(t *testing.T) {
 	if counting.calls != 16 {
 		t.Errorf("the key service was called %d times for 60 hidden candidates; want exactly the ceiling, 16",
 			counting.calls)
-	}
-}
-
-// TestDecryptIgnoresDuplicateCandidates is the cheaper half of the same attack:
-// the identical packet repeated costs nothing with the cap, because trying it
-// twice can only fail twice.
-func TestDecryptIgnoresDuplicateCandidates(t *testing.T) {
-	t.Parallel()
-
-	const plaintext = "a report behind copies of one forged packet"
-
-	der, deriver := testCertificate(t)
-
-	genuine := encryptTo(t, der, plaintext, false)
-	forged := corruptWrappedKey(t, firstPacket(t, genuine))
-
-	var message []byte
-	for range 30 {
-		message = append(message, forged...)
-	}
-
-	message = append(message, genuine...)
-
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
-	if err != nil {
-		t.Fatalf("ReadRecipient: %v", err)
-	}
-
-	counting := &countingDeriver{SecretDeriver: deriver}
-
-	var got bytes.Buffer
-	if err := openpgp.Decrypt(t.Context(), counting, recipient, bytes.NewReader(message), &got); err != nil {
-		t.Fatalf("thirty copies of one packet hid the report: %v", err)
-	}
-
-	if got.String() != plaintext {
-		t.Errorf("recovered %q, want %q", got.String(), plaintext)
-	}
-
-	// The duplicates collapse to one attempt, so the genuine packet is the
-	// second call rather than the thirty-first.
-	if counting.calls > 2 {
-		t.Errorf("the key service was called %d times for one duplicated packet", counting.calls)
 	}
 }
 
@@ -645,6 +495,27 @@ func (d *failingDeriverWith) CoordinateBytes() int { return 32 }
 // derivations, and the report still decrypted, so nothing failed loudly enough
 // to notice. The message bound is 128 MiB and one of these packets is about a
 // hundred octets, which put the ceiling at roughly a million calls per message.
+//
+// This replaces three tests that asserted weaker versions of the same thing —
+// twelve forgeries, two hundred forgeries, and thirty identical copies — each
+// checking only that the report came back. All three shared one ephemeral
+// point, so after the memo none of them could approach any ceiling, and one
+// asserted "at most two calls" where the true count is one. Three tests that
+// cannot fail are worse than one that can, because the count looks like
+// coverage.
+//
+// Their history is worth keeping. The twelve-forgery version had once accepted
+// "either the genuine packet is reached, or the run stops at the cap", which
+// made the defect one of its passing outcomes: the assertion had been weakened
+// until the code satisfied it, and the property fuzz target inherited the same
+// weakness, so neither could ever have caught what they were written for.
+//
+// Losing a report to a cost ceiling is never an acceptable outcome here.
+// Forging a packet that names us requires modifying the message in transit,
+// and an attacker with that capability can delete it outright; the ceiling
+// exists for unauthenticated senders, who cannot produce these at all. The
+// companion property — that a free candidate behind an exhausted budget is
+// still tried — is TestDecryptStillTriesCandidatesThatCostNothing.
 func TestDecryptBillsOneDerivationPerEphemeralPoint(t *testing.T) {
 	t.Parallel()
 

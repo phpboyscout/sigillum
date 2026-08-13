@@ -17,6 +17,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 )
@@ -96,7 +97,19 @@ func (d Destination) Path() string { return d.path }
 // following is silence, and that part is cheap to remove". opfile did report
 // it; until this existed neither command read it, so the mitigation lived in a
 // comment and nowhere else.
-func (d Destination) Resolved() bool { return d.path != "" && d.path != d.typed }
+func (d Destination) Resolved() bool {
+	if d.path == "" {
+		return false
+	}
+
+	// Compared against the CLEANED form of what the operator typed, because
+	// opfile cleans before it resolves. Comparing against the raw string made
+	// every non-canonical path — a doubled slash, a "./", a "../" — report as
+	// having landed elsewhere, with following switched off and no link in
+	// sight. A warning that fires on ordinary input hides the one case worth
+	// seeing, which is a report written through a planted link.
+	return d.path != filepath.Clean(d.typed)
+}
 
 // Requested is the path as the operator gave it.
 func (d Destination) Requested() string { return d.typed }
