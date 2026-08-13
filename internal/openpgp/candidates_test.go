@@ -897,3 +897,66 @@ func pkesksOnly(t *testing.T, message []byte) []byte {
 
 	return out
 }
+
+// TestDecryptBillsOneDerivationPerPointEvenWhenItFails covers the half of the
+// memo that failure took out.
+//
+// maxDerivations bounds distinct ephemeral points, and says a repeat of a point
+// already seen "is free and does not count". That held only while the key
+// service said yes. Failures were counted against the budget but deliberately
+// not memoised, so a message repeating ONE point that the key service refuses
+// spent a billed call per packet and exhausted the whole ceiling — the bound
+// became per packet rather than per point at exactly the moment cost matters
+// most, which is when something is already going wrong.
+//
+// The reason failures were not memoised was that a refusal might be particular
+// to one call, and recording it would turn a transient outage into a verdict.
+// That reasoning is right across messages and wrong within one: re-asking the
+// same key service for the same point, in the same second, is not a retry
+// strategy — it is paying twice for the same answer.
+func TestDecryptBillsOneDerivationPerPointEvenWhenItFails(t *testing.T) {
+	t.Parallel()
+
+	const copies = 20
+
+	der, _ := testCertificate(t)
+
+	genuine := encryptTo(t, der, "a report nobody can open today", false)
+	leading := firstPacket(t, genuine)
+
+	// Every copy carries the same ephemeral point, varying only the wrapped
+	// key — one XOR each, and the cheapest form of this message.
+	var message []byte
+
+	for i := range copies {
+		forged := append([]byte(nil), leading...)
+		forged[len(forged)-1] ^= byte(i%255 + 1)
+		message = append(message, forged...)
+	}
+
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	outage := errors.New("kms: ThrottlingException: rate exceeded")
+	failing := &failingDeriverWith{err: outage}
+
+	err = openpgp.Decrypt(t.Context(), failing, recipient, bytes.NewReader(message), io.Discard)
+	if err == nil {
+		t.Fatal("a key service refusing every derivation was reported as success")
+	}
+
+	// One point, so one billed call, whatever the key service said about it.
+	if failing.calls != 1 {
+		t.Errorf("%d packets sharing one ephemeral point cost %d billed derivations against a "+
+			"refusing key service, want 1", copies+1, failing.calls)
+	}
+
+	// And the operator must still be told what actually went wrong.
+	if !errors.Is(err, outage) {
+		t.Errorf("error = %v, want it to carry the key-service failure", err)
+	}
+}

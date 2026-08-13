@@ -303,18 +303,28 @@ const maxDerivations = 16
 //
 // The map is bounded by [maxDerivations], which the walk applies to every
 // candidate: a point not seen before is a billed call and counts, a point
-// already derived is free and does not.
+// already asked about is free and does not — whether the answer was a secret
+// or a refusal.
 type billedOnce struct {
 	deriver SecretDeriver
-	secrets map[string][]byte
+
+	// outcomes records what each point cost and what it produced, so a point
+	// asked about twice is billed once whichever way it went.
+	outcomes map[string]outcome
 
 	// calls counts derivations actually made, successful or not, which is what
 	// [maxDerivations] bounds.
 	calls int
 }
 
+// outcome is what one ephemeral point yielded.
+type outcome struct {
+	secret []byte
+	err    error
+}
+
 func newBilledOnce(deriver SecretDeriver) *billedOnce {
-	return &billedOnce{deriver: deriver, secrets: map[string][]byte{}}
+	return &billedOnce{deriver: deriver, outcomes: map[string]outcome{}}
 }
 
 func (b *billedOnce) CoordinateBytes() int { return b.deriver.CoordinateBytes() }
@@ -325,7 +335,7 @@ func (b *billedOnce) CoordinateBytes() int { return b.deriver.CoordinateBytes() 
 // A point already derived is free, so it never counts and never refuses — which
 // is what lets the ceiling be small without a repeated packet consuming it.
 func (b *billedOnce) wouldExceed(peerPoint []byte) bool {
-	if _, ok := b.secrets[string(peerPoint)]; ok {
+	if _, ok := b.outcomes[string(peerPoint)]; ok {
 		return false
 	}
 
@@ -333,26 +343,29 @@ func (b *billedOnce) wouldExceed(peerPoint []byte) bool {
 }
 
 func (b *billedOnce) DeriveSharedSecret(ctx context.Context, peerPoint []byte) ([]byte, error) {
-	if secret, ok := b.secrets[string(peerPoint)]; ok {
-		return secret, nil
+	if got, ok := b.outcomes[string(peerPoint)]; ok {
+		return got.secret, got.err
 	}
 
-	// Counted before the call, and counted even when it fails: a refused call
-	// is billed and rate-limited like any other, so the budget is spent either
-	// way.
+	// Counted before the call, and counted whichever way it goes: a refused
+	// call is billed and rate-limited like any other.
 	b.calls++
 
 	secret, err := b.deriver.DeriveSharedSecret(ctx, peerPoint)
-	if err != nil {
-		// Failures are deliberately not memoised. A key service that refused
-		// once may refuse for a reason particular to that call, and recording
-		// "this point is bad" would turn a transient outage into a verdict.
-		return nil, err
-	}
 
-	b.secrets[string(peerPoint)] = secret
+	// Failures are recorded too, and only for the life of this message.
+	//
+	// They were once deliberately excluded, on the grounds that a refusal might
+	// be particular to one call and recording it would turn a transient outage
+	// into a verdict. That reasoning is right across messages and wrong within
+	// one: re-asking the same key service for the same point, in the same
+	// second, is not a retry strategy — it is paying twice for the same answer.
+	// Excluding them made the ceiling per packet rather than per point at
+	// exactly the moment cost matters most, which is when a key service is
+	// already throttling.
+	b.outcomes[string(peerPoint)] = outcome{secret: secret, err: err}
 
-	return secret, nil
+	return secret, err
 }
 
 // unwrap recovers the session key from one candidate packet.
