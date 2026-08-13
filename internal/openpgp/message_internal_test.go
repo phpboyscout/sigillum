@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/phpboyscout/go/encryption"
+
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
@@ -251,5 +253,53 @@ func TestIsPacketStreamNeedsMoreThanAHeader(t *testing.T) {
 				t.Errorf("isPacketStream = %t, want %t", got, tc.expect)
 			}
 		})
+	}
+}
+
+// TestPKESKFixedOctetsMatchesTheCore covers a constant copied by hand.
+//
+// pkeskFixedOctets is the same value as the core's unexported constant of the
+// same name, maintained separately because nothing exports it. Copies of wire
+// constants drift, and this one decides whether a packet is treated as a real
+// session key or as bytes that merely resemble one.
+//
+// The core's minimum is MEASURED rather than written here a second time: probe
+// upward until it stops complaining about length, and compare. Asserting one
+// side of the boundary would only catch drift in one direction — checking that
+// a too-short body is refused misses a constant that has grown, which is the
+// direction that makes this package ignore packets the core can read.
+func TestPKESKFixedOctetsMatchesTheCore(t *testing.T) {
+	t.Parallel()
+
+	const probeLimit = 64
+
+	coreMinimum := -1
+
+	for n := range probeLimit {
+		body := make([]byte, n)
+		if n > 0 {
+			body[0] = 3
+		}
+
+		if n > 9 {
+			body[9] = 18
+		}
+
+		_, err := encryption.ParsePKESK(body)
+		if err == nil || !strings.Contains(err.Error(), "want at least") {
+			coreMinimum = n
+
+			break
+		}
+	}
+
+	if coreMinimum < 0 {
+		t.Fatalf("the core refused every body up to %d octets on length grounds", probeLimit)
+	}
+
+	if coreMinimum != pkeskFixedOctets {
+		t.Errorf("pkeskFixedOctets is %d but the core's minimum is %d — a session-key packet the "+
+			"core can read is treated here as bytes that merely resemble one, or the reverse",
+			pkeskFixedOctets, coreMinimum)
 	}
 }

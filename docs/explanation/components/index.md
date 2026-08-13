@@ -8,9 +8,11 @@ authors: [Matt Cockayne <matt@phpboyscout.uk>]
 
 # Components & architecture
 
-sigillum is a thin composition layer. Its job is to *assemble* the signing
-command surface and *ship* the backends — not to implement signing. Everything
-substantive lives in upstream modules.
+sigillum is a thin composition layer on the signing side. Its job there is to
+*assemble* the command surface and *ship* the backends — not to implement
+signing. On the decryption side it is thinner but not empty: `internal/openpgp`
+holds the message-reading logic, which exists nowhere upstream. Everything
+else substantive lives in upstream modules.
 
 ## The module stack
 
@@ -50,16 +52,24 @@ interface (`Debug`/`Info`/`Warn`/`Error(msg string, args ...any)`) that both a
 never imports gtb's `props` container. The constructors return plain
 `*cobra.Command` values, leaving any framework-specific wrapping to the caller.
 
-**sigillum** — the composition. It is a gtb-generated application, but its root
-command attaches the `sign` and `keys` commands from `go/signing-cli` as
-**top-level** commands:
+**sigillum** — the composition. It is a gtb-generated application whose root
+command attaches four top-level commands: `sign` and `keys` from
+`go/signing-cli`, and `decrypt` and `certificate` from its own `pkg/cmd`:
 
 ```go
 rootCmd := gtbRoot.NewCmdRoot(p,
     setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())),
     setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())),
+    decrypt.NewCmdDecrypt(p),
+    certificate.NewCmdCertificate(p),
 )
 ```
+
+The split is deliberate and it is not symmetric. Signing logic is entirely
+upstream, so sigillum attaches builders and adds nothing. Decryption is not:
+`internal/openpgp` — message framing, the candidate walk, the size and
+compression bounds — lives here, because it exists nowhere upstream and
+`go/encryption` deliberately stops at the packet and certificate layer.
 
 It also blank-imports the backends it ships (see
 [Concepts](../concepts/index.md)), so those backends register themselves in

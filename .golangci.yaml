@@ -116,13 +116,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - "gitlab.com/phpboyscout/sigillum"
-    gofumpt:
-      module-path: "gitlab.com/phpboyscout/sigillum"
-      extra-rules: true
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
+        - gitlab.com/phpboyscout/sigillum

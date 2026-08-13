@@ -2,6 +2,8 @@ package sigillum_test
 
 import (
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -206,4 +208,135 @@ func sectionKey(trimmed string) (string, bool) {
 	}
 
 	return strings.TrimSuffix(trimmed, ":"), true
+}
+
+// TestFormatterSettingsGovernAnEnabledFormatter is the exclusions rule applied
+// to the other half of the file.
+//
+// A settings block for a formatter that is not enabled configures nothing, in
+// exactly the way an exclusion for a linter that is not enabled suppresses
+// nothing — and the guard above was written for the second and never looked at
+// the first. All three modules carried a gofumpt block while enabling only
+// gofmt and goimports, so its module-path and extra-rules governed nothing and
+// nothing said so.
+func TestFormatterSettingsGovernAnEnabledFormatter(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(".golangci.yaml")
+	if err != nil {
+		t.Fatalf("reading the lint config: %v", err)
+	}
+
+	enabled, configured := parseFormatters(string(raw))
+
+	for _, name := range configured {
+		if !enabled[name] {
+			t.Errorf("%q has a settings block but is not enabled, so those settings govern nothing",
+				name)
+		}
+	}
+}
+
+// TestLocalPrefixesNamesThisModule covers an import-grouping rule pointed at
+// somebody else.
+//
+// goimports groups imports of the local module apart from third-party ones, so
+// a local-prefixes naming a different module puts this module's own imports in
+// the wrong group — and since the gate then never fires, nothing reports it.
+// Both encryption modules named gitlab.com/phpboyscout/go/signing, which
+// neither of them is.
+func TestLocalPrefixesNamesThisModule(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(".golangci.yaml")
+	if err != nil {
+		t.Fatalf("reading the lint config: %v", err)
+	}
+
+	mod, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatalf("reading go.mod: %v", err)
+	}
+
+	match := regexp.MustCompile(`(?m)^module\s+(\S+)`).FindSubmatch(mod)
+	if match == nil {
+		t.Fatal("go.mod declares no module path")
+	}
+
+	self := string(match[1])
+
+	prefixes := localPrefixes(string(raw))
+	if len(prefixes) == 0 {
+		t.Skip("no local-prefixes configured")
+	}
+
+	if !slices.Contains(prefixes, self) {
+		t.Errorf("local-prefixes is %v and this module is %q, so goimports groups this module's "+
+			"own imports as third-party and the gate governs nothing", prefixes, self)
+	}
+}
+
+// parseFormatters returns the enabled formatters and every formatter with a
+// settings block.
+func parseFormatters(cfg string) (enabled map[string]bool, configured []string) {
+	enabled = map[string]bool{}
+
+	var inFormatters, inEnable, inSettings bool
+
+	for _, line := range strings.Split(cfg, "\n") {
+		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+
+		if indent == 0 {
+			inFormatters = trimmed == "formatters:"
+			inEnable, inSettings = false, false
+
+			continue
+		}
+
+		if !inFormatters {
+			continue
+		}
+
+		if key, isKey := sectionKey(trimmed); isKey {
+			switch {
+			case indent == 2:
+				inEnable, inSettings = key == "enable", key == "settings"
+			case indent == 4 && inSettings:
+				configured = append(configured, key)
+			}
+
+			continue
+		}
+
+		if name, ok := strings.CutPrefix(trimmed, "- "); ok && inEnable {
+			enabled[name] = true
+		}
+	}
+
+	return enabled, configured
+}
+
+// localPrefixes returns the values under formatters.settings.goimports.
+func localPrefixes(cfg string) []string {
+	var (
+		out    []string
+		inList bool
+	)
+
+	for _, line := range strings.Split(cfg, "\n") {
+		trimmed := strings.TrimSpace(line)
+
+		if key, isKey := sectionKey(trimmed); isKey {
+			inList = key == "local-prefixes"
+
+			continue
+		}
+
+		if value, ok := strings.CutPrefix(trimmed, "- "); ok && inList {
+			out = append(out, strings.Trim(value, `"'`))
+		}
+	}
+
+	return out
 }
