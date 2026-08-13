@@ -180,6 +180,20 @@ func checkFlags(opts *CertificateOptions) (time.Time, error) {
 		missing = append(missing, "--created")
 	}
 
+	// --created keeps its explanation when it is one of the missing flags.
+	//
+	// Folding it into the plain list cost that, and an e2e scenario caught it:
+	// "--created is not set" tells an operator to pass a date, but not that
+	// passing a DIFFERENT date next time produces a different certificate that
+	// nothing already encrypted will open. That is the whole reason the flag has
+	// no default, so it is the one thing the message must carry.
+	if opts.Created == "" {
+		return time.Time{}, fmt.Errorf(
+			"%w: %s. --created (RFC 3339) is hashed into the certificate's fingerprint, "+
+				"so it must be the same on every run or the certificate changes identity",
+			ErrMissingFlag, strings.Join(missing, ", "))
+	}
+
 	if len(missing) > 0 {
 		return time.Time{}, fmt.Errorf("%w: %s", ErrMissingFlag, strings.Join(missing, ", "))
 	}
