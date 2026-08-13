@@ -119,16 +119,41 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
-	// Info rather than Debug when the destination resolved elsewhere, because
-	// that is the one case worth surfacing without --verbose: the operator
-	// asked to follow a link and the plaintext is not where they typed.
-	if out.Resolved() {
-		p.GetLogger().Info("report decrypted", "path", out.Path(), "requested", out.Requested())
-	} else {
-		p.GetLogger().Debug("report decrypted", "path", out.Path())
+	// Narrower than asked for rather than broader, so this is not a
+	// confidentiality problem — but a report the operator expected at 0600 and
+	// got at 0400 is worth a line.
+	if note := out.ModeNote(); note != "" {
+		p.GetLogger().Info("the output file's mode is not what was asked for", "note", note)
 	}
 
+	reportDestination(p.GetLogger(), out)
+
 	return nil
+}
+
+// reportDestination tells the operator where the plaintext went, and whether
+// the file mode is what was asked for.
+//
+// Info rather than Debug when the destination resolved elsewhere, because that
+// is the one case worth surfacing without --verbose: the operator asked to
+// follow a link and the plaintext is not where they typed.
+func reportDestination(log interface {
+	Info(msg string, args ...any)
+	Debug(msg string, args ...any)
+}, out opdest.Destination,
+) {
+	if out.Resolved() {
+		log.Info("report decrypted", "path", out.Path(), "requested", out.Requested())
+	} else {
+		log.Debug("report decrypted", "path", out.Path())
+	}
+
+	// Narrower than asked for rather than broader, so not a confidentiality
+	// problem — but a report the operator expected at 0600 and got at 0400 is
+	// worth a line.
+	if note := out.ModeNote(); note != "" {
+		log.Info("the output file's mode is not what was asked for", "note", note)
+	}
 }
 
 // warner is the sliver of the logger this needs.

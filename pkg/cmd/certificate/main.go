@@ -119,6 +119,12 @@ func commitAndReport(out opdest.Destination, log interface {
 		log.Info("certificate written", "path", out.Path(), "requested", out.Requested())
 	}
 
+	// A published certificate the web server cannot read is a certificate
+	// nobody can encrypt to, and this is the only place that says so.
+	if note := out.ModeNote(); note != "" {
+		log.Info("the certificate's file mode is not what was asked for", "note", note)
+	}
+
 	return nil
 }
 

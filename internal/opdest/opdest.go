@@ -39,7 +39,25 @@ type Destination struct {
 
 	path  string
 	typed string
+
+	// modeNote records that the file could not be given exactly the mode asked
+	// for. Empty when it could.
+	//
+	// Carried through from opfile because it was computed on every write and no
+	// caller could read it: the Destination was built from the writer's Commit,
+	// Abandon and Path alone, so the "the difference is reported" promise made
+	// in both the code and the CLI reference was kept by nothing.
+	modeNote string
 }
+
+// ModeNote reports that the committed file does not carry exactly the mode
+// requested, and why. Empty when it does.
+//
+// Not an error — the file is written either way and is never broader than
+// requested. It matters because a published certificate a web server cannot
+// read is a certificate nobody can encrypt to, and the operator has no other
+// way to learn that.
+func (d Destination) ModeNote() string { return d.modeNote }
 
 // Open prepares the destination named by path, staging the write unless it is
 // standard output.
@@ -66,11 +84,12 @@ func Open(fsys opfile.FS, path string, mode fs.FileMode, followSymlinks bool) (D
 	}
 
 	return Destination{
-		Writer:  w,
-		commit:  w.Commit,
-		abandon: w.Abandon,
-		path:    w.Path(),
-		typed:   path,
+		Writer:   w,
+		commit:   w.Commit,
+		abandon:  w.Abandon,
+		path:     w.Path(),
+		typed:    path,
+		modeNote: w.ModeNote(),
 	}, nil
 }
 

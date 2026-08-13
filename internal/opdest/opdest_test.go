@@ -1,6 +1,7 @@
 package opdest_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -223,3 +224,41 @@ func TestResolvedIgnoresMerelyNonCanonicalPaths(t *testing.T) {
 		})
 	}
 }
+
+// TestModeNoteReachesTheCaller covers the promise that was kept by nothing.
+//
+// opfile computes a note whenever the filesystem refuses to set the requested
+// mode — the vfat and exfat case, which is what a USB stick is formatted as.
+// Both the code and the CLI reference say the difference "is reported". It was
+// computed on every write and no caller could read it: the Destination was
+// built from the writer's Commit, Abandon and Path alone.
+//
+// The concrete cost of the silence: an operator writes the published
+// certificate to a stick, it lands at 0600 rather than the documented 0644,
+// the command exits zero and says nothing, they copy it into the web root, and
+// every correspondent who fetches it to encrypt a report gets a 403.
+func TestModeNoteReachesTheCaller(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	if err := mem.MkdirAll("/reports", 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	out, err := opdest.Open(&refusingChmodFS{FS: opfileafero.Wrap(mem)}, "/reports/report.txt", 0o600, false)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	defer out.Abandon()
+
+	if out.ModeNote() == "" {
+		t.Error("the filesystem refused to set the mode and the Destination reports nothing, " +
+			"so no command can tell the operator")
+	}
+}
+
+// refusingChmodFS satisfies Chmoder and refuses, as a vfat mount does.
+type refusingChmodFS struct{ opfile.FS }
+
+func (refusingChmodFS) Chmod(string, fs.FileMode) error { return fs.ErrPermission }
