@@ -56,7 +56,13 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
-	certificate, closeCert, err := openInput(opfileafero.Wrap(p.GetFS()), opts.Certificate)
+	// Wrapped once. The certificate, the message and the output all go through
+	// the same filesystem, and building three adapters over it left that fact
+	// to be inferred by checking three call sites — and would let them diverge
+	// silently if Wrap ever carried state.
+	fsys := opfileafero.Wrap(p.GetFS())
+
+	certificate, closeCert, err := openInput(fsys, opts.Certificate)
 	if err != nil {
 		return fmt.Errorf("reading the certificate: %w", err)
 	}
@@ -71,7 +77,7 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
-	message, closeMsg, err := openMessage(opfileafero.Wrap(p.GetFS()), args)
+	message, closeMsg, err := openMessage(fsys, args)
 	if err != nil {
 		return err
 	}
@@ -83,7 +89,7 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	// point of having encrypted it.
 	const plaintextMode = 0o600
 
-	out, err := opdest.Open(opfileafero.Wrap(p.GetFS()), opts.Output, plaintextMode, opts.FollowSymlinks)
+	out, err := opdest.Open(fsys, opts.Output, plaintextMode, opts.FollowSymlinks)
 	if err != nil {
 		return err
 	}
