@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gitlab.com/phpboyscout/go-tool-base/pkg/props"
@@ -30,6 +31,19 @@ var (
 	// ErrStdinTwice means both the certificate and the message were asked for
 	// from stdin, which cannot work: reading the first drains it.
 	ErrStdinTwice = errors.New("the certificate and the message cannot both come from stdin")
+
+	// ErrOutputOverInput means --output names a file this run is reading.
+	//
+	// The certificate is read before the output is staged, so without this the
+	// run succeeds and the commit replaces the certificate with the decrypted
+	// report — the operator loses the certificate correspondents encrypt to, in
+	// a command that exits zero. Naming the message is the same shape: the
+	// report is replaced by its own plaintext, so a second run has nothing to
+	// decrypt.
+	//
+	// signing-cli refuses the equivalent, so this is the estate's own rule
+	// applied to the command that lacked it.
+	ErrOutputOverInput = errors.New("--output names a file this command is reading")
 
 	// ErrTooManyArguments means more than one message was named.
 	//
@@ -196,18 +210,39 @@ type lazyDeriver struct {
 	}
 
 	deriver encryption.Deriver
+
+	// wired records that construction has been attempted, so a failure is as
+	// final as a success for the life of this run.
+	wired bool
+	err   error
 }
 
 func (d *lazyDeriver) wire(ctx context.Context) (encryption.Deriver, error) {
-	if d.deriver != nil {
-		return d.deriver, nil
+	// The FAILURE is remembered too, not only the success.
+	//
+	// Caching success alone meant a key service that could not be constructed
+	// was rebuilt for every distinct ephemeral point the message carried, up to
+	// the derivation ceiling — and for the AWS backend each attempt is a full
+	// SDK config load plus a billed kms:GetPublicKey. A message a stranger
+	// composed turned one misconfiguration into sixteen of them, and showed the
+	// operator the same error sixteen times so they could not tell whether it
+	// was one problem or several.
+	//
+	// Scoped to a single Decrypt, so nothing is remembered across runs and a
+	// transient failure is not turned into a permanent verdict.
+	if d.wired {
+		return d.deriver, d.err
 	}
+
+	d.wired = true
 
 	d.log.Debug("wiring the key service", "backend", d.service.Name(), "key", d.keyID)
 
 	deriver, err := d.service.Deriver(ctx, d.keyID)
 	if err != nil {
-		return nil, fmt.Errorf("wiring the key service: %w", err)
+		d.err = fmt.Errorf("wiring the key service: %w", err)
+
+		return nil, d.err
 	}
 
 	d.deriver = deriver
@@ -269,7 +304,6 @@ func lookupBackend(name string) (encryption.KeyService, error) {
 	}
 }
 
-// openMessage returns the encrypted report, from a path argument or stdin.
 // openMessage opens the message named by the positional argument, or standard
 // input when there is none.
 //
@@ -297,6 +331,41 @@ func openInput(fsys opfile.FS, path string) (io.Reader, func(), error) {
 	return f, func() { _ = f.Close() }, nil
 }
 
+// checkOutput refuses an --output that names a file this run reads.
+//
+// Compared on the cleaned paths, because "security.asc" and "./security.asc"
+// are the same file and an operator who typed one of each would otherwise get
+// the destructive case with no warning. Not resolved through the filesystem —
+// symlinks and hard links can make two different names the same file, and
+// catching every one of those needs a stat of a file that may not exist yet.
+// This catches the case people actually hit.
+//
+// Standard output is not a file and cannot collide.
+func checkOutput(opts *DecryptOptions, args []string) error {
+	if opts.Output == "" || opts.Output == "-" {
+		return nil
+	}
+
+	out := filepath.Clean(opts.Output)
+
+	inputs := map[string]string{opts.Certificate: "--certificate"}
+	if len(args) == 1 {
+		inputs[args[0]] = "the message"
+	}
+
+	for path, what := range inputs {
+		if path == "" || path == "-" {
+			continue
+		}
+
+		if filepath.Clean(path) == out {
+			return fmt.Errorf("%w: %s is also %s", ErrOutputOverInput, opts.Output, what)
+		}
+	}
+
+	return nil
+}
+
 // checkFlags refuses the arguments that cannot produce a plaintext.
 //
 // The stdin pair is the one worth explaining. The certificate and the message
@@ -309,6 +378,10 @@ func openInput(fsys opfile.FS, path string) (io.Reader, func(), error) {
 // Refused here rather than left to fail, because the failure names the wrong
 // thing and there is no arrangement of the two that works.
 func checkFlags(opts *DecryptOptions, args []string) error {
+	if err := checkOutput(opts, args); err != nil {
+		return err
+	}
+
 	if len(args) > 1 {
 		return fmt.Errorf("%w: %d were named (%s)", ErrTooManyArguments, len(args), strings.Join(args, ", "))
 	}

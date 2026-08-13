@@ -296,7 +296,12 @@ func readBounded(r io.Reader, what string) ([]byte, error) {
 func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, out io.Writer) error {
 	reader := packet.NewReader(bytes.NewReader(rest))
 
-	for {
+	// Bounded like the structurally identical walk in copyLiteral, and for the
+	// same reason: the message chooses how many packets sit between the session
+	// keys and the encrypted data, and this one had no bound at all while its
+	// twin did. Reaching the limit is not a verdict about the message's
+	// contents, only about how far this will look.
+	for range maxPacketsInspected {
 		p, err := reader.Next()
 		if err != nil {
 			return fmt.Errorf("%w: no encrypted-data packet after the session key: %w",
@@ -327,6 +332,9 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 
 		return copyAuthenticated(body, out)
 	}
+
+	return fmt.Errorf("%w: no encrypted-data packet in the first %d packets after the session key",
+		ErrMalformedMessage, maxPacketsInspected)
 }
 
 // copyAuthenticated writes the plaintext out only once its integrity is proven.

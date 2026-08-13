@@ -800,10 +800,19 @@ func TestAFailedChmodLeavesNothingBehind(t *testing.T) {
 
 // refusingChmodFS satisfies Chmoder and refuses, which is what a vfat mount
 // does — the capability is present, the operation is not permitted.
+//
+// It also creates NARROWER than asked, which is the shape that makes the note
+// worth having. A filesystem that refuses chmod but happens to create at
+// exactly the requested mode has nothing to report, and reporting it anyway
+// would be a warning that fires on a correct outcome.
 type refusingChmodFS struct{ opfile.FS }
 
 func (refusingChmodFS) Chmod(string, fs.FileMode) error {
 	return fs.ErrPermission
+}
+
+func (f refusingChmodFS) CreateExcl(name string, perm fs.FileMode) (opfile.File, error) {
+	return f.FS.CreateExcl(name, perm&0o400)
 }
 
 // broadeningFS creates files world-readable whatever was asked for, and then

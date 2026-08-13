@@ -232,22 +232,37 @@ func randomSuffix() string {
 // the file somehow ended up BROADER than requested.
 func setMode(fsys FS, f File, path string, perm fs.FileMode) (note string, err error) {
 	chmodErr, attempted := chmod(fsys, f, path, perm)
-	if !attempted {
+	if chmodErr == nil && attempted {
 		return "", nil
 	}
 
-	if chmodErr == nil {
-		return "", nil
-	}
+	// Checked when no chmod was POSSIBLE too, not only when one failed.
+	//
+	// That case is precisely the one where nothing corrected CreateExcl's mode,
+	// so it is where the never-broader-than-requested property is least
+	// established — and this returned early without looking, while its own
+	// comment said the property "is checked here rather than assumed, because
+	// 'the umask only narrows' is a claim about the filesystem and this package
+	// takes the filesystem from its caller".
 
 	info, statErr := fsys.Stat(path)
 	if statErr != nil {
+		if chmodErr == nil {
+			return "", nil
+		}
+
 		return "", fmt.Errorf("setting the mode of the staged file: %w", chmodErr)
 	}
 
 	if broader := info.Mode().Perm() &^ perm.Perm(); broader != 0 {
 		return "", fmt.Errorf("the staged file is mode %#o, broader than the %#o requested, "+
 			"and this filesystem will not change it: %w", info.Mode().Perm(), perm.Perm(), chmodErr)
+	}
+
+	// Tighter than requested, which is safe, so it is a note rather than a
+	// refusal — and only worth saying when it actually differs.
+	if info.Mode().Perm() == perm.Perm() {
+		return "", nil
 	}
 
 	return fmt.Sprintf("%s is mode %#o rather than the %#o requested; this filesystem does not "+

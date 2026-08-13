@@ -258,7 +258,12 @@ func TestModeNoteReachesTheCaller(t *testing.T) {
 	}
 }
 
-// refusingChmodFS satisfies Chmoder and refuses, as a vfat mount does.
+// refusingChmodFS satisfies Chmoder and refuses, as a vfat mount does, and
+// creates narrower than asked so there is genuinely something to report.
 type refusingChmodFS struct{ opfile.FS }
 
 func (refusingChmodFS) Chmod(string, fs.FileMode) error { return fs.ErrPermission }
+
+func (f refusingChmodFS) CreateExcl(name string, perm fs.FileMode) (opfile.File, error) {
+	return f.FS.CreateExcl(name, perm&0o400)
+}

@@ -1,6 +1,8 @@
 package decrypt
 
 import (
+	"context"
+	"crypto"
 	"errors"
 	"fmt"
 	"os"
@@ -324,3 +326,123 @@ func TestStdinSentinelIsHonoured(t *testing.T) {
 		}
 	})
 }
+
+// TestCheckFlagsRefusesWritingOverAnInput covers --output naming a file the
+// run is reading.
+//
+// The certificate is read fully before the output is staged, so the run
+// succeeds and the commit replaces the certificate with the decrypted report.
+// The operator has lost the certificate correspondents encrypt to, and the only
+// copy of it, in a command that exits zero.
+//
+// The message file is the same shape and worse in one respect: the report is
+// replaced by its own plaintext, so a second run has nothing to decrypt.
+//
+// signing-cli refuses the equivalent — "Refuses to let --output equal
+// --private-output (would overwrite)" — so this is the estate's own rule
+// applied to the command that did not have it.
+func TestCheckFlagsRefusesWritingOverAnInput(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		opts DecryptOptions
+		args []string
+	}{
+		"output over the certificate": {
+			opts: DecryptOptions{Certificate: "security.asc", Key: "alias/e", Output: "security.asc"},
+		},
+		"output over the message": {
+			opts: DecryptOptions{Certificate: "security.asc", Key: "alias/e", Output: "report.pgp"},
+			args: []string{"report.pgp"},
+		},
+		"output over the certificate, spelled differently": {
+			opts: DecryptOptions{Certificate: "./security.asc", Key: "alias/e", Output: "security.asc"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := tc.opts
+			if err := checkFlags(&opts, tc.args); !errors.Is(err, ErrOutputOverInput) {
+				t.Errorf("error = %v, want ErrOutputOverInput", err)
+			}
+		})
+	}
+}
+
+// TestCheckFlagsAllowsAnOrdinaryOutput is the companion: refusing must not
+// refuse the normal case, including stdout, which is not a file at all.
+func TestCheckFlagsAllowsAnOrdinaryOutput(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		opts DecryptOptions
+		args []string
+	}{
+		"a different file":  {opts: DecryptOptions{Certificate: "security.asc", Key: "alias/e", Output: "report.txt"}, args: []string{"report.pgp"}},
+		"stdout by default": {opts: DecryptOptions{Certificate: "security.asc", Key: "alias/e"}, args: []string{"report.pgp"}},
+		"stdout by sentinel": {opts: DecryptOptions{Certificate: "security.asc", Key: "alias/e", Output: "-"},
+			args: []string{"-"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := tc.opts
+			if err := checkFlags(&opts, tc.args); errors.Is(err, ErrOutputOverInput) {
+				t.Errorf("an ordinary invocation was refused: %v", err)
+			}
+		})
+	}
+}
+
+// TestLazyDeriverWiresOnceEvenWhenItFails covers a failure that was retried
+// per candidate.
+//
+// wire caches only success, so a key service that cannot be constructed was
+// rebuilt on every distinct ephemeral point the message carried — up to the
+// derivation ceiling. For the AWS backend each attempt is a full SDK config
+// load plus a billed kms:GetPublicKey, so a message a stranger composed turned
+// one misconfiguration into sixteen of them.
+//
+// It is also the wrong diagnosis: the operator sees the same wiring error
+// sixteen times and cannot tell whether it is one problem or several.
+func TestLazyDeriverWiresOnceEvenWhenItFails(t *testing.T) {
+	t.Parallel()
+
+	failing := &countingKeyService{err: errors.New("no credentials")}
+	d := &lazyDeriver{service: failing, keyID: "alias/x", log: discardLogger{}}
+
+	for range 5 {
+		if _, err := d.DeriveSharedSecret(t.Context(), []byte{0x04}); err == nil {
+			t.Fatal("a key service that cannot be constructed reported success")
+		}
+	}
+
+	if failing.calls != 1 {
+		t.Errorf("the key service was constructed %d times for one run; a failure is as final "+
+			"as a success and costs a config load and a billed call each time", failing.calls)
+	}
+}
+
+// countingKeyService fails to construct a Deriver and counts the attempts.
+type countingKeyService struct {
+	err   error
+	calls int
+}
+
+func (s *countingKeyService) Name() string { return "counting" }
+
+func (s *countingKeyService) Deriver(context.Context, string) (encryption.Deriver, error) {
+	s.calls++
+
+	return nil, s.err
+}
+
+func (s *countingKeyService) Signer(context.Context, string) (crypto.Signer, error) {
+	return nil, s.err
+}
+
+// discardLogger satisfies the sliver of the logger lazyDeriver uses.
+type discardLogger struct{}
+
+func (discardLogger) Debug(string, ...any) {}

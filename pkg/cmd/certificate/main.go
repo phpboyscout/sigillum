@@ -254,16 +254,17 @@ func subkeyFor(
 // curveOID maps a curve to the object identifier a packet carries, with its
 // leading length octet.
 func curveOID(c elliptic.Curve) ([]byte, error) {
-	switch c {
-	case elliptic.P256():
-		return []byte{0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07}, nil
-	case elliptic.P384():
-		return []byte{0x05, 0x2B, 0x81, 0x04, 0x00, 0x22}, nil
-	case elliptic.P521():
-		return []byte{0x05, 0x2B, 0x81, 0x04, 0x00, 0x23}, nil
-	default:
-		return nil, fmt.Errorf("%w: %s has no OpenPGP algorithm 18 identifier", ErrUnsupportedCurve, c.Params().Name)
+	// Asked of the core rather than written out here. This was a fourth copy of
+	// the same three OIDs — internal/algorithm/curve.go exists because there
+	// were two, and hand-writing them again is how a table with one source
+	// acquires a second.
+	oid, known := encryption.CurveOID(c)
+	if !known {
+		return nil, fmt.Errorf("%w: %s has no OpenPGP algorithm 18 identifier",
+			ErrUnsupportedCurve, c.Params().Name)
 	}
+
+	return oid, nil
 }
 
 // lookupBackend resolves --backend, defaulting when exactly one is compiled in.
