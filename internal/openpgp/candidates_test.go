@@ -3,8 +3,11 @@ package openpgp_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"gitlab.com/phpboyscout/go/encryption"
@@ -763,4 +766,81 @@ func TestDecryptBoundsDistinctPointsNamingUs(t *testing.T) {
 	if errors.Is(err, openpgp.ErrNotAddressed) {
 		t.Errorf("hitting the ceiling was reported as the message being addressed elsewhere: %v", err)
 	}
+}
+
+// TestDecryptDoesNotRetainEveryKeyIDItSaw covers the other end of a bound that
+// was only half applied.
+//
+// The error naming who a message was addressed to renders at most eight key
+// ids, which was already true. What was not bounded was the retention: every
+// non-matching key id was appended to a slice, so a message could grow one
+// entry per session-key packet in order to print eight of them. The message
+// chooses how many packets it carries, up to the 128 MiB bound.
+//
+// Observed through the error text, since the slice is unexported: the summary
+// must name the total rather than the number retained, or bounding the
+// retention would have quietly changed what the operator is told.
+func TestDecryptDoesNotRetainEveryKeyIDItSaw(t *testing.T) {
+	t.Parallel()
+
+	const recipients = 200
+
+	ours, deriver := testCertificate(t)
+	other, _ := testCertificate(t)
+
+	// Many packets, each naming somebody who is not us, all with distinct key
+	// ids so none of them collapses.
+	message := distinctKeyIDs(t, encryptToMany(t, "not for us", other), recipients)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), io.Discard)
+	if !errors.Is(err, openpgp.ErrNotAddressed) {
+		t.Fatalf("error = %v, want ErrNotAddressed", err)
+	}
+
+	// The count the operator is shown must still be the true one.
+	if want := fmt.Sprintf("and %d more", recipients-8); !strings.Contains(err.Error(), want) {
+		t.Errorf("the error does not report the true total (%q): %v", want, err)
+	}
+
+	// And the ninth must be absent — retained neither for printing nor at all.
+	// Key ids are numbered from one, so this is the first one past the bound.
+	if ninth := "0000000000000009"; strings.Contains(err.Error(), ninth) {
+		t.Errorf("the error names key id %s, so more than eight were retained: %v", ninth, err)
+	}
+
+	// The eighth must be present, or the bound is tighter than it claims.
+	if eighth := "0000000000000008"; !strings.Contains(err.Error(), eighth) {
+		t.Errorf("the error omits key id %s, so fewer than eight were retained: %v", eighth, err)
+	}
+}
+
+// distinctKeyIDs copies a message's leading session-key packet count times,
+// giving each copy a different key id so none of them names us.
+func distinctKeyIDs(t *testing.T, message []byte, count int) []byte {
+	t.Helper()
+
+	pkt, err := encryption.ParsePacket(message)
+	if err != nil || pkt.Tag != encryption.TagPKESK {
+		t.Fatalf("first packet is not a session-key packet: %v", err)
+	}
+
+	// One version octet, then the eight of key id.
+	const keyIDOffset = 1
+
+	out := make([]byte, 0, (len(pkt.Body)+5)*count+len(pkt.Rest))
+
+	for i := range count {
+		body := append([]byte(nil), pkt.Body...)
+
+		binary.BigEndian.PutUint64(body[keyIDOffset:keyIDOffset+8], uint64(i)+1)
+
+		out = append(out, framePacket(t, encryption.TagPKESK, body)...)
+	}
+
+	return append(out, pkt.Rest...)
 }

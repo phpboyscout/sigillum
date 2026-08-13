@@ -431,13 +431,7 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 		return nil, nil, err
 	}
 
-	var (
-		others     [][8]byte
-		ours       []encryption.PKESK
-		hidden     []encryption.PKESK
-		unreadable int
-		malformed  int
-	)
+	var found candidateSet
 
 	body := raw
 
@@ -487,39 +481,18 @@ func addressedToUs(message io.Reader, recipient Recipient) ([]candidate, []byte,
 			// empty encrypted-data packet to cut the scan short — be reported
 			// as "the message is addressed to somebody else", sending the
 			// operator to find a certificate that was never involved.
-			unreadable, malformed = countUnparsed(pkt.Body, err, unreadable, malformed)
+			found.unreadable, found.malformed = countUnparsed(pkt.Body, err, found.unreadable, found.malformed)
 			body = pkt.Rest
 
 			continue
 		}
 
-		switch pkesk.KeyID {
-		// Every packet naming us, not just the first. The key id is public —
-		// it is the tail of the certificate's own fingerprint — so anyone able
-		// to touch the message can prepend a packet carrying it and a wrapped
-		// key that will not open. Keeping only the first filed the genuine one
-		// under somebody else's recipients, where nothing could ever reach it.
-		case recipient.KeyID:
-			ours = append(ours, pkesk)
-		case wildcardKeyID:
-			// A hidden recipient names nobody, so the only way to know whether
-			// it is ours is to try it. Held back until every named packet has
-			// been read, since one of those may match and cost nothing.
-			hidden = append(hidden, pkesk)
-		default:
-			others = append(others, pkesk.KeyID)
-		}
+		found.file(pkesk, recipient)
 
 		body = pkt.Rest
 	}
 
-	return chooseRecipients(candidateSet{
-		ours:       ours,
-		hidden:     hidden,
-		others:     others,
-		unreadable: unreadable,
-		malformed:  malformed,
-	}, body, recipient)
+	return chooseRecipients(found, body, recipient)
 }
 
 // candidate is a session-key packet worth attempting, and whether the message
@@ -533,11 +506,51 @@ type candidate struct {
 	named bool
 }
 
+// file records one readable session-key packet under whichever heading it
+// belongs to.
+//
+// Separated from the walk because the two are different jobs: the walk decides
+// where the session-key packets end, this decides what each one means. Keeping
+// them together also put the walk over the complexity limit, which is the same
+// observation from the other direction.
+func (c *candidateSet) file(pkesk encryption.PKESK, recipient Recipient) {
+	switch pkesk.KeyID {
+	// Every packet naming us, not just the first. The key id is public — it is
+	// the tail of the certificate's own fingerprint — so anyone able to touch
+	// the message can prepend a packet carrying it and a wrapped key that will
+	// not open. Keeping only the first filed the genuine one under somebody
+	// else's recipients, where nothing could ever reach it.
+	case recipient.KeyID:
+		c.ours = append(c.ours, pkesk)
+
+	case wildcardKeyID:
+		// A hidden recipient names nobody, so the only way to know whether it
+		// is ours is to try it. Held back until every named packet has been
+		// read, since one of those may match and cost nothing.
+		c.hidden = append(c.hidden, pkesk)
+
+	default:
+		// Only as many as the error will ever render are kept; the rest are
+		// counted. The message chooses how many session-key packets it carries,
+		// so an attacker-sized list inside the 128 MiB bound would otherwise
+		// grow a slice of megabytes in order to print eight entries from it.
+		c.otherCount++
+
+		if len(c.others) < maxRenderedKeyIDs {
+			c.others = append(c.others, pkesk.KeyID)
+		}
+	}
+}
+
 // candidateSet is what one pass over the session-key packets found.
 type candidateSet struct {
 	ours   []encryption.PKESK
 	hidden []encryption.PKESK
-	others [][8]byte
+
+	// others holds at most [maxRenderedKeyIDs] of the key ids the message
+	// names, and otherCount how many there were altogether.
+	others     [][8]byte
+	otherCount int
 
 	// unreadable counts packets that are session-key packets but not ones this
 	// package can parse — a co-recipient on RSA, or a v6 sender. They cannot
@@ -599,39 +612,49 @@ func chooseRecipients(c candidateSet, body []byte, recipient Recipient) ([]candi
 			"%w: %d packets before the encrypted data are not session-key packets",
 			ErrMalformedMessage, c.malformed)
 
-	case len(c.others) == 0 && c.unreadable == 0:
+	case c.otherCount == 0 && c.unreadable == 0:
 		return nil, nil, fmt.Errorf(
 			"%w: no session-key packet at the start of the message", ErrMalformedMessage)
 
-	case len(c.others) == 0:
+	case c.otherCount == 0:
 		return nil, nil, fmt.Errorf(
 			"%w: its %d session-key packets are all of a kind this cannot read, so none names this certificate (%x)",
 			ErrNotAddressed, c.unreadable, recipient.KeyID)
 
 	default:
 		return nil, nil, fmt.Errorf("%w: addressed to %s, this certificate is %x",
-			ErrNotAddressed, keyIDs(c.others), recipient.KeyID)
+			ErrNotAddressed, keyIDs(c.others, c.otherCount), recipient.KeyID)
 	}
 }
 
 // keyIDs renders the recipients a message names, so the error says which
 // certificate should have been used rather than only that this one was wrong.
-func keyIDs(ids [][8]byte) string {
-	// Bounded, because the message chooses how many there are. An
-	// attacker-sized list inside maxMessage renders megabytes of hex into an
-	// error string that then reaches a log and a terminal.
-	const maxRendered = 8
+func keyIDs(ids [][8]byte, total int) string {
+	// Capped here as well as at the point of retention, so neither bound is
+	// load-bearing alone. They guard different things — this one an error
+	// string that reaches a log and a terminal, the other a slice that reaches
+	// memory — and a change to one should not silently undo the other.
+	if len(ids) > maxRenderedKeyIDs {
+		ids = ids[:maxRenderedKeyIDs]
+	}
 
-	rendered := min(len(ids), maxRendered)
-
-	out := make([]string, 0, rendered+1)
-	for _, id := range ids[:rendered] {
+	out := make([]string, 0, len(ids)+1)
+	for _, id := range ids {
 		out = append(out, fmt.Sprintf("%x", id))
 	}
 
-	if len(ids) > rendered {
-		out = append(out, fmt.Sprintf("and %d more", len(ids)-rendered))
+	if total > len(ids) {
+		out = append(out, fmt.Sprintf("and %d more", total-len(ids)))
 	}
 
 	return strings.Join(out, ", ")
 }
+
+// maxRenderedKeyIDs bounds both what an error prints and what is retained to
+// print it.
+//
+// The rendering was bounded already; the retention was not, so a message could
+// still grow a slice proportional to its own size to show eight entries from
+// it. Both ends matter: the error reaches a log and a terminal, and the slice
+// reaches memory.
+const maxRenderedKeyIDs = 8
