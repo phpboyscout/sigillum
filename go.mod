@@ -13,7 +13,7 @@ tool (
 require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
-	gitlab.com/phpboyscout/go-tool-base v0.37.0
+	gitlab.com/phpboyscout/go-tool-base v0.37.1
 	gitlab.com/phpboyscout/go/credentials v0.3.1
 	gitlab.com/phpboyscout/go/errorhandling v0.3.0
 	gitlab.com/phpboyscout/go/signing-cli v0.5.0
@@ -349,8 +349,8 @@ require (
 	gitlab.com/phpboyscout/go/chat-anthropic v0.8.2 // indirect
 	gitlab.com/phpboyscout/go/chat-gemini v0.8.2 // indirect
 	gitlab.com/phpboyscout/go/chat-openai v0.8.2 // indirect
-	gitlab.com/phpboyscout/go/config v0.13.2 // indirect
-	gitlab.com/phpboyscout/go/config-afero v0.1.5 // indirect
+	gitlab.com/phpboyscout/go/config v0.16.0 // indirect
+	gitlab.com/phpboyscout/go/config-afero v0.1.8 // indirect
 	gitlab.com/phpboyscout/go/controls v0.3.1 // indirect
 	gitlab.com/phpboyscout/go/forge v0.11.0 // indirect
 	gitlab.com/phpboyscout/go/forge-bitbucket v0.5.4 // indirect
@@ -369,7 +369,7 @@ require (
 	gitlab.com/phpboyscout/go/transit v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/transport v0.6.0 // indirect
 	gitlab.com/phpboyscout/go/workspace v0.2.1 // indirect
-	gitlab.com/phpboyscout/go/yamldoc v0.2.0 // indirect
+	gitlab.com/phpboyscout/go/yamldoc v0.2.1 // indirect
 	go-simpler.org/musttag v0.14.0 // indirect
 	go-simpler.org/sloglint v0.12.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
