@@ -4,14 +4,20 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 
 	pgp "github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/cucumber/godog"
@@ -136,18 +142,35 @@ func (w *world) aReportThatIsNotOpenPGP() error {
 // --- When ---
 
 func (w *world) decryptTheReport() error {
-	return w.decryptWithBackend("")
+	// aws-kms explicitly. It used to be omitted, because one compiled-in
+	// backend meant the flag defaulted — shipping the local backend as well
+	// makes it ambiguous, and the command asks rather than guessing. None of
+	// these scenarios reaches the key service, so naming it costs nothing.
+	return w.decryptWithBackend("aws-kms")
 }
 
 func (w *world) decryptWithBackend(backend string) error {
+	// The key identifier is whatever the chosen backend reads. aws-kms takes an
+	// alias and never gets that far in these scenarios; local takes a path to
+	// the PEM, and is the only backend that can actually produce a plaintext
+	// here, so it is also the only one given somewhere to put it.
+	key := encryptAlias
+	if backend == "local" {
+		key = w.path("encrypt.pem")
+	}
+
 	args := []string{
 		"decrypt",
 		"--certificate", filepath.Join(w.dir, "certificate.pgp"),
-		"--key", encryptAlias,
+		"--key", key,
 	}
 
 	if backend != "" {
 		args = append(args, "--backend", backend)
+	}
+
+	if backend == "local" {
+		args = append(args, "--output", w.path("plaintext.txt"))
 	}
 
 	args = append(args, filepath.Join(w.dir, "report.pgp"))
@@ -191,6 +214,7 @@ func (w *world) decryptWithoutACertificate() error {
 
 func (w *world) assembleWithoutACreationTime() error {
 	return w.run("certificate",
+		"--backend", "aws-kms",
 		"--user-id", "Security <security@example.invalid>",
 		"--certify-key", certifyAlias,
 		"--encrypt-key", encryptAlias)
@@ -259,6 +283,10 @@ func registerDecryptSteps(ctx *godog.ScenarioContext, w *world) {
 	ctx.Given(`^a published certificate$`, w.aPublishedCertificate)
 	ctx.Given(`^a signing-only certificate$`, w.aSigningOnlyCertificate)
 	ctx.Given(`^a certificate whose encryption subkey is RSA$`, w.aCertificateWithAnRSAEncryptionSubkey)
+	ctx.Given(`^local certification and encryption keys$`, w.localCertificationAndEncryptionKeys)
+	ctx.Given(`^a certificate assembled from those keys$`, w.aCertificateAssembledFromThoseKeys)
+	ctx.Given(`^a vulnerability report encrypted to that certificate$`, w.aReportEncryptedToThatCertificate)
+	ctx.Then(`^the plaintext is recovered$`, w.thePlaintextIsRecovered)
 	ctx.Given(`^a report encrypted to somebody else's certificate$`, w.aReportForSomebodyElse)
 	ctx.Given(`^a report that is not an OpenPGP message$`, w.aReportThatIsNotOpenPGP)
 
@@ -323,4 +351,118 @@ func newTestCertificate() ([]byte, error) {
 	}
 
 	return der, nil
+}
+
+// The round trip, through the built binary.
+//
+// Every other decrypt scenario is a refusal — a message for somebody else, a
+// signing-only certificate, a missing flag. They check what the command decides
+// before it reaches a key service, which is most of its risk but not all of it:
+// nothing exercised the wiring from the command through the key service to a
+// recovered plaintext, so the lazy deriver, the backend lookup, the KDF
+// parameters read from the certificate and the write of the output could all
+// have been wrong together and every scenario would still have passed.
+//
+// It runs on the local backend because that is the only one that can decrypt
+// without cloud credentials. The production path is aws-kms and is covered by
+// that provider's own integration suite; what is under test here is sigillum's
+// wiring, which is identical either way.
+
+// localCertificationAndEncryptionKeys writes the two PEMs the local backend
+// reads: RSA to certify, EC to agree.
+func (w *world) localCertificationAndEncryptionKeys() error {
+	certify, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	certifyPEM := pem.EncodeToMemory(&pem.Block{
+		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(certify),
+	})
+	if err := os.WriteFile(w.path("certify.pem"), certifyPEM, 0o600); err != nil {
+		return err
+	}
+
+	agreement, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+
+	der, err := x509.MarshalPKCS8PrivateKey(agreement)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(w.path("encrypt.pem"),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600)
+}
+
+// aCertificateAssembledFromThoseKeys runs the certificate command itself, so
+// the fixture is what the tool produces rather than what a test thinks it
+// produces.
+func (w *world) aCertificateAssembledFromThoseKeys() error {
+	return w.run("certificate",
+		"--backend", "local",
+		"--user-id", "Security <security@example.invalid>",
+		"--certify-key", w.path("certify.pem"),
+		"--encrypt-key", w.path("encrypt.pem"),
+		"--created", "2026-01-01T00:00:00Z",
+		"--armor",
+		"--output", w.path("certificate.pgp"))
+}
+
+// aReportEncryptedToThatCertificate encrypts through go-crypto, standing in for
+// whatever client a reporter happens to use.
+func (w *world) aReportEncryptedToThatCertificate() error {
+	der, err := os.ReadFile(w.path("certificate.pgp"))
+	if err != nil {
+		return err
+	}
+
+	block, err := armor.Decode(bytes.NewReader(der))
+	if err != nil {
+		return err
+	}
+
+	entities, err := pgp.ReadKeyRing(block.Body)
+	if err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+
+	out, err := pgp.Encrypt(&buf, entities, nil, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.WriteString(out, roundTripPlaintext); err != nil {
+		return err
+	}
+
+	if err := out.Close(); err != nil {
+		return err
+	}
+
+	return os.WriteFile(w.path("report.pgp"), buf.Bytes(), 0o600)
+}
+
+// roundTripPlaintext is what must come back out, byte for byte.
+const roundTripPlaintext = "SQL injection in /api/v1/search; PoC attached\n"
+
+func (w *world) thePlaintextIsRecovered() error {
+	if w.exitErr != nil {
+		return fmt.Errorf("decrypt failed: %w\nstderr: %s", w.exitErr, w.stderr)
+	}
+
+	got, err := w.read("plaintext.txt")
+	if err != nil {
+		return err
+	}
+
+	if got != roundTripPlaintext {
+		return fmt.Errorf("recovered %q, want %q", got, roundTripPlaintext)
+	}
+
+	return nil
 }

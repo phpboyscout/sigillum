@@ -58,3 +58,10 @@ Feature: Reading an encrypted vulnerability report
     And a report that is not an OpenPGP message
     When I decrypt two reports at once
     Then it fails saying only one message can be decrypted
+
+  Scenario: A report encrypted to a published certificate is decrypted
+    Given local certification and encryption keys
+    And a certificate assembled from those keys
+    And a vulnerability report encrypted to that certificate
+    When I decrypt the report with backend "local"
+    Then the plaintext is recovered

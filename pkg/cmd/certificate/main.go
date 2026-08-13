@@ -2,7 +2,6 @@ package certificate
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"crypto/elliptic"
 	"errors"
 	"fmt"
@@ -190,12 +189,15 @@ func subkeyFor(
 	created time.Time,
 ) (certificate.ECDHPublicKey, error) {
 	// Not every key service can expose the encryption key's public half, and a
-	// certificate cannot be built without it. Asking through an interface
-	// rather than a concrete type keeps this command backend-agnostic.
-	reader, ok := deriver.(interface {
-		PublicKey() (*ecdsa.PublicKey, error)
-		Curve() elliptic.Curve
-	})
+	// certificate cannot be built without it.
+	//
+	// encryption.PublicDeriver rather than an anonymous interface written here.
+	// The contract was declared in neither backend, so a backend could be
+	// complete for decryption and silently unusable for assembly — which is
+	// what the local one was, and nothing said so until a certificate failed to
+	// build with it. Both backends now assert the named interface at compile
+	// time.
+	reader, ok := deriver.(encryption.PublicDeriver)
 	if !ok {
 		return certificate.ECDHPublicKey{}, fmt.Errorf("%w: %q", ErrNoPublicKey, service.Name())
 	}
