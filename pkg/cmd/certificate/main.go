@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 	"gitlab.com/phpboyscout/go/encryption"
 	"gitlab.com/phpboyscout/go/encryption/certificate"
 
-	"gitlab.com/phpboyscout/sigillum/internal/opfile"
+	"gitlab.com/phpboyscout/sigillum/internal/opdest"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 )
 
@@ -80,20 +79,31 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output, opts.FollowSymlinks)
+	// World-readable on purpose: a certificate is public, and is meant to
+	// be published.
+	const certificateMode = 0o644
+
+	out, err := opdest.Open(opfileafero.Wrap(p.GetFS()), opts.Output, certificateMode, opts.FollowSymlinks)
 	if err != nil {
 		return err
 	}
 
 	// Unconditional, and safe after a commit. Without it a failed run leaves
 	// its temporary file beside the destination.
-	defer out.abandon()
+	defer out.Abandon()
 
-	if err := write(out.w, der, opts.Armor); err != nil {
+	if err := write(out.Writer, der, opts.Armor); err != nil {
 		return err
 	}
 
-	return out.commit()
+	// Info rather than Debug: the operator asked to follow a link, so the
+	// one thing worth surfacing without --verbose is that the certificate is
+	// not where they typed.
+	if out.Resolved() {
+		p.GetLogger().Info("certificate written", "path", out.Path(), "requested", out.Requested())
+	}
+
+	return out.Commit()
 }
 
 // checkFlags refuses the arguments that cannot produce a certificate, and
@@ -281,47 +291,4 @@ func write(out io.Writer, der []byte, armoured bool) error {
 	}
 
 	return nil
-}
-
-// destination is where the certificate goes and both ways of finishing with it.
-//
-// Carrying abandon alongside commit is the point. An earlier shape returned the
-// writer and its commit and dropped the writer itself, which left no caller
-// able to reach Abandon at all — so every failed run leaked its temporary file.
-type destination struct {
-	w       io.Writer
-	commit  func() error
-	abandon func()
-}
-
-// openOutput returns the destination, a commit that puts it in place, and an
-// abandon that removes the temporary file.
-//
-// A published certificate is the thing correspondents encrypt to, so replacing
-// a good one with a half-written file would be worse than writing nothing.
-// Abandon is safe to call after commit, so it can be deferred unconditionally.
-func openOutput(fsys opfile.FS, path string, followSymlinks bool) (destination, error) {
-	if path == "" || path == "-" {
-		return destination{
-			w:       os.Stdout,
-			commit:  func() error { return nil },
-			abandon: func() {},
-		}, nil
-	}
-
-	// World-readable on purpose: a certificate is public, and is meant to be
-	// published.
-	const certificateMode = 0o644
-
-	var opts []opfile.Option
-	if followSymlinks {
-		opts = append(opts, opfile.FollowSymlinks())
-	}
-
-	w, err := opfile.Create(fsys, path, certificateMode, opts...)
-	if err != nil {
-		return destination{}, err
-	}
-
-	return destination{w: w, commit: w.Commit, abandon: w.Abandon}, nil
 }

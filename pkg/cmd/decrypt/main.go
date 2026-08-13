@@ -12,6 +12,7 @@ import (
 
 	"gitlab.com/phpboyscout/go/encryption"
 
+	"gitlab.com/phpboyscout/sigillum/internal/opdest"
 	"gitlab.com/phpboyscout/sigillum/internal/openpgp"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
@@ -68,7 +69,12 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 
 	defer closeMsg()
 
-	out, err := openOutput(opfileafero.Wrap(p.GetFS()), opts.Output, opts.FollowSymlinks)
+	// Owner-only: a decrypted vulnerability report is the most sensitive
+	// thing this tool handles, and leaving it group-readable would undo the
+	// point of having encrypted it.
+	const plaintextMode = 0o600
+
+	out, err := opdest.Open(opfileafero.Wrap(p.GetFS()), opts.Output, plaintextMode, opts.FollowSymlinks)
 	if err != nil {
 		return err
 	}
@@ -77,7 +83,7 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	// its temporary file behind, and the common failures here are routine — a
 	// message addressed to another key, a truncated paste — so they accumulate,
 	// owner-readable, sometimes holding part of a report.
-	defer out.abandon()
+	defer out.Abandon()
 
 	// Wired lazily, and that matters. Decrypt refuses a message addressed to
 	// another certificate before it asks for a shared secret, so building the
@@ -85,18 +91,25 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	// to reject something we already knew was not ours.
 	deriver := &lazyDeriver{service: service, keyID: opts.Key, log: p.GetLogger()}
 
-	if err := openpgp.Decrypt(ctx, deriver, recipient, message, out.w); err != nil {
+	if err := openpgp.Decrypt(ctx, deriver, recipient, message, out.Writer); err != nil {
 		return err
 	}
 
 	// Only now is the destination replaced. A failure above leaves whatever
 	// was there untouched — which matters because the common failures are
 	// routine: a message addressed to another key, or a truncated paste.
-	if err := out.commit(); err != nil {
+	if err := out.Commit(); err != nil {
 		return err
 	}
 
-	p.GetLogger().Debug("report decrypted")
+	// Info rather than Debug when the destination resolved elsewhere, because
+	// that is the one case worth surfacing without --verbose: the operator
+	// asked to follow a link and the plaintext is not where they typed.
+	if out.Resolved() {
+		p.GetLogger().Info("report decrypted", "path", out.Path(), "requested", out.Requested())
+	} else {
+		p.GetLogger().Debug("report decrypted", "path", out.Path())
+	}
 
 	return nil
 }
@@ -216,45 +229,6 @@ func openInput(fsys opfile.FS, path string) (io.Reader, func(), error) {
 // Carrying abandon alongside commit is the point. An earlier shape returned the
 // writer and its commit and dropped the writer itself, which left no caller
 // able to reach Abandon at all — so every failed run leaked its temporary file.
-type destination struct {
-	w       io.Writer
-	commit  func() error
-	abandon func()
-}
-
-// openOutput returns the destination, a commit that puts it in place, and an
-// abandon that removes the temporary file.
-//
-// The commit is what makes a failed decryption harmless: nothing replaces the
-// operator's file until the plaintext is complete. Abandon is safe to call
-// after commit, so it can be deferred unconditionally.
-func openOutput(fsys opfile.FS, path string, followSymlinks bool) (destination, error) {
-	if path == "" || path == "-" {
-		return destination{
-			w:       os.Stdout,
-			commit:  func() error { return nil },
-			abandon: func() {},
-		}, nil
-	}
-
-	// Owner-only: a decrypted vulnerability report is the most sensitive thing
-	// this tool handles, and leaving it group-readable would undo the point of
-	// having encrypted it.
-	const plaintextMode = 0o600
-
-	var opts []opfile.Option
-	if followSymlinks {
-		opts = append(opts, opfile.FollowSymlinks())
-	}
-
-	w, err := opfile.Create(fsys, path, plaintextMode, opts...)
-	if err != nil {
-		return destination{}, err
-	}
-
-	return destination{w: w, commit: w.Commit, abandon: w.Abandon}, nil
-}
-
 // checkFlags refuses the arguments that cannot produce a plaintext.
 //
 // The stdin pair is the one worth explaining. The certificate and the message
