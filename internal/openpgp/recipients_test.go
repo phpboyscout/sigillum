@@ -292,7 +292,12 @@ func hideRecipients(t *testing.T, message []byte, want int) []byte {
 		}
 
 		// The body's offset within out, so the key id can be zeroed in place.
-		bodyStart := len(out) - len(rest) + (len(rest) - len(pkt.Body) - len(pkt.Rest))
+		//
+		// The len(rest) terms of the obvious form — where this sits in out, plus
+		// where the body sits in rest — cancel, leaving the body's distance from
+		// the end of the message. Written the short way with the reason stated,
+		// rather than the long way that invited checking the arithmetic twice.
+		bodyStart := len(out) - len(pkt.Body) - len(pkt.Rest)
 
 		for i := range keyIDOctets {
 			out[bodyStart+keyIDOffset+i] = 0

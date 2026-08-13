@@ -439,20 +439,12 @@ func TestDecryptReportsAKeyServiceFailure(t *testing.T) {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
 
-	err = openpgp.Decrypt(t.Context(), failingDeriver{err: sentinel}, recipient,
+	err = openpgp.Decrypt(t.Context(), &failingDeriverWith{err: sentinel}, recipient,
 		bytes.NewReader(message), io.Discard)
 	if !errors.Is(err, sentinel) {
 		t.Errorf("error = %v, want it to wrap the key service failure", err)
 	}
 }
-
-type failingDeriver struct{ err error }
-
-func (d failingDeriver) DeriveSharedSecret(context.Context, []byte) ([]byte, error) {
-	return nil, d.err
-}
-
-func (d failingDeriver) CoordinateBytes() int { return 32 }
 
 // TestDecryptRejectsAMessageWithNoEncryptedData covers a PKESK addressed to us
 // with nothing after it — a truncated paste that stops at the header.
@@ -467,19 +459,12 @@ func TestDecryptRejectsAMessageWithNoEncryptedData(t *testing.T) {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
 
-	// Keep only the first packet: header plus the length it declares.
-	headerLen := 2
-	if int(full[1]) >= 192 {
-		headerLen = 3
-	}
-
-	end := headerLen + int(full[1])
-	if headerLen == 3 {
-		end = headerLen + (int(full[1])-192)<<8 + int(full[2]) + 192
-	}
-
+	// Keep only the first packet. firstPacket parses the length rather than
+	// re-deriving the two-octet form by hand, which is the fourth copy of that
+	// arithmetic this package has carried and the one most likely to be wrong,
+	// since nothing here would notice if it truncated in the wrong place.
 	err = openpgp.Decrypt(t.Context(), deriver, recipient,
-		bytes.NewReader(full[:end]), io.Discard)
+		bytes.NewReader(firstPacket(t, full)), io.Discard)
 	if !errors.Is(err, openpgp.ErrMalformedMessage) {
 		t.Errorf("error = %v, want ErrMalformedMessage", err)
 	}

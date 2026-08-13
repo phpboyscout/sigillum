@@ -32,7 +32,7 @@ import (
 // aPublishedCertificate writes a certificate whose encryption subkey we hold,
 // standing in for one published at a security contact address.
 func (w *world) aPublishedCertificate() error {
-	der, _, err := newTestCertificate()
+	der, err := newTestCertificate()
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (w *world) writeCertificate(entity *pgp.Entity, wantEncryptionSubkey bool) 
 // aReportForSomebodyElse encrypts to a different certificate entirely, which is
 // the ordinary situation when several are in play.
 func (w *world) aReportForSomebodyElse() error {
-	der, _, err := newTestCertificate()
+	der, err := newTestCertificate()
 	if err != nil {
 		return err
 	}
@@ -288,19 +288,23 @@ func (s testSigner) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]
 	return rsa.SignPKCS1v15(rand.Reader, s.key, opts.HashFunc(), digest)
 }
 
-// newTestCertificate assembles a certificate through the core, so the scenarios
-// exercise the same packets a real one carries.
-func newTestCertificate() ([]byte, *ecdh.PrivateKey, error) {
+// newTestCertificate assembles a certificate the scenarios can publish.
+//
+// The agreement key is generated and discarded: these scenarios never decrypt,
+// they check what the command decides before it reaches a key service, so
+// nothing needs the private half. It used to be returned and dropped by both
+// callers, which read as an oversight rather than a decision.
+func newTestCertificate() ([]byte, error) {
 	created := time.Unix(1_700_000_000, 0).UTC()
 
 	signing, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	agreement, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	der, err := certificate.Certificate{
@@ -315,8 +319,8 @@ func newTestCertificate() ([]byte, *ecdh.PrivateKey, error) {
 		},
 	}.Assemble(testSigner{key: signing})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return der, agreement, nil
+	return der, nil
 }
