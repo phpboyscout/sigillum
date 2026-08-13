@@ -3,8 +3,13 @@ package decrypt
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/afero"
+
+	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 
 	"gitlab.com/phpboyscout/go/encryption"
 
@@ -235,3 +240,87 @@ func (w *recordingWarner) Warn(msg string, args ...any) {
 }
 
 func (w *recordingWarner) String() string { return strings.Join(w.lines, "\n") }
+
+// TestStdinSentinelIsHonoured covers the two arrangements the CLI reference
+// documents as working, and which nothing exercised.
+//
+// The reference shows three cases: the certificate on stdin with the message
+// in a file, the certificate in a file with the message on stdin, and the pair
+// that is refused. Only the refusal was tested — so openInput's `-` branch and
+// openMessage's empty-args branch had no test at any level, while the
+// consolidation that removed the duplicate sentinel check was made on the
+// strength of a doc comment.
+//
+// A regression here fails the documented workflow with "no such file or
+// directory: -" on the input a researcher's report most often arrives through:
+// a paste on a pipe.
+func TestStdinSentinelIsHonoured(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	fsys := opfileafero.Wrap(mem)
+
+	t.Run("openInput resolves - to standard input", func(t *testing.T) {
+		t.Parallel()
+
+		got, closer, err := openInput(fsys, "-")
+		if err != nil {
+			t.Fatalf("openInput(-): %v", err)
+		}
+
+		defer closer()
+
+		if got != os.Stdin {
+			t.Errorf("openInput(-) returned %T, want os.Stdin", got)
+		}
+	})
+
+	t.Run("openMessage resolves no argument to standard input", func(t *testing.T) {
+		t.Parallel()
+
+		got, closer, err := openMessage(fsys, nil)
+		if err != nil {
+			t.Fatalf("openMessage(nil): %v", err)
+		}
+
+		defer closer()
+
+		if got != os.Stdin {
+			t.Errorf("openMessage(nil) returned %T, want os.Stdin", got)
+		}
+	})
+
+	t.Run("openMessage resolves - to standard input", func(t *testing.T) {
+		t.Parallel()
+
+		got, closer, err := openMessage(fsys, []string{"-"})
+		if err != nil {
+			t.Fatalf("openMessage(-): %v", err)
+		}
+
+		defer closer()
+
+		if got != os.Stdin {
+			t.Errorf("openMessage(-) returned %T, want os.Stdin", got)
+		}
+	})
+
+	t.Run("a real path is still opened as a file", func(t *testing.T) {
+		t.Parallel()
+
+		if err := afero.WriteFile(mem, "/report.pgp", []byte("x"), 0o600); err != nil {
+			t.Fatalf("seeding: %v", err)
+		}
+
+		got, closer, err := openMessage(fsys, []string{"/report.pgp"})
+		if err != nil {
+			t.Fatalf("openMessage(path): %v", err)
+		}
+
+		defer closer()
+
+		if got == os.Stdin {
+			t.Error("a named file was read from standard input")
+		}
+	})
+}

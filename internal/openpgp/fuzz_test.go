@@ -241,10 +241,9 @@ func carriesEncryptedData(prefix []byte) bool {
 // and only then report the failure. Whatever is done to the ciphertext, a
 // successful return must mean the plaintext is the one that was sent.
 func FuzzDecryptNeverEmitsUnauthenticatedPlaintext(f *testing.F) {
-	// Both seeds must survive the target's own guard below, which returns
-	// early on flip == 0. A seed of (0, 0) exercised nothing at all.
 	f.Add(0, byte(0x01))
 	f.Add(1, byte(0xFF))
+	f.Add(29, byte(0x80))
 
 	f.Fuzz(func(t *testing.T, offset int, flip byte) {
 		m := message()
@@ -254,7 +253,38 @@ func FuzzDecryptNeverEmitsUnauthenticatedPlaintext(f *testing.F) {
 		}
 
 		tampered := append([]byte(nil), m.ciphertext...)
-		tampered[offset%len(tampered)] ^= flip
+
+		// The offset is taken from the END, into the second half of the
+		// message, so every input lands in the encrypted body.
+		//
+		// It used to index the whole message from the front, and both seeds
+		// then hit the packet header — offset 0 is the tag octet and offset 1
+		// its length. Flipping either makes the message unparseable, so Decrypt
+		// returned an error and the target's guard below returned before
+		// asserting anything. The file's own header says the seed corpus
+		// "doubles as the hostile-input regression suite" replayed by plain
+		// `go test`; for this target it replayed two inputs that exercised
+		// nothing, and would not have caught the streaming-plaintext defect it
+		// exists to catch.
+		//
+		// Restricting to the body is not a weakening. This property is about
+		// plaintext emitted before its integrity is proven, which can only
+		// happen when decryption SUCCEEDS — and only ciphertext tampering gets
+		// that far. Header tampering is covered by the malformed-message tests.
+		//
+		// Measured. The three seeds used to produce "no session-key packet at
+		// the start", "no encrypted-data packet after the session key" and
+		// "ephemeral point is not on this key's curve". They now all produce
+		// "message integrity check failed", which is the modification detection
+		// code doing its job — the path this target exists to guard.
+		half := len(tampered) / 2
+		if half == 0 {
+			return
+		}
+
+		at := len(tampered) - 1 - (offset % half)
+
+		tampered[at] ^= flip
 
 		var got bytes.Buffer
 
@@ -268,7 +298,7 @@ func FuzzDecryptNeverEmitsUnauthenticatedPlaintext(f *testing.F) {
 		// octet was not load-bearing.
 		if got.String() != m.plaintext {
 			t.Fatalf("altered ciphertext at %d by %#02x decrypted to %q without an integrity failure",
-				offset%len(tampered), flip, got.String())
+				at, flip, got.String())
 		}
 	})
 }
