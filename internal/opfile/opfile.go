@@ -124,7 +124,20 @@ type Writer struct {
 	// closed tracks the staged handle separately, so a Close that already
 	// happened — or already failed — is not attempted again on the way out.
 	closed bool
+
+	// modeNote records that the file could not be given exactly the mode asked
+	// for. Empty when it could. See [Writer.ModeNote].
+	modeNote string
 }
+
+// ModeNote reports that the committed file does not carry exactly the mode
+// requested, and why. Empty when it does.
+//
+// Not an error, because the file is written either way and is never broader
+// than requested — see setMode. It is worth surfacing because a published
+// certificate a web server cannot read is a certificate nobody can encrypt to,
+// and the operator has no other way to learn that.
+func (w *Writer) ModeNote() string { return w.modeNote }
 
 // Create prepares to write path, without disturbing whatever is already there.
 //
@@ -155,12 +168,12 @@ func Create(fsys FS, path string, mode fs.FileMode, opts ...Option) (*Writer, er
 	// Created at its final mode rather than widened afterwards: a certificate
 	// is public and a decrypted report is not, and there must be no window in
 	// which a report exists at a broader mode than it will end up with.
-	tmp, tmpPath, err := stage(fsys, dir, name, mode)
+	tmp, tmpPath, note, err := stage(fsys, dir, name, mode)
 	if err != nil {
 		return nil, fmt.Errorf("preparing to write %s: %w", path, err)
 	}
 
-	return &Writer{fsys: fsys, tmp: tmp, tmpPath: tmpPath, final: final}, nil
+	return &Writer{fsys: fsys, tmp: tmp, tmpPath: tmpPath, final: final, modeNote: note}, nil
 }
 
 // resolveDestination decides what path will actually be written, refusing a

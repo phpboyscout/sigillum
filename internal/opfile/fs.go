@@ -99,6 +99,24 @@ type Chmoder interface {
 	Chmod(name string, mode fs.FileMode) error
 }
 
+// ModeSetter optionally sets an open file's mode through its handle.
+//
+// Preferred over [Chmoder] wherever a [File] provides it, because it closes a
+// window that setting the mode by path leaves open: chmod(2) resolves the path
+// a second time, at a moment after the file was created, and anyone who can
+// write to the directory can replace the staged name with a symbolic link in
+// between. The mode then lands on whatever the link points at. The descriptor
+// already refers to the file that was created, so it resolves nothing and
+// there is no window.
+//
+// *os.File satisfies this, and so does the file afero's OsFs returns, since it
+// is the same type — so the real filesystems both take this path. An in-memory
+// implementation that cannot honour it must simply not have the method, and
+// falls back to [Chmoder].
+type ModeSetter interface {
+	Chmod(mode fs.FileMode) error
+}
+
 // Lstater optionally reports on a path without following a symbolic link.
 //
 // Optional because a filesystem with no notion of links cannot honour it, and
@@ -144,7 +162,7 @@ func (osFS) Readlink(name string) (string, error)      { return os.Readlink(name
 // The name is generated here rather than asking the filesystem for a temporary,
 // so [FS] needs no CreateTemp method — one fewer operation every implementation
 // has to provide, and the retry on collision is the same either way.
-func stage(fsys FS, dir, name string, perm fs.FileMode) (File, string, error) {
+func stage(fsys FS, dir, name string, perm fs.FileMode) (f File, path, note string, err error) {
 	const attempts = 10
 
 	for range attempts {
@@ -157,21 +175,28 @@ func stage(fsys FS, dir, name string, perm fs.FileMode) (File, string, error) {
 			// The umask masked perm on the way in, so the mode is set again
 			// here — while the file is still empty, so nothing is ever exposed
 			// at a mode broader than it will end up with.
-			if err := setMode(fsys, path, perm); err != nil {
+			note, err := setMode(fsys, f, path, perm)
+			if err != nil {
+				// Remove what was just created. Create returns no Writer on
+				// this path, so nobody downstream can reach Abandon and the
+				// staged file would be unreachable garbage in the operator's
+				// directory — in the package whose whole promise is that
+				// nothing is left behind.
 				_ = f.Close()
+				_ = fsys.Remove(path)
 
-				return nil, "", err
+				return nil, "", "", err
 			}
 
-			return f, path, nil
+			return f, path, note, nil
 		case errors.Is(err, fs.ErrExist):
 			continue
 		default:
-			return nil, "", err
+			return nil, "", "", err
 		}
 	}
 
-	return nil, "", fmt.Errorf("%w: %s, after %d attempts",
+	return nil, "", "", fmt.Errorf("%w: %s, after %d attempts",
 		ErrNoStagingName, filepath.Join(dir, name), attempts)
 }
 
@@ -186,16 +211,59 @@ func randomSuffix() string {
 }
 
 // setMode makes a staged file's mode exactly what the caller asked for, where
-// the filesystem can.
-func setMode(fsys FS, path string, perm fs.FileMode) error {
-	chmoder, ok := fsys.(Chmoder)
-	if !ok {
-		return nil
+// the filesystem can, and reports what happened when it cannot.
+//
+// A chmod failure is NOT fatal, and that is a deliberate choice between two
+// promises. Exactness — "created mode 0644" — matters because a published
+// certificate a web server cannot read is a certificate nobody can encrypt to.
+// But chmod returns EPERM on a vfat or exfat mount, which is what a USB stick
+// is formatted as, so failing the write would refuse `--output
+// /media/usb/security.asc` outright: a destination that worked before the mode
+// was made exact.
+//
+// The security half of the promise is the one that is enforced. CreateExcl's
+// perm is masked by the umask, which only ever NARROWS, so a file whose chmod
+// failed is at worst tighter than asked for — never broader, which is the
+// direction that would expose a decrypted report. That is checked here rather
+// than assumed, because "the umask only narrows" is a claim about the
+// filesystem and this package takes the filesystem from its caller.
+//
+// So: exact where possible, tighter with a note where not, and refused only if
+// the file somehow ended up BROADER than requested.
+func setMode(fsys FS, f File, path string, perm fs.FileMode) (note string, err error) {
+	chmodErr, attempted := chmod(fsys, f, path, perm)
+	if !attempted {
+		return "", nil
 	}
 
-	if err := chmoder.Chmod(path, perm); err != nil {
-		return fmt.Errorf("setting the mode of the staged file: %w", err)
+	if chmodErr == nil {
+		return "", nil
 	}
 
-	return nil
+	info, statErr := fsys.Stat(path)
+	if statErr != nil {
+		return "", fmt.Errorf("setting the mode of the staged file: %w", chmodErr)
+	}
+
+	if broader := info.Mode().Perm() &^ perm.Perm(); broader != 0 {
+		return "", fmt.Errorf("the staged file is mode %#o, broader than the %#o requested, "+
+			"and this filesystem will not change it: %w", info.Mode().Perm(), perm.Perm(), chmodErr)
+	}
+
+	return fmt.Sprintf("%s is mode %#o rather than the %#o requested; this filesystem does not "+
+		"support changing it", path, info.Mode().Perm(), perm.Perm()), nil
+}
+
+// chmod sets the mode through the open handle where it can, and by path where
+// it cannot, reporting whether either was possible.
+func chmod(fsys FS, f File, path string, perm fs.FileMode) (err error, attempted bool) {
+	if setter, ok := f.(ModeSetter); ok {
+		return setter.Chmod(perm), true
+	}
+
+	if chmoder, ok := fsys.(Chmoder); ok {
+		return chmoder.Chmod(path, perm), true
+	}
+
+	return nil, false
 }

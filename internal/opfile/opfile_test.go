@@ -731,3 +731,176 @@ func (f *countingFile) Close() error {
 
 	return f.File.Close()
 }
+
+// TestAChmodThisFilesystemRefusesIsNotFatal covers the regression the mode fix
+// would otherwise have introduced.
+//
+// chmod returns EPERM on a vfat or exfat mount, which is what a USB stick is
+// formatted as. Failing the write there would refuse `sigillum certificate
+// --output /media/usb/security.asc` outright — a destination that worked before
+// the mode was made exact.
+//
+// The security half of the promise is what is enforced: CreateExcl's perm is
+// masked by the umask, which only ever narrows, so a file whose chmod failed is
+// at worst tighter than asked for and never broader. The file is written, and
+// the discrepancy is reported rather than swallowed.
+func TestAChmodThisFilesystemRefusesIsNotFatal(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	if err := mem.MkdirAll("/reports", 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fsys := &refusingChmodFS{FS: opfileafero.Wrap(mem)}
+
+	w, err := opfile.Create(fsys, "/reports/report.txt", 0o600)
+	if err != nil {
+		t.Fatalf("a filesystem that cannot chmod refused the write entirely: %v", err)
+	}
+
+	defer w.Abandon()
+
+	if w.ModeNote() == "" {
+		t.Error("the mode could not be set and nothing says so, so the operator cannot learn of it")
+	}
+}
+
+// TestAFailedChmodLeavesNothingBehind covers the leak the mode fix introduced.
+//
+// This package exists to guarantee two things: the destination is untouched
+// until the content is complete, and no staged file is ever left behind. When
+// the chmod fails AND the file is broader than requested, Create refuses — and
+// on that path it returns no Writer, so nobody can reach Abandon. Without an
+// explicit removal the staged file is unreachable garbage in the operator's
+// directory, holding a mode too broad for what was about to be written into it.
+func TestAFailedChmodLeavesNothingBehind(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	if err := mem.MkdirAll("/reports", 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fsys := &broadeningFS{FS: opfileafero.Wrap(mem)}
+
+	if _, err := opfile.Create(fsys, "/reports/report.txt", 0o600); err == nil {
+		t.Fatal("a staged file broader than requested was accepted")
+	}
+
+	found, err := afero.ReadDir(mem, "/reports")
+	if err != nil {
+		t.Fatalf("listing: %v", err)
+	}
+
+	for _, entry := range found {
+		t.Errorf("a failed chmod left %q behind, and no Writer exists to abandon it", entry.Name())
+	}
+}
+
+// refusingChmodFS satisfies Chmoder and refuses, which is what a vfat mount
+// does — the capability is present, the operation is not permitted.
+type refusingChmodFS struct{ opfile.FS }
+
+func (refusingChmodFS) Chmod(string, fs.FileMode) error {
+	return fs.ErrPermission
+}
+
+// broadeningFS creates files world-readable whatever was asked for, and then
+// refuses to change them — the one shape that must be refused rather than
+// noted, since a decrypted report would land at a mode broader than requested.
+type broadeningFS struct{ opfile.FS }
+
+func (*broadeningFS) Chmod(string, fs.FileMode) error { return fs.ErrPermission }
+
+func (f *broadeningFS) CreateExcl(name string, _ fs.FileMode) (opfile.File, error) {
+	return f.FS.CreateExcl(name, 0o666)
+}
+
+// TestModeIsSetThroughTheHandleNotThePath covers a time-of-check race the mode
+// fix opened.
+//
+// Setting the mode by path means chmod(2) resolves that path again, at a moment
+// after the file was created. The staged name is unpredictable, but the
+// directory is one the operator chose and may be shared — /tmp, a spool, a
+// group-writable reports directory — and anyone who can write there can replace
+// the staged name with a symbolic link in the window between the two calls. The
+// mode then lands on whatever the link points at.
+//
+// The fix is fchmod: the descriptor already refers to the file that was
+// created, so no path is resolved a second time and there is no window. This
+// test forces the window deterministically rather than racing for it.
+func TestModeIsSetThroughTheHandleNotThePath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	// Something an attacker would like to widen: another user's private file.
+	victim := filepath.Join(dir, "victim.txt")
+	if err := os.WriteFile(victim, []byte("someone else's report"), 0o600); err != nil {
+		t.Fatalf("write victim: %v", err)
+	}
+
+	fsys := &swappingFS{FS: opfile.OS(), swapTo: victim, t: t}
+
+	w, err := opfile.Create(fsys, filepath.Join(dir, "report.txt"), 0o644)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	defer w.Abandon()
+
+	if !fsys.swapped {
+		t.Fatal("the fixture never got to plant the link, so nothing was under test")
+	}
+
+	info, err := os.Lstat(victim)
+	if err != nil {
+		t.Fatalf("lstat victim: %v", err)
+	}
+
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("the victim file is now mode %#o, want the untouched 0600 — the mode was applied "+
+			"through a path an attacker replaced rather than through the open handle", got)
+	}
+}
+
+// swappingFS replaces the staged name with a symbolic link the instant after it
+// is created, which is the window a path-based chmod leaves open.
+//
+// It declares Chmod explicitly rather than relying on the embedded opfile.FS.
+// That embed is an INTERFACE, and opfile.FS has no Chmod — so without this the
+// type does not satisfy Chmoder, setMode returns having done nothing, and the
+// test passes without exercising anything at all. It did exactly that when
+// first written.
+type swappingFS struct {
+	opfile.FS
+
+	t       *testing.T
+	swapTo  string
+	swapped bool
+}
+
+// Chmod is path-based, like the real osFS one this test exists to replace.
+func (f *swappingFS) Chmod(name string, mode fs.FileMode) error {
+	return os.Chmod(name, mode)
+}
+
+func (f *swappingFS) CreateExcl(name string, perm fs.FileMode) (opfile.File, error) {
+	file, err := f.FS.CreateExcl(name, perm)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.Remove(name); err != nil {
+		f.t.Fatalf("fixture: removing the staged name: %v", err)
+	}
+
+	if err := os.Symlink(f.swapTo, name); err != nil {
+		f.t.Skipf("symlinks unavailable here: %v", err)
+	}
+
+	f.swapped = true
+
+	return file, nil
+}

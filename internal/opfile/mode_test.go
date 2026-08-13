@@ -1,12 +1,17 @@
 package opfile_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"gitlab.com/phpboyscout/sigillum/internal/opfile"
+	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 )
 
 // TestCommittedFileHasExactlyTheRequestedMode covers the promise made in two
@@ -71,45 +76,88 @@ func TestCommittedFileHasExactlyTheRequestedMode(t *testing.T) {
 	}
 }
 
-// TestStagedFileIsNeverBroaderThanItsDestination is the safety half.
+// TestModeIsSetBeforeAnyContentIsWritten is the safety half of setting the mode
+// after creation rather than at creation.
 //
-// Setting the mode after creation must not open a window in which a report
-// exists at a broader mode than it will end up with. It does not, because the
-// staged file is chmod'd while still empty — but that ordering is the whole
-// argument, so it is checked rather than asserted in a comment.
-func TestStagedFileIsNeverBroaderThanItsDestination(t *testing.T) {
-	previous := syscall.Umask(0o077)
-	t.Cleanup(func() { syscall.Umask(previous) })
+// Widening a file that already holds a decrypted report, even for an instant,
+// is the thing this ordering exists to prevent — so the chmod must happen while
+// the file is still empty. That is the entire argument for doing it this way
+// round, which makes it worth checking rather than asserting in a comment.
+//
+// The previous version of this test checked that the staged file was not
+// broader than 0600 and that its size was zero, both read before anything was
+// written. Neither could distinguish the outcomes: with umask 077 a 0600 file
+// is 0600 whether the chmod ran or not, and a file nothing has written to is
+// empty by construction. It passed identically with the chmod before the write,
+// after the write, or absent altogether — which is the exact defect class this
+// round exists to remove, in the test written to guard against it.
+//
+// Observing the ORDER of the operations is what actually distinguishes them.
+func TestModeIsSetBeforeAnyContentIsWritten(t *testing.T) {
+	t.Parallel()
 
-	dir := t.TempDir()
+	spy := &orderSpyFS{FS: opfileafero.Wrap(afero.NewMemMapFs())}
 
-	w, err := opfile.Create(opfile.OS(), filepath.Join(dir, "report.txt"), 0o600)
+	w, err := opfile.Create(spy, "/report.txt", 0o644)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	// Before a single byte is written, find the staged file and check it.
-	entries, err := os.ReadDir(dir)
+	if _, err := w.Write([]byte("a decrypted vulnerability report")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	if err := w.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	ops := spy.file.ops
+
+	chmodAt := slices.Index(ops, "chmod")
+	if chmodAt < 0 {
+		t.Fatalf("the mode was never set through the handle; operations were %v", ops)
+	}
+
+	if writeAt := slices.Index(ops, "write"); writeAt >= 0 && writeAt < chmodAt {
+		t.Errorf("content was written before the mode was set (%v), so the file held a report "+
+			"at whatever mode the umask happened to allow", ops)
+	}
+}
+
+// orderSpyFS records the order of operations on the staged file.
+type orderSpyFS struct {
+	opfile.FS
+
+	file *orderSpyFile
+}
+
+func (f *orderSpyFS) CreateExcl(name string, perm fs.FileMode) (opfile.File, error) {
+	inner, err := f.FS.CreateExcl(name, perm)
 	if err != nil {
-		t.Fatalf("listing: %v", err)
+		return nil, err
 	}
 
-	if len(entries) != 1 {
-		t.Fatalf("expected exactly one staged file, found %d", len(entries))
-	}
+	f.file = &orderSpyFile{File: inner}
 
-	info, err := entries[0].Info()
-	if err != nil {
-		t.Fatalf("Info: %v", err)
-	}
+	return f.file, nil
+}
 
-	if got := info.Mode().Perm(); got&^0o600 != 0 {
-		t.Errorf("the staged file is mode %#o, broader than the 0600 destination", got)
-	}
+// orderSpyFile satisfies opfile.ModeSetter so the handle path is taken, which
+// is the path the real filesystems use.
+type orderSpyFile struct {
+	opfile.File
 
-	if info.Size() != 0 {
-		t.Errorf("the staged file already holds %d octets, so the mode was set too late", info.Size())
-	}
+	ops []string
+}
 
-	w.Abandon()
+func (f *orderSpyFile) Chmod(fs.FileMode) error {
+	f.ops = append(f.ops, "chmod")
+
+	return nil
+}
+
+func (f *orderSpyFile) Write(p []byte) (int, error) {
+	f.ops = append(f.ops, "write")
+
+	return f.File.Write(p)
 }
