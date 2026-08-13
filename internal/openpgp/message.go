@@ -107,16 +107,19 @@ func packetsOrArmour(raw []byte, what string) ([]byte, error) {
 // nothing behind it establishes nothing, which is the property the comment
 // above claims and this is what makes it true.
 func isPacketStream(raw []byte) bool {
+	first := true
+
 	for rest := raw; len(rest) > 0; {
 		pkt, err := encryption.ParsePacket(rest)
 		if err != nil {
 			return false
 		}
 
-		if carriesContent(pkt) {
+		if carriesContent(pkt, first) {
 			return true
 		}
 
+		first = false
 		rest = pkt.Rest
 	}
 
@@ -136,19 +139,26 @@ func isPacketStream(raw []byte) bool {
 // That covering-line paste is the ordinary arrival shape the binary-first
 // ordering exists to protect, not an attack, which is why the check has to be
 // strong enough to see the difference.
-func carriesContent(pkt encryption.Packet) bool {
+func carriesContent(pkt encryption.Packet, first bool) bool {
 	if len(pkt.Body) == 0 {
 		return false
 	}
 
 	// The legacy encrypted-data packet has no version octet — its body is raw
 	// ciphertext, so there is nothing structural to check and any non-empty
-	// body is as plausible as another. Accepted anyway, because such a message
-	// really is binary and refusing it as unprotected is a far better answer
-	// than "neither packets nor armour". The residual cost is a covering line
-	// beginning U+0240-U+027F taking the binary path, which is a narrow enough
-	// range of characters to accept.
-	if pkt.Tag == tagSED {
+	// body is as plausible as another. It settles the question anyway, because
+	// such a message really is binary and refusing it as unprotected is a far
+	// better answer than "neither packets nor armour".
+	//
+	// But NOT in the first position, and that qualifier was missing. A
+	// well-formed message never opens with its encrypted data — the session-key
+	// packets come first — so nothing is lost by declining to recognise it
+	// there, and something real is gained: 0xC9 is both this tag and the UTF-8
+	// lead for U+0240-U+027F, so a report pasted under a covering line
+	// beginning with one of those characters took the binary path and was
+	// refused. That was recorded as an accepted residual until a property that
+	// enumerates every two-octet lead showed it is simply avoidable.
+	if pkt.Tag == tagSED && !first {
 		return true
 	}
 

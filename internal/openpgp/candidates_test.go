@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1095,64 +1095,89 @@ func pkeskWith(t *testing.T, keyID [8]byte, point, wrapped []byte) []byte {
 // The key-id retention was bounded last round; the candidate slices and the
 // dedup map were not. Every session-key packet naming us became a retained
 // candidate and a map entry, so a message chose how much memory the walk used.
-//
 // Measured before the bound: a 24 MiB message of minimal session-key packets
-// grew the heap by 165 MiB — about sevenfold. The message bound is 128 MiB, so
-// the reachable figure was of the order of a gigabyte, from one message sent to
-// the address we publish for exactly this purpose. That is an out-of-memory
-// kill rather than a slow decrypt.
+// grew the heap by 165 MiB, about sevenfold, and the message bound is 128 MiB.
+// That is an out-of-memory kill rather than a slow decrypt.
 //
-// The ratio is asserted rather than an absolute figure, so the test says
-// something stable about the shape of the growth rather than about this
-// machine. The threshold is deliberately loose — the defect was 7x and the
-// bound brings it near 1x, so anything under 3x distinguishes them without
-// being brittle.
+// Asserted on the RETAINED COUNT rather than on heap growth, and the difference
+// matters. Heap growth is a consequence; retention is the thing bounded. It is
+// also the only one of the two that can be measured reliably — the first
+// version of this test read runtime.MemStats and was defeated twice over, by
+// the race detector (21x) and by coverage instrumentation (8.4x), both of which
+// CI runs. A test that cannot run under the conditions CI uses is not a test.
 func TestDecryptDoesNotLetAMessageChooseItsOwnMemory(t *testing.T) {
 	t.Parallel()
 
-	if raceDetector {
-		// The detector instruments every allocation, so this would measure the
-		// instrumentation rather than the walk — about 21x either way.
-		t.Skip("heap growth is not measurable under the race detector")
-	}
-
-	const packets = 200_000
+	const packets = 50_000
 
 	der, deriver := testCertificate(t)
 
-	genuine := encryptTo(t, der, "a report behind a great many packets", false)
+	genuine := encryptTo(t, der, "not reachable", false)
 	leading := firstPacket(t, genuine)
 
+	// Every packet names us and is distinct, so nothing collapses under the
+	// dedup and each one is a candidate the walk would retain.
 	var message []byte
 
 	for i := range packets {
 		forged := append([]byte(nil), leading...)
-		forged[len(forged)-1] ^= byte(i % 251)
-		forged[len(forged)-2] ^= byte((i / 251) % 251)
+		// +1 so that i==0 still differs from the genuine packet; XORing with
+		// zero would have made the first "forgery" a verbatim copy of it, and
+		// the message would simply have decrypted.
+		forged[len(forged)-1] ^= byte(i%251 + 1)
+		forged[len(forged)-2] ^= byte((i/251)%251 + 1)
 		message = append(message, forged...)
 	}
 
-	message = append(message, genuine...)
+	message = append(message, afterFirstPacket(t, genuine)...)
 
 	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
 
-	var before, after runtime.MemStats
-
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-
-	_ = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), io.Discard)
-
-	runtime.ReadMemStats(&after)
-
-	grew := after.TotalAlloc - before.TotalAlloc
-	if ratio := float64(grew) / float64(len(message)); ratio > 3 {
-		t.Errorf("decrypting a %d MiB message allocated %d MiB, %.1fx its size — the message "+
-			"chooses how much memory the walk uses", len(message)>>20, grew>>20, ratio)
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(message), io.Discard)
+	if err == nil {
+		t.Fatal("a message of nothing but forgeries decrypted")
 	}
+
+	// The error names how many candidates the walk held. That count is what the
+	// memory is proportional to, and it must be the bound rather than the
+	// message's own size.
+	retained := candidateCount(t, err)
+	if retained > 1024 {
+		t.Errorf("the walk retained %d candidates from a message carrying %d packets; "+
+			"the message chooses how much memory it uses", retained, packets)
+	}
+
+	// And it must still be reported as cut short rather than as a settled
+	// verdict, since the packets past the bound were never looked at.
+	if !errors.Is(err, openpgp.ErrCostCeiling) {
+		t.Errorf("error = %v, want ErrCostCeiling", err)
+	}
+}
+
+// candidateCount reads the retained-candidate count out of a cost-ceiling
+// error, which is the only place the walk reports it.
+func candidateCount(t *testing.T, err error) int {
+	t.Helper()
+
+	_, after, ok := strings.Cut(err.Error(), "derivations across ")
+	if !ok {
+		t.Fatalf("the error does not report a candidate count: %v", err)
+	}
+
+	count, _, ok := strings.Cut(after, " candidates")
+	if !ok {
+		t.Fatalf("the error does not report a candidate count: %v", err)
+	}
+
+	n, convErr := strconv.Atoi(count)
+	if convErr != nil {
+		t.Fatalf("candidate count %q is not a number: %v", count, convErr)
+	}
+
+	return n
 }
 
 // TestDecryptNamesEachOtherRecipientOnce covers the error that tells an
