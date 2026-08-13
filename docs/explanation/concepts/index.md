@@ -1,8 +1,8 @@
 ---
 title: Concepts
-description: Why sigillum is a standalone CLI separate from gtb, and how the build-time backend blank-import model decides which signing backends a binary carries.
+description: Why sigillum is a standalone CLI separate from gtb, and how the build-time backend blank-import model decides which signing and encryption backends a binary carries.
 date: 2026-07-28
-tags: [explanation, concepts, signing, backends]
+tags: [explanation, concepts, signing, encryption, backends]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
 ---
 
@@ -56,9 +56,32 @@ import (
 )
 ```
 
-Each blank import runs the backend package's `init`, which registers it. Because
-sigillum's whole purpose is signing, it ships the full set: **AWS KMS + local
-PEM**.
+Each blank import runs the backend package's `init`, which registers it. sigillum
+ships the full set: **AWS KMS + local PEM**.
+
+### The encryption side has its own registry
+
+`decrypt` and `certificate` resolve `--backend` against a **separate** registry
+in `go/encryption`, populated by a separate file:
+
+```go
+// cmd/sigillum/encryption.go
+import (
+    _ "gitlab.com/phpboyscout/go/encryption-aws-kms"
+    _ "gitlab.com/phpboyscout/go/encryption/local"
+)
+```
+
+Two registries rather than one, because the two sides want different things from
+a backend. A signing backend supplies a `crypto.Signer`. An encryption backend
+must derive a shared secret from a sender's ephemeral point *and* hand back its
+own public half so a certificate can be published — neither of which a signing
+backend has any reason to implement. Merging them would let `--backend` offer a
+name that cannot serve the command it was passed to.
+
+The same build-time property holds on both sides, and independently: a build can
+carry AWS KMS for signing and local PEM only for encryption, or drop either side
+entirely.
 
 This model has a security dividend. A **regulated or hardened build** can drop a
 blank import — say, remove the AWS KMS line and rebuild. The Go linker's

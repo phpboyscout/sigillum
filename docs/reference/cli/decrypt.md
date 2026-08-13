@@ -112,10 +112,13 @@ for a certificate that may not exist. The message names how many went untried.
 | `required flag not set` | `--certificate` or `--key` missing | no |
 | `only one message can be decrypted at a time` | More than one message named; there is a single `--output` | no |
 | `cannot both come from stdin` | `--certificate -` with the message also on stdin | no |
+| `--output names a file this command is reading` | `--output` points at the certificate or the message — see below | no |
+| `no key service backends are compiled into this binary` | A build with no backend linked in; nothing can be decrypted | no |
 | `no key service "..."` | `--backend` names something not compiled in | no |
 | `certificate has no ECDH encryption subkey` | Signing-only certificate, or one whose subkey is RSA | no |
 | `certificate did not parse to its end` | Reported as a warning, not a failure — see below | no |
-| `key is revoked` | The holder has withdrawn the encryption subkey; fetch a current certificate | no |
+| `its holder withdrew this certificate` | A revocation over the **whole certificate**: every key in it is retired, not just the encryption subkey | no |
+| `its holder withdrew this encryption subkey` | Only the encryption subkey is withdrawn; the certificate itself still stands | no |
 | `key has expired` | The holder time-boxed the subkey and that date has passed | no |
 | `message is not addressed to this certificate` | Every recipient was named, and none was you | no, unless the message also carried hidden recipients |
 | `malformed message` | Not readable as OpenPGP | no |
@@ -127,6 +130,26 @@ for a certificate that may not exist. The message names how many went untried.
 | `key unwrap integrity check failed` | The wrong certificate or the wrong `--key` — the session key did not unwrap | yes |
 | `session key checksum mismatch` | The unwrap succeeded but the payload underneath is wrong; a damaged packet rather than a wrong key | yes |
 | `message integrity check failed` | The plaintext was altered in transit. Nothing is written out | yes |
+| `destination is not a regular file` | `--output` names a directory, a device or a socket | no |
+| `symbolic link cannot be resolved` | `--follow-symlinks` was given and the link is broken, or the chain is too long | no |
+| `no unused name to stage content under` | The output directory is too full of leftovers to stage a temporary beside the target | no |
+
+### `--output` will not name an input
+
+`--output` is refused when it points at the certificate or at the message being
+read. Both are plausible slips — `--certificate key.asc --output key.asc`, or an
+`--output` that names the message so the report "replaces itself" — and both
+used to succeed, because the destination is staged and only renamed into place
+at the end. The read finished before the rename, so the run reported success and
+the input was gone: the certificate replaced by a plaintext report, or the
+encrypted message replaced by its own plaintext with no copy of the ciphertext
+left.
+
+The comparison is on cleaned paths, so `security.asc` and `./security.asc` are
+recognised as the same file. It is deliberately not resolved through the
+filesystem: a symbolic or hard link can make two different names the same file,
+and catching those needs a stat of a destination that may not exist yet. This
+catches the slip operators actually make, not every route to the same inode.
 
 ### Two different integrity checks
 
@@ -148,15 +171,16 @@ and the third is almost always an attacker.
 
 ### Warnings
 
-Two things are reported at `Warn` and do not stop the run, because they are
-findings the tool has no standing to decide about:
+These are reported at `Warn` and do not stop the run, because they are findings
+the tool has no standing to decide about:
 
 | Warning contains | Means | What to do |
 |---|---|---|
 | `certificate carries a revocation this cannot evaluate` | The certificate holds a revocation-shaped signature of a version or algorithm this build cannot verify | Check out of band whether the key was withdrawn before relying on it |
 | `certificate did not parse to its end` | The certificate stopped parsing before its input ran out; what was read is intact and usable | Re-fetch it — a later subkey may supersede the one used |
+| `a later encryption subkey was refused, so this is not the newest one` | A newer encryption subkey exists but could not be used — its binding did not verify, it was buried under too many signatures, or its own parameters were rejected. The subkey actually used is an earlier, valid one | Re-fetch the certificate. If the newer subkey is genuine, the holder has rotated and this run used the key they have stopped using |
 
-Neither refuses the certificate on purpose. A revocation-shaped packet costs
+None of them refuses the certificate on purpose. A revocation-shaped packet costs
 nothing to append to a published certificate and nothing verifies it before it
 is counted, so honouring one that cannot be checked would let any stranger
 retire a security contact's encryption key.

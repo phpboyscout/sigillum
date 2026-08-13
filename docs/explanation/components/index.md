@@ -72,8 +72,17 @@ compression bounds — lives here, because it exists nowhere upstream and
 `go/encryption` deliberately stops at the packet and certificate layer.
 
 It also blank-imports the backends it ships (see
-[Concepts](../concepts/index.md)), so those backends register themselves in
-`go/signing`'s registry at startup and appear as valid `--backend` values.
+[Concepts](../concepts/index.md)), so those backends register themselves at
+startup and appear as valid `--backend` values.
+
+There are **two registries, not one** — `go/signing`'s and `go/encryption`'s —
+and sigillum keeps a blank-import file per side (`cmd/sigillum/signing.go` and
+`cmd/sigillum/encryption.go`). They are deliberately separate: the two sides ask
+different things of a backend. Signing needs a key that signs; encryption needs
+one that derives a shared secret *and* can hand back its own public half, which
+a signing backend has no reason to offer. A single registry would make every
+backend claim both, and `--backend` would list names that cannot serve the
+command they were given to.
 
 ## Why the command layer is a separate module
 
