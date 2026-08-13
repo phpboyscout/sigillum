@@ -77,29 +77,144 @@ func packetsOrArmour(raw []byte, what string) ([]byte, error) {
 	return dearmoured(block.Body, what)
 }
 
-// isPacketStream reports whether the input already begins an OpenPGP packet.
+// isPacketStream reports whether the input is OpenPGP packets rather than
+// armoured text.
 //
-// Parsing is the whole test, with no allowlist of tags. Every packet header has
-// its high bit set (RFC 9580 §4.2), and armour is printable text beginning with
-// a hyphen — 0x2D, high bit clear — so armour can never parse as a packet and
-// the question needs nothing else to answer it.
+// Every packet header has its high bit set (RFC 9580 4.2), and armour is
+// printable text beginning with a hyphen — 0x2D, high bit clear — so armour can
+// never parse as a packet. That asymmetry is what makes the question answerable
+// at all, but it is not sufficient on its own, and both ways of getting this
+// wrong have been live defects.
 //
-// An allowlist was tried and was wrong. Restricting the opening tag to a
+// An allowlist of opening tags was the first. Restricting the first packet to a
 // session-key or public-key packet contradicted the walk that follows, which
 // deliberately steps over a marker or padding packet before the session keys —
 // so a message legitimately opening with a marker was refused as "neither
-// packets nor armour", losing a report addressed to this certificate. Five
-// octets were enough, and a property fuzz target found it immediately once the
-// property was strengthened to require the report be recovered rather than
-// merely not-misdiagnosed.
+// packets nor armour", losing a report addressed to this certificate.
 //
-// Being permissive here costs nothing: input that parses as a packet but
-// carries no session key fails later with an error that says exactly that.
+// Reading only the first header was the second, and is why this walks. Two
+// octets — 0xC1 0x00, a new-format session-key tag with an empty body — parse
+// as a packet, so an armoured report with those bytes in front of it was
+// declared binary, the armour path was never reached, and the operator was told
+// their report was malformed rather than that two bytes had been injected. The
+// same holds for 0xC6 0x00, which matters beyond tampering: 0xC6 is a valid
+// UTF-8 lead octet, so an armoured report pasted under a covering line starting
+// with one of those characters took the binary path by accident. That paste is
+// the ordinary arrival shape this ordering exists to keep working.
+//
+// So: walk, stepping over exactly what the candidate walk steps over, and
+// answer yes only on reaching a packet that carries something. A header with
+// nothing behind it establishes nothing, which is the property the comment
+// above claims and this is what makes it true.
 func isPacketStream(raw []byte) bool {
-	_, err := encryption.ParsePacket(raw)
+	for rest := raw; len(rest) > 0; {
+		pkt, err := encryption.ParsePacket(rest)
+		if err != nil {
+			return false
+		}
 
-	return err == nil
+		if carriesContent(pkt) {
+			return true
+		}
+
+		rest = pkt.Rest
+	}
+
+	return false
 }
+
+// carriesContent reports whether a packet is one that settles the question,
+// rather than one the walk would step over.
+//
+// The structural checks matter as much as the tags, and a length floor alone is
+// not enough. A covering line beginning "Ƈopy of the report below" starts with
+// U+0187, which is the two octets 0xC6 0x87 — a public-key tag declaring a
+// 135-octet body, and any armour longer than that satisfies a length test. So
+// the version octet is checked too: real packets carry a version this format
+// defines, and the first character of a word does not.
+//
+// That covering-line paste is the ordinary arrival shape the binary-first
+// ordering exists to protect, not an attack, which is why the check has to be
+// strong enough to see the difference.
+func carriesContent(pkt encryption.Packet) bool {
+	if len(pkt.Body) == 0 {
+		return false
+	}
+
+	// The legacy encrypted-data packet has no version octet — its body is raw
+	// ciphertext, so there is nothing structural to check and any non-empty
+	// body is as plausible as another. Accepted anyway, because such a message
+	// really is binary and refusing it as unprotected is a far better answer
+	// than "neither packets nor armour". The residual cost is a covering line
+	// beginning U+0240-U+027F taking the binary path, which is a narrow enough
+	// range of characters to accept.
+	if pkt.Tag == tagSED {
+		return true
+	}
+
+	want, known := contentShape(pkt.Tag)
+	if !known {
+		return false
+	}
+
+	version := pkt.Body[0]
+
+	return len(pkt.Body) >= want.minBody && version >= want.minVersion && version <= want.maxVersion
+}
+
+// shape is what a real packet of a given tag must at least look like.
+type shape struct {
+	minBody                int
+	minVersion, maxVersion byte
+}
+
+// contentShape describes the packets that settle the question, and reports
+// false for the ones the walk steps over.
+func contentShape(tag byte) (shape, bool) {
+	const (
+		// A public-key packet is at least a version octet, four of creation
+		// time and an algorithm octet. RFC 9580 5.5.2.
+		publicKeyFixedOctets = 6
+
+		// An encrypted-data packet needs only its version octet to be judged.
+		seipdFixedOctets = 1
+
+		// The version ranges each packet format defines. Named because the
+		// point of checking them is that a real packet carries a version this
+		// format knows and the first letter of a word does not.
+		oldestPKESK     = 2
+		newestPKESK     = 6
+		oldestPublicKey = 3
+		newestPublicKey = 6
+		oldestSEIPD     = 1
+		newestSEIPD     = 2
+	)
+
+	switch tag {
+	case encryption.TagPKESK:
+		// Versions 2 through 6. This package reads only 3, but a version 6
+		// packet from a modern sender is still a binary message, and saying so
+		// gets a better error than sending it to the armour decoder.
+		return shape{minBody: pkeskFixedOctets, minVersion: oldestPKESK, maxVersion: newestPKESK}, true
+
+	case encryption.TagPublicKey:
+		return shape{minBody: publicKeyFixedOctets, minVersion: oldestPublicKey, maxVersion: newestPublicKey}, true
+
+	case tagSEIPD:
+		// A message whose session-key packets were all of a kind this cannot
+		// read is still a binary message.
+		return shape{minBody: seipdFixedOctets, minVersion: oldestSEIPD, maxVersion: newestSEIPD}, true
+
+	default:
+		return shape{}, false
+	}
+}
+
+// pkeskFixedOctets is the shortest a version 3 session-key packet body can be:
+// a version octet, eight of key id, an algorithm octet and the ephemeral
+// point's two-octet MPI header. It mirrors the core's own constant, which is
+// unexported there.
+const pkeskFixedOctets = 12
 
 // dearmoured reads the decoded body of an armoured block, classifying a failure
 // as a malformed message.

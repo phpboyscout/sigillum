@@ -207,3 +207,49 @@ func TestCopyLiteralBoundsPacketBreadth(t *testing.T) {
 		t.Errorf("error = %v, want ErrMalformedMessage", err)
 	}
 }
+
+// TestIsPacketStreamNeedsMoreThanAHeader covers the two-octet inputs that used
+// to be enough to declare an armoured message binary.
+//
+// The probe read one packet header and concluded the whole input was a packet
+// stream. A header with nothing behind it establishes nothing: 0xC1 0x00 is a
+// session-key tag with an empty body, and 0xC6 0x87 is a public-key tag whose
+// declared 135 octets any armour longer than that satisfies. Both took the
+// binary path, so the armour decoder was never reached and the operator was
+// told their report was malformed.
+func TestIsPacketStreamNeedsMoreThanAHeader(t *testing.T) {
+	t.Parallel()
+
+	armour := []byte("-----BEGIN PGP MESSAGE-----\n\nhQEMA0000000\n-----END PGP MESSAGE-----\n")
+
+	for _, tc := range []struct {
+		name   string
+		raw    []byte
+		expect bool
+	}{
+		{"a session-key header with an empty body", []byte{0xC1, 0x00}, false},
+		{"a public-key header with an empty body", []byte{0xC6, 0x00}, false},
+		{"an old-format header with an empty body", []byte{0x84, 0x00}, false},
+
+		// The shapes that used to suppress the armour path entirely.
+		{"an empty session-key header ahead of armour", append([]byte{0xC1, 0x00}, armour...), false},
+		{"a public-key header ahead of armour", append([]byte{0xC6, 0x87}, armour...), false},
+
+		// A covering line beginning with U+0187, which encodes as those same
+		// two octets. Not an attack — the arrival shape the ordering protects.
+		{"armour under a covering line", append([]byte("Ƈopy of the report below:\n\n"), armour...), false},
+		{"armour under an ordinary covering line", append([]byte("Here it is:\n\n"), armour...), false},
+
+		// Armour itself, which can never parse as a packet.
+		{"armour alone", armour, false},
+		{"nothing at all", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isPacketStream(tc.raw); got != tc.expect {
+				t.Errorf("isPacketStream = %t, want %t", got, tc.expect)
+			}
+		})
+	}
+}
