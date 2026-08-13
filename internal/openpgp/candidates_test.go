@@ -231,8 +231,10 @@ func TestDecryptKeyServiceCostIsWhatWeDocument(t *testing.T) {
 		counting := &countingDeriver{SecretDeriver: deriver}
 
 		err = openpgp.Decrypt(t.Context(), counting, recipient, bytes.NewReader(message), io.Discard)
-		if !errors.Is(err, openpgp.ErrNotAddressed) {
-			t.Fatalf("error = %v, want ErrNotAddressed", err)
+		// The ceiling, not "addressed elsewhere": four candidates were never
+		// tried, so who the message is for was never established.
+		if !errors.Is(err, openpgp.ErrCostCeiling) {
+			t.Fatalf("error = %v, want ErrCostCeiling", err)
 		}
 
 		if counting.calls != 16 {
@@ -811,4 +813,87 @@ func distinctKeyIDs(t *testing.T, message []byte, count int) []byte {
 	}
 
 	return append(out, pkt.Rest...)
+}
+
+// TestDecryptStillTriesCandidatesThatCostNothing covers the ceiling discarding
+// work it was never meant to bound.
+//
+// maxDerivations bounds BILLED derivations, and its own doc says "every repeat
+// of a point already seen is free and does not count". A candidate whose
+// ephemeral point has already been derived costs nothing to try — the secret is
+// memoised and the unwrap that follows is local arithmetic.
+//
+// But reaching the ceiling returned from the whole loop rather than skipping
+// the one candidate that would have exceeded it, so every later candidate was
+// discarded including the free ones. An attacker who can touch the message
+// spends the budget on distinct points and the genuine report, sitting behind
+// them on a point already derived, is never tried.
+//
+// This is the shape the whole round exists to eliminate: a bound fires and the
+// code stops instead of continuing down the path the bound does not govern.
+func TestDecryptStillTriesCandidatesThatCostNothing(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a report that costs nothing to open"
+
+	der, deriver := testCertificate(t)
+
+	genuine := encryptTo(t, der, plaintext, false)
+
+	// One forgery carrying the genuine ephemeral point, so that point is
+	// memoised early and every later packet sharing it is free.
+	leading := firstPacket(t, genuine)
+	primer := append([]byte(nil), leading...)
+	primer[len(primer)-1] ^= 0xFF
+
+	// Then more distinct points than the ceiling allows, to exhaust the budget.
+	var message []byte
+
+	message = append(message, primer...)
+	message = append(message, pkesksOnly(t, repeatFirstPKESK(t, genuine, 20))...)
+	message = append(message, genuine...)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	counting := &countingDeriver{SecretDeriver: deriver}
+
+	var got bytes.Buffer
+	if err := openpgp.Decrypt(t.Context(), counting, recipient,
+		bytes.NewReader(message), &got); err != nil {
+		t.Fatalf("a report whose ephemeral point was already derived was discarded "+
+			"after %d billed calls: %v", counting.calls, err)
+	}
+
+	if got.String() != plaintext {
+		t.Errorf("recovered %q, want %q", got.String(), plaintext)
+	}
+
+	// The ceiling must still have held: the free candidate costs nothing, so
+	// recovering it must not have taken more than the budget.
+	if counting.calls > 16 {
+		t.Errorf("the run made %d billed derivations, past the ceiling of 16", counting.calls)
+	}
+}
+
+// pkesksOnly returns the leading session-key packets of a message, dropping the
+// encrypted data, so several fixtures can be concatenated into one message.
+func pkesksOnly(t *testing.T, message []byte) []byte {
+	t.Helper()
+
+	var out []byte
+
+	for rest := message; len(rest) > 0; {
+		pkt, err := encryption.ParsePacket(rest)
+		if err != nil || pkt.Tag != encryption.TagPKESK {
+			break
+		}
+
+		out = append(out, rest[:len(rest)-len(pkt.Rest)]...)
+		rest = pkt.Rest
+	}
+
+	return out
 }

@@ -359,8 +359,14 @@ func TestDecryptCapsTheNumberOfDerivations(t *testing.T) {
 	counting := &countingDeriver{SecretDeriver: deriver}
 
 	err = openpgp.Decrypt(t.Context(), counting, recipient, bytes.NewReader(message), io.Discard)
-	if !errors.Is(err, openpgp.ErrNotAddressed) {
-		t.Fatalf("error = %v, want ErrNotAddressed", err)
+	// The ceiling, not "addressed elsewhere". Twenty-four candidates were never
+	// tried, so nothing here establishes who the message is for.
+	if !errors.Is(err, openpgp.ErrCostCeiling) {
+		t.Fatalf("error = %v, want ErrCostCeiling", err)
+	}
+
+	if errors.Is(err, openpgp.ErrNotAddressed) {
+		t.Errorf("stopping at the ceiling was reported as the message being addressed elsewhere: %v", err)
 	}
 
 	// EXACTLY the cap, not "at most".

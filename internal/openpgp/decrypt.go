@@ -36,6 +36,16 @@ var (
 	// limit, and the certificate is public.
 	ErrTooLarge = errors.New("message is larger than this will decrypt")
 
+	// ErrCostCeiling means the run stopped because it reached the limit on
+	// billed key-service derivations, with candidates left untried.
+	//
+	// Deliberately NOT ErrNotAddressed, which this used to be. Hitting the
+	// ceiling establishes nothing about who the message is for — the candidates
+	// never tried might have been ours — so reporting it as "addressed
+	// elsewhere" sends the operator to find a certificate that may not exist,
+	// which is the misdiagnosis this package has produced three separate ways.
+	ErrCostCeiling = errors.New("stopped before trying every recipient: too many key-service derivations")
+
 	// ErrUnprotected means the message uses the legacy encrypted-data packet,
 	// which carries no integrity protection and is refused for that reason.
 	ErrUnprotected = errors.New("message has no integrity protection and will not be decrypted")
@@ -145,6 +155,10 @@ func recoverSessionKey(
 	// rotation between two messages is never served from a cache.
 	billed := newBilledOnce(deriver)
 
+	// How many candidates the ceiling refused to pay for, which is what turns
+	// "none of them opened" into "we stopped before trying them all".
+	skipped := 0
+
 	for _, c := range candidates {
 		// One ceiling, on distinct billed derivations, applied to every
 		// candidate however it is addressed.
@@ -167,8 +181,17 @@ func recoverSessionKey(
 		// delete the message outright instead, so the cap costs nothing against
 		// them, while its absence handed every stranger an amplifier of about a
 		// million billed calls per message.
+		//
+		// SKIPPED, not returned. This used to end the whole loop, which threw
+		// away every later candidate including the ones the ceiling does not
+		// govern at all: a packet whose point has already been derived is free,
+		// and a genuine report sitting behind sixteen distinct forged points was
+		// discarded without being tried. A bound that stops work it was never
+		// meant to bound is the exact shape this package keeps getting wrong.
 		if billed.wouldExceed(c.pkesk.EphemeralPoint) {
-			return 0, nil, exhausted(namedFailure, otherFailure, len(candidates))
+			skipped++
+
+			continue
 		}
 
 		cipherID, sessionKey, err := unwrap(ctx, billed, recipient, c.pkesk)
@@ -176,20 +199,13 @@ func recoverSessionKey(
 			return cipherID, sessionKey, nil
 		}
 
-		switch {
-		// The message named this certificate and the unwrap still failed. That
-		// is a corrupt message or the wrong --key, not a message for somebody
-		// else, and reporting it as the latter sends the operator to find a
-		// different certificate when theirs is right.
-		case c.named && namedFailure == nil:
-			namedFailure = err
+		namedFailure, otherFailure = recordFailure(c, err, namedFailure, otherFailure)
+	}
 
-		// Not an unwrap verdict at all — a key service that is unreachable or
-		// refusing, a point it will not accept. "Not addressed here" would
-		// claim we established something we never did.
-		case !isUnwrapVerdict(err) && otherFailure == nil:
-			otherFailure = err
-		}
+	// Anything skipped means the run was cut short by cost, so it cannot be
+	// reported as a settled verdict about who the message is for.
+	if skipped > 0 {
+		return 0, nil, exhausted(namedFailure, otherFailure, len(candidates), skipped)
 	}
 
 	switch {
@@ -213,20 +229,41 @@ func recoverSessionKey(
 // candidate was reported as "this message is not for you", and the operator
 // went looking for a different certificate while their credentials were the
 // fault. The cap is a statement about cost, not about who the message is for.
-func exhausted(namedFailure, otherFailure error, candidates int) error {
+func exhausted(namedFailure, otherFailure error, candidates, skipped int) error {
 	// First-wins, and named before other, so the message names the failure
 	// most likely to be actionable rather than the most recent one.
 	switch {
 	case namedFailure != nil:
-		return fmt.Errorf("gave up after %d key-service derivations across %d candidates; the first failure was: %w",
-			maxDerivations, candidates, namedFailure)
+		return fmt.Errorf("%w: %d derivations across %d candidates, %d untried; the first failure was: %w",
+			ErrCostCeiling, maxDerivations, candidates, skipped, namedFailure)
 	case otherFailure != nil:
-		return fmt.Errorf("gave up after %d key-service derivations across %d candidates; the first failure was: %w",
-			maxDerivations, candidates, otherFailure)
+		return fmt.Errorf("%w: %d derivations across %d candidates, %d untried; the first failure was: %w",
+			ErrCostCeiling, maxDerivations, candidates, skipped, otherFailure)
 	}
 
-	return fmt.Errorf("%w: gave up after %d key-service derivations across %d candidates",
-		ErrNotAddressed, maxDerivations, candidates)
+	return fmt.Errorf("%w: %d derivations across %d candidates, %d untried",
+		ErrCostCeiling, maxDerivations, candidates, skipped)
+}
+
+// recordFailure keeps the two kinds of failure worth reporting after a later
+// candidate has also failed, first-wins.
+func recordFailure(c candidate, err, namedFailure, otherFailure error) (named, other error) {
+	switch {
+	// The message named this certificate and the unwrap still failed. That is a
+	// corrupt message or the wrong --key, not a message for somebody else, and
+	// reporting it as the latter sends the operator to find a different
+	// certificate when theirs is right.
+	case c.named && namedFailure == nil:
+		return err, otherFailure
+
+	// Not an unwrap verdict at all — a key service that is unreachable or
+	// refusing, a point it will not accept. "Not addressed here" would claim we
+	// established something we never did.
+	case !isUnwrapVerdict(err) && otherFailure == nil:
+		return namedFailure, err
+	}
+
+	return namedFailure, otherFailure
 }
 
 // isUnwrapVerdict reports whether an error means "this packet was not ours"
