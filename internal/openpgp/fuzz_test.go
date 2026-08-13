@@ -39,6 +39,15 @@ var message = sync.OnceValue(func() (m struct {
 	ciphertext []byte
 	plaintext  string
 }) {
+	// A fabricated *testing.T, because the fixture helpers take one and this
+	// runs from sync.OnceValue where there is no real one to hand. It works
+	// only because nothing here fails in practice: a t.Fatalf on this value
+	// would not stop the run and would report to nobody.
+	//
+	// The helpers should take testing.TB, which is the interface that exists
+	// for exactly this. Left as it is for now because changing their signature
+	// touches every test in the package, and this file states the hazard rather
+	// than hiding it — the panic below is what actually guards the fixture.
 	t := &testing.T{}
 
 	m.plaintext = "a vulnerability report that must survive tampering"

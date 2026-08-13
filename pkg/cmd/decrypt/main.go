@@ -196,12 +196,11 @@ func (d *lazyDeriver) DeriveSharedSecret(ctx context.Context, peerPoint []byte) 
 		return nil, err
 	}
 
-	secret, err := deriver.DeriveSharedSecret(ctx, peerPoint)
-	if err != nil {
-		return nil, fmt.Errorf("deriving the shared secret: %w", err)
-	}
-
-	return secret, nil
+	// Returned unwrapped. internal/openpgp's unwrap already prefixes this with
+	// "deriving the shared secret", so wrapping it again produced the phrase
+	// twice in one line — and the second copy carried no information the first
+	// did not, only the impression that two different things had gone wrong.
+	return deriver.DeriveSharedSecret(ctx, peerPoint)
 }
 
 // CoordinateBytes is asked for after a secret has been derived, so the key
@@ -246,8 +245,14 @@ func lookupBackend(name string) (encryption.KeyService, error) {
 }
 
 // openMessage returns the encrypted report, from a path argument or stdin.
+// openMessage opens the message named by the positional argument, or standard
+// input when there is none.
+//
+// The "-" sentinel is decided in openInput and only there. This used to test
+// for it too, one line before delegating to the function that tests for it
+// again — so the rule lived in two places and could have drifted in either.
 func openMessage(fsys opfile.FS, args []string) (io.Reader, func(), error) {
-	if len(args) == 0 || args[0] == "-" {
+	if len(args) == 0 {
 		return os.Stdin, func() {}, nil
 	}
 
@@ -267,11 +272,6 @@ func openInput(fsys opfile.FS, path string) (io.Reader, func(), error) {
 	return f, func() { _ = f.Close() }, nil
 }
 
-// destination is where plaintext goes and both ways of finishing with it.
-//
-// Carrying abandon alongside commit is the point. An earlier shape returned the
-// writer and its commit and dropped the writer itself, which left no caller
-// able to reach Abandon at all — so every failed run leaked its temporary file.
 // checkFlags refuses the arguments that cannot produce a plaintext.
 //
 // The stdin pair is the one worth explaining. The certificate and the message

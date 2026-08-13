@@ -172,7 +172,6 @@ func TestFSConformance(t *testing.T) {
 	}
 }
 
-// assertAbandonLeavesTheDestinationUntouched checks that abandon leaves the destination untouched.
 func assertAbandonLeavesTheDestinationUntouched(t *testing.T, b backend) {
 	t.Helper()
 
@@ -199,7 +198,6 @@ func assertAbandonLeavesTheDestinationUntouched(t *testing.T, b backend) {
 	}
 }
 
-// assertCommitReplacesTheDestination checks that commit replaces the destination.
 func assertCommitReplacesTheDestination(t *testing.T, b backend) {
 	t.Helper()
 
@@ -232,7 +230,6 @@ func assertCommitReplacesTheDestination(t *testing.T, b backend) {
 	}
 }
 
-// assertNoStagedFileIsLeftBehind checks that no staged file is left behind.
 func assertNoStagedFileIsLeftBehind(t *testing.T, b backend) {
 	t.Helper()
 
@@ -259,7 +256,6 @@ func assertNoStagedFileIsLeftBehind(t *testing.T, b backend) {
 	}
 }
 
-// assertADirectoryIsRefusedAsADestination checks that a directory is refused as a destination.
 func assertADirectoryIsRefusedAsADestination(t *testing.T, b backend) {
 	t.Helper()
 
@@ -270,7 +266,6 @@ func assertADirectoryIsRefusedAsADestination(t *testing.T, b backend) {
 	}
 }
 
-// assertStatReportsAFileAndAnAbsence checks that stat reports a file and an absence.
 func assertStatReportsAFileAndAnAbsence(t *testing.T, b backend) {
 	t.Helper()
 
@@ -300,7 +295,6 @@ func assertStatReportsAFileAndAnAbsence(t *testing.T, b backend) {
 	}
 }
 
-// assertCreatingAnExistingNameIsRefused checks that creating an existing name is refused.
 func assertCreatingAnExistingNameIsRefused(t *testing.T, b backend) {
 	t.Helper()
 
@@ -335,7 +329,6 @@ func assertCreatingAnExistingNameIsRefused(t *testing.T, b backend) {
 	}
 }
 
-// assertASymbolicLinkIsRefusedByDefault checks that a symbolic link is refused by default.
 func assertASymbolicLinkIsRefusedByDefault(t *testing.T, b backend) {
 	t.Helper()
 
@@ -346,7 +339,6 @@ func assertASymbolicLinkIsRefusedByDefault(t *testing.T, b backend) {
 	}
 }
 
-// assertASymbolicLinkIsFollowedOnRequest checks that a symbolic link is followed on request.
 func assertASymbolicLinkIsFollowedOnRequest(t *testing.T, b backend) {
 	t.Helper()
 
