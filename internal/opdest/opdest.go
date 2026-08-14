@@ -100,6 +100,42 @@ func Open(fsys opfile.FS, path string, mode fs.FileMode, followSymlinks bool) (D
 // Commit puts the staged content in place. A no-op for standard output.
 func (d Destination) Commit() error { return d.commit() }
 
+// Reporter is the sliver of a logger [Destination.Report] needs.
+type Reporter interface {
+	Info(msg string, args ...any)
+	Debug(msg string, args ...any)
+}
+
+// Report tells the operator where the content landed and whether its mode is
+// what was asked for — once.
+//
+// The one place both are said. Each command used to log the mode note itself
+// and then call a reporter that logged it again, so a single narrowing mode
+// produced two identical lines (finding #32). Owning the reporting here, where
+// the command has no Destination method left to duplicate it with, is what keeps
+// that from recurring.
+//
+// what names the thing written ("report decrypted", "certificate written"), so
+// the message reads for whichever command called it. The resolved-elsewhere case
+// is Info because it is the one worth seeing without --verbose: the operator
+// asked to follow a link and the content is not where they typed. The ordinary
+// case is Debug.
+func (d Destination) Report(log Reporter, what string) {
+	switch {
+	case d.Resolved():
+		log.Info(what, "path", d.path, "requested", d.typed)
+	case d.path != "":
+		log.Debug(what, "path", d.path)
+	}
+
+	// Narrower than asked for rather than broader, so not a confidentiality
+	// problem — but content the operator expected at one mode and got at a
+	// tighter one is worth a line, said exactly once.
+	if d.modeNote != "" {
+		log.Info("the output file's mode is not what was asked for", "note", d.modeNote)
+	}
+}
+
 // Abandon discards staged content that was never committed.
 //
 // Safe after a commit and safe on standard output, so a caller can defer it

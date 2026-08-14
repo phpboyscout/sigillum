@@ -522,3 +522,21 @@ func TestCheckFlagsRefusesAnOutputThatNamesTheKey(t *testing.T) {
 		t.Errorf("error %q does not name --key as the input hit", err)
 	}
 }
+
+// TestCheckFlagsNamesBothMissingFlags covers finding N4: this command named the
+// first missing flag and returned, while its sibling named them all. Both are
+// named now, through the shared collector.
+func TestCheckFlagsNamesBothMissingFlags(t *testing.T) {
+	t.Parallel()
+
+	err := checkFlags(&DecryptOptions{}, nil)
+	if err == nil {
+		t.Fatal("no flags supplied, but checkFlags was content")
+	}
+
+	for _, want := range []string{"--certificate", "--key"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the message names one missing flag but not %s: %v", want, err)
+		}
+	}
+}

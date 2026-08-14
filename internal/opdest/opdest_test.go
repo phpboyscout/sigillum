@@ -267,3 +267,48 @@ func (refusingChmodFS) Chmod(string, fs.FileMode) error { return fs.ErrPermissio
 func (f refusingChmodFS) CreateExcl(name string, perm fs.FileMode) (opfile.File, error) {
 	return f.FS.CreateExcl(name, perm&0o400)
 }
+
+// countingReporter records how many times each log method was called with a
+// given message.
+type countingReporter struct {
+	info  map[string]int
+	debug map[string]int
+}
+
+func newCountingReporter() *countingReporter {
+	return &countingReporter{info: map[string]int{}, debug: map[string]int{}}
+}
+
+func (c *countingReporter) Info(msg string, _ ...any)  { c.info[msg]++ }
+func (c *countingReporter) Debug(msg string, _ ...any) { c.debug[msg]++ }
+
+// TestReportLogsTheModeNoteOnce covers finding #32: both commands logged the
+// mode note themselves and then called a reporter that logged it again, so a
+// single narrowing produced two identical lines. Report owns it, once.
+func TestReportLogsTheModeNoteOnce(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	if err := mem.MkdirAll("/reports", 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	out, err := opdest.Open(&refusingChmodFS{FS: opfileafero.Wrap(mem)}, "/reports/report.txt", 0o600, false)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	defer out.Abandon()
+
+	if out.ModeNote() == "" {
+		t.Fatal("the fixture produced no mode note, so this proves nothing about how often it is logged")
+	}
+
+	log := newCountingReporter()
+	out.Report(log, "report decrypted")
+
+	const modeLine = "the output file's mode is not what was asked for"
+	if got := log.info[modeLine]; got != 1 {
+		t.Errorf("the mode note was logged %d times, want exactly 1", got)
+	}
+}

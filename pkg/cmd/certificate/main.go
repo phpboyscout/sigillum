@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -18,18 +17,18 @@ import (
 
 	"gitlab.com/phpboyscout/sigillum/internal/opdest"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
+	"gitlab.com/phpboyscout/sigillum/internal/oprun"
 )
 
 var (
-	// ErrMissingFlag reports a required flag that was not supplied.
-	ErrMissingFlag = errors.New("required flag not set")
+	// ErrMissingFlag and ErrNoBackends are the spine's, re-exported so the two
+	// commands share one declaration rather than a copy each.
+	ErrMissingFlag = oprun.ErrMissingFlag
+	ErrNoBackends  = oprun.ErrNoBackends
 
 	// ErrUnsupportedCurve reports a key on a curve OpenPGP algorithm 18 does
 	// not admit.
 	ErrUnsupportedCurve = errors.New("unsupported curve")
-
-	// ErrNoBackends means the binary was built with no key service compiled in.
-	ErrNoBackends = errors.New("no key service backends are compiled into this binary")
 )
 
 // ErrNoPublicKey means the chosen backend cannot expose the encryption key's
@@ -60,7 +59,7 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	service, err := lookupBackend(opts.Backend)
+	service, err := oprun.LookupBackend(opts.Backend)
 	if err != nil {
 		return err
 	}
@@ -108,35 +107,14 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	// Info rather than Debug: the operator asked to follow a link, so the
-	// one thing worth surfacing without --verbose is that the certificate is
-	// not where they typed.
-	return commitAndReport(out, p.GetLogger())
-}
-
-// commitAndReport puts the certificate in place and then says where it went.
-//
-// In that order. Announcing first meant a failed commit still told the operator
-// the certificate had been written — and the one case this line exists for, a
-// certificate that landed somewhere other than they typed, is exactly the case
-// where they would go and act on it.
-func commitAndReport(out opdest.Destination, log interface {
-	Info(msg string, args ...any)
-},
-) error {
+	// Committed before it is announced: announcing first meant a failed commit
+	// still told the operator the certificate had been written. Where it landed
+	// and whether its mode is exact are said once, by opdest.Report.
 	if err := out.Commit(); err != nil {
 		return err
 	}
 
-	if out.Resolved() {
-		log.Info("certificate written", "path", out.Path(), "requested", out.Requested())
-	}
-
-	// A published certificate the web server cannot read is a certificate
-	// nobody can encrypt to, and this is the only place that says so.
-	if note := out.ModeNote(); note != "" {
-		log.Info("the certificate's file mode is not what was asked for", "note", note)
-	}
+	out.Report(p.GetLogger(), "certificate written")
 
 	return nil
 }
@@ -144,63 +122,28 @@ func commitAndReport(out opdest.Destination, log interface {
 // checkFlags refuses the arguments that cannot produce a certificate, and
 // returns the creation time the rest of the run needs.
 //
-// Every missing flag is named, in a fixed order.
-//
-// A map literal was ranged over before, and Go randomises map iteration order,
-// so with more than one flag missing the operator was told about a different
-// one on each run. That makes support reproducible only by luck, and any test
-// asserting a message flaky by construction rather than by accident.
-//
-// Reporting all of them rather than the first is the same argument taken one
-// step further: three omissions should cost one round trip, not three.
+// The missing-flag collection and the ordering guarantee live in
+// oprun.RequireFlags now, shared with the decrypt command; this states which
+// flags this command requires and adds the checks that are its own.
 func checkFlags(opts *CertificateOptions) (time.Time, error) {
-	required := []struct {
-		name  string
-		value string
-	}{
-		{"--user-id", opts.UserId},
-		{"--certify-key", opts.CertifyKey},
-		{"--encrypt-key", opts.EncryptKey},
-	}
-
-	var missing []string
-
-	for _, flag := range required {
-		if flag.value == "" {
-			missing = append(missing, flag.name)
-		}
-	}
-
-	// --created is checked here rather than only by creationTime below, because
-	// creationTime ran after this function had already returned. The doc above
-	// promises "three omissions should cost one round trip, not three" and
-	// --created was the one omission that always cost its own: an operator who
-	// left out --user-id and --created was told about --user-id, fixed it, and
-	// was then told about --created.
-	//
-	// Only its absence is reported here. Whether a supplied value parses, and
-	// whether it predates the signature that will cover it, is creationTime's
-	// question and needs the value it is complaining about.
-	if opts.Created == "" {
-		missing = append(missing, "--created")
-	}
-
-	// --created keeps its explanation when it is one of the missing flags.
-	//
-	// Folding it into the plain list cost that, and an e2e scenario caught it:
-	// "--created is not set" tells an operator to pass a date, but not that
-	// passing a DIFFERENT date next time produces a different certificate that
-	// nothing already encrypted will open. That is the whole reason the flag has
-	// no default, so it is the one thing the message must carry.
-	if opts.Created == "" {
-		return time.Time{}, fmt.Errorf(
-			"%w: %s. --created (RFC 3339) is hashed into the certificate's fingerprint, "+
+	// Every missing flag named at once, through the shared collector — and
+	// --created checked here rather than only by creationTime below, which ran
+	// after this had returned so an operator missing --user-id and --created was
+	// told about one, then the other. Its Why carries the fingerprint sentence
+	// an e2e scenario pins: --created has no default because its value is hashed
+	// into the certificate's identity.
+	if err := oprun.RequireFlags(
+		oprun.Flag{Name: "--user-id", Value: opts.UserId},
+		oprun.Flag{Name: "--certify-key", Value: opts.CertifyKey},
+		oprun.Flag{Name: "--encrypt-key", Value: opts.EncryptKey},
+		oprun.Flag{
+			Name:  "--created",
+			Value: opts.Created,
+			Why: "--created (RFC 3339) is hashed into the certificate's fingerprint, " +
 				"so it must be the same on every run or the certificate changes identity",
-			ErrMissingFlag, strings.Join(missing, ", "))
-	}
-
-	if len(missing) > 0 {
-		return time.Time{}, fmt.Errorf("%w: %s", ErrMissingFlag, strings.Join(missing, ", "))
+		},
+	); err != nil {
+		return time.Time{}, err
 	}
 
 	// Before the key service is reached and before anything is staged. With the
@@ -318,32 +261,6 @@ func curveOID(c elliptic.Curve) ([]byte, error) {
 	}
 
 	return oid, nil
-}
-
-// lookupBackend resolves --backend, defaulting when exactly one is compiled in.
-func lookupBackend(name string) (encryption.KeyService, error) {
-	if name != "" {
-		// The core's error already names what is registered, so it is returned
-		// as-is rather than decorated with the same list twice.
-		service, err := encryption.LookupKeyService(name)
-		if err != nil {
-			return nil, fmt.Errorf("--backend: %w", err)
-		}
-
-		return service, nil
-	}
-
-	available := encryption.KeyServiceNames()
-
-	switch len(available) {
-	case 0:
-		return nil, ErrNoBackends
-	case 1:
-		return encryption.LookupKeyService(available[0])
-	default:
-		return nil, fmt.Errorf("%w: --backend (available: %s)",
-			ErrMissingFlag, strings.Join(available, ", "))
-	}
 }
 
 // write emits the certificate, armoured or binary.

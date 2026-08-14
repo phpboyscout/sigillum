@@ -16,16 +16,16 @@ import (
 	"gitlab.com/phpboyscout/sigillum/internal/openpgp"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
+	"gitlab.com/phpboyscout/sigillum/internal/oprun"
 )
 
 // Errors this command reports.
 var (
-	// ErrMissingFlag reports a required flag that was not supplied.
-	ErrMissingFlag = errors.New("required flag not set")
-
-	// ErrNoBackends means the binary was built with no key service compiled
-	// in, so there is nothing to decrypt or sign with.
-	ErrNoBackends = errors.New("no key service backends are compiled into this binary")
+	// ErrMissingFlag and ErrNoBackends are the spine's, re-exported so
+	// errors.Is against either this package's value or oprun's matches, and so
+	// the two commands share one declaration rather than a copy each.
+	ErrMissingFlag = oprun.ErrMissingFlag
+	ErrNoBackends  = oprun.ErrNoBackends
 
 	// ErrStdinTwice means both the certificate and the message were asked for
 	// from stdin, which cannot work: reading the first drains it.
@@ -51,7 +51,7 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
-	service, err := lookupBackend(opts.Backend)
+	service, err := oprun.LookupBackend(opts.Backend)
 	if err != nil {
 		return err
 	}
@@ -124,41 +124,12 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 		return err
 	}
 
-	// Narrower than asked for rather than broader, so this is not a
-	// confidentiality problem — but a report the operator expected at 0600 and
-	// got at 0400 is worth a line.
-	if note := out.ModeNote(); note != "" {
-		p.GetLogger().Info("the output file's mode is not what was asked for", "note", note)
-	}
-
-	reportDestination(p.GetLogger(), out)
+	// Where it went and whether the mode is exact, said once — see
+	// opdest.Report. The mode note used to be logged here and again inside the
+	// reporter, so a single narrowing produced two identical lines (#32).
+	out.Report(p.GetLogger(), "report decrypted")
 
 	return nil
-}
-
-// reportDestination tells the operator where the plaintext went, and whether
-// the file mode is what was asked for.
-//
-// Info rather than Debug when the destination resolved elsewhere, because that
-// is the one case worth surfacing without --verbose: the operator asked to
-// follow a link and the plaintext is not where they typed.
-func reportDestination(log interface {
-	Info(msg string, args ...any)
-	Debug(msg string, args ...any)
-}, out opdest.Destination,
-) {
-	if out.Resolved() {
-		log.Info("report decrypted", "path", out.Path(), "requested", out.Requested())
-	} else {
-		log.Debug("report decrypted", "path", out.Path())
-	}
-
-	// Narrower than asked for rather than broader, so not a confidentiality
-	// problem — but a report the operator expected at 0600 and got at 0400 is
-	// worth a line.
-	if note := out.ModeNote(); note != "" {
-		log.Info("the output file's mode is not what was asked for", "note", note)
-	}
 }
 
 // warner is the sliver of the logger this needs.
@@ -270,36 +241,6 @@ func (d *lazyDeriver) CoordinateBytes() int {
 	return d.deriver.CoordinateBytes()
 }
 
-// lookupBackend resolves --backend, defaulting when exactly one is compiled in.
-//
-// Defaulting only when the choice is unambiguous is deliberate: a tool built
-// with one backend should not make its user name it, and a tool built with
-// several must not guess which key service to send a request to.
-func lookupBackend(name string) (encryption.KeyService, error) {
-	if name != "" {
-		// The core's error already names what is registered, so this adds the
-		// flag that supplied the name rather than repeating the list.
-		service, err := encryption.LookupKeyService(name)
-		if err != nil {
-			return nil, fmt.Errorf("--backend: %w", err)
-		}
-
-		return service, nil
-	}
-
-	available := encryption.KeyServiceNames()
-
-	switch len(available) {
-	case 0:
-		return nil, ErrNoBackends
-	case 1:
-		return encryption.LookupKeyService(available[0])
-	default:
-		return nil, fmt.Errorf("%w: --backend (available: %s)",
-			ErrMissingFlag, strings.Join(available, ", "))
-	}
-}
-
 // openMessage opens the message named by the positional argument, or standard
 // input when there is none.
 //
@@ -386,12 +327,15 @@ func checkFlags(opts *DecryptOptions, args []string) error {
 		return fmt.Errorf("%w: %d were named (%s)", ErrTooManyArguments, len(args), strings.Join(args, ", "))
 	}
 
-	if opts.Certificate == "" {
-		return fmt.Errorf("%w: --certificate", ErrMissingFlag)
-	}
-
-	if opts.Key == "" {
-		return fmt.Errorf("%w: --key", ErrMissingFlag)
+	// Both named in one message when both are missing, rather than one at a
+	// time — the defect N4 found on this side while the certificate command
+	// collected them all. Shared through oprun.RequireFlags so they cannot
+	// disagree again.
+	if err := oprun.RequireFlags(
+		oprun.Flag{Name: "--certificate", Value: opts.Certificate},
+		oprun.Flag{Name: "--key", Value: opts.Key},
+	); err != nil {
+		return err
 	}
 
 	messageFromStdin := len(args) == 0 || args[0] == "-"
