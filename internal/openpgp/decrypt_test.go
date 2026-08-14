@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"io"
@@ -270,6 +271,50 @@ func registeredDeriver(t *testing.T, key *ecdh.PrivateKey) openpgp.SecretDeriver
 // encryptTo composes a message addressed to the certificate, using an
 // independent implementation so the test is not checking our encoder against
 // our own decoder.
+// TestAStreamingMessageForAnotherKeyReadsAsNotAddressed covers the diagnosis of
+// a partial-length message that is simply not ours.
+//
+// An encrypted-data packet over a few kilobytes is streamed with a partial
+// length by both gpg and go-crypto, which the core parser refuses to size. The
+// session-key scan settles at it on its tag alone, so a message addressed to
+// another key is reported as not addressed. Reading the partial length as a
+// parse failure instead reported "malformed message" — the same
+// damaged-verdict-about-a-well-formed-message misdiagnosis the scan is built to
+// avoid, and it would send an operator hunting for corruption in a message that
+// was only ever someone else's.
+func TestAStreamingMessageForAnotherKeyReadsAsNotAddressed(t *testing.T) {
+	t.Parallel()
+
+	ourDer, ourDeriver := testCertificate(t)
+	otherDer, _ := testCertificate(t)
+
+	// Large and incompressible, so the encrypted data is streamed with a partial
+	// length rather than a definite one.
+	raw := make([]byte, 4096)
+	if _, err := rand.Read(raw); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+
+	message := encryptTo(t, otherDer, hex.EncodeToString(raw), false)
+
+	ourRecipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ourDer))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var out bytes.Buffer
+
+	err = openpgp.Decrypt(t.Context(), ourDeriver, ourRecipient, bytes.NewReader(message), &out)
+
+	if !errors.Is(err, openpgp.ErrNotAddressed) {
+		t.Fatalf("a streaming message for another key was reported as %v, want ErrNotAddressed", err)
+	}
+
+	if errors.Is(err, openpgp.ErrMalformedMessage) {
+		t.Error("a well-formed message for another key was reported as malformed — the misdiagnosis the scan avoids")
+	}
+}
+
 func encryptTo(t *testing.T, der []byte, plaintext string, armoured bool) []byte {
 	t.Helper()
 

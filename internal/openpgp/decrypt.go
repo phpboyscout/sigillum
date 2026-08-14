@@ -586,8 +586,40 @@ const (
 // always for. An encrypted-data packet may use a partial length, which this
 // package deliberately does not parse and go-crypto handles — so the scan stops
 // at it rather than reading it, which is why the tag is all that is needed.
+// sessionKeyPackets is what makes that true: it settles at a streaming
+// encrypted-data packet on its tag alone, where the core parser would otherwise
+// refuse the partial length.
 func startsEncryptedData(tag byte) bool {
 	return tag == tagSEIPD || tag == tagSED
+}
+
+// sessionKeyPackets is the source eachSessionKey walks.
+//
+// Like parsePackets, but a streaming (partial-length) encrypted-data packet
+// SETTLES the scan rather than damaging it. The core parser cannot size a
+// partial length and refuses it, discarding everything but the tag — and for a
+// message addressed to another key, essentially every real message over a few
+// kilobytes from gpg or go-crypto carries a partial-length encrypted-data
+// packet. Treating that refusal as damage reported "your message is malformed"
+// for a well-formed message that simply was not ours: the exact misdiagnosis the
+// scan-ends-at-the-encrypted-data design exists to prevent, reintroduced one
+// layer down. The tag ParsePacket still returns is all the scan needs; go-crypto
+// reassembles the body once it is handed over.
+func sessionKeyPackets(raw []byte) *packetwalk.ByteSource[encryption.Packet] {
+	return packetwalk.NewByteSource(raw, func(b []byte) (encryption.Packet, []byte, error) {
+		pkt, err := encryption.ParsePacket(b)
+		if err == nil {
+			return pkt, pkt.Rest, nil
+		}
+
+		if errors.Is(err, encryption.ErrPartialLength) && startsEncryptedData(pkt.Tag) {
+			// Settled at, not consumed: From hands the caller the body beginning
+			// here, so the remaining slice is unused and the walk ends.
+			return pkt, nil, nil
+		}
+
+		return encryption.Packet{}, nil, err
+	})
 }
 
 // wildcardKeyID is the all-zero key id RFC 9580 §5.1 reserves for a recipient
@@ -609,7 +641,7 @@ func eachSessionKey(
 	raw []byte,
 	visit func(pkesk encryption.PKESK, body []byte, err error),
 ) (body []byte, stopped error) {
-	src := parsePackets(raw)
+	src := sessionKeyPackets(raw)
 
 	stopped = packetwalk.Walk(src, packetwalk.Limits{},
 		func(pkt encryption.Packet, _ packetwalk.Tally) packetwalk.Step[encryption.Packet] {
