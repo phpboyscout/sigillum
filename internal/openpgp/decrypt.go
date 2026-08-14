@@ -561,7 +561,7 @@ func startsEncryptedData(tag byte) bool {
 // the sender chose not to name.
 var wildcardKeyID [8]byte
 
-// addressedToUs returns the session-key packets worth trying, in the order to
+// eachSessionKey returns the session-key packets worth trying, in the order to
 // try them, with the encrypted data that follows.
 //
 // A message carries one PKESK per recipient, so ours is first only when we are
@@ -707,11 +707,12 @@ func (c *candidateSet) refuse(tried int, recipient Recipient) error {
 // keyIDs renders the recipients a message names, so the error says which
 // certificate should have been used rather than only that this one was wrong.
 func keyIDs(ids [][8]byte, total int) string {
-	// Deliberately NOT capped again here. candidateSet.file already refuses to
-	// retain more than maxRenderedKeyIDs, so a second cap could never execute —
-	// and worse, if that retention bound ever regressed this would silently
-	// absorb the regression rather than let it show. A guard nothing can reach
-	// is a guard nothing can test, and this estate has been bitten by those.
+	// Deliberately NOT capped again here. candidateSet.recordOther already
+	// refuses to retain more than maxRenderedKeyIDs, so a second cap could never
+	// execute — and worse, if that retention bound ever regressed this would
+	// silently absorb the regression rather than let it show. A guard nothing
+	// can reach is a guard nothing can test, and this estate has been bitten by
+	// those.
 	//
 	// TestDecryptDoesNotRetainEveryKeyIDItSaw holds the retention bound
 	// instead. A failing test is louder than a reslice nobody sees.
