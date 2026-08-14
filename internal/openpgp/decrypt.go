@@ -103,12 +103,14 @@ func ReadRecipient(r io.Reader) (Recipient, Findings, error) {
 		return Recipient{}, nil, err
 	}
 
-	recipient, findings, err := certificate.Parse(raw)
-	if err != nil {
-		return Recipient{}, findings, err
-	}
-
-	return recipient, findings, nil
+	// AllowWithdrawn, because this reads a certificate to DECRYPT with. A revoked
+	// or expired certificate still opens ciphertext encrypted to it before it was
+	// withdrawn — the historical message this is most often run on — so the
+	// standing error is returned alongside the recipient rather than in place of
+	// it, and [Decrypt]'s caller proceeds on a loud warning instead of refusing a
+	// report the holder can still open. A caller that were instead ENCRYPTING
+	// would use the strict default and refuse.
+	return certificate.Parse(raw, certificate.AllowWithdrawn())
 }
 
 // Decrypt recovers the plaintext of a message addressed to recipient.

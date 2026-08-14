@@ -72,14 +72,7 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	// The certificate is the source of truth for the KDF parameters: the
 	// derivation binds the subkey's fingerprint, so values that did not come
 	// from the certificate the sender used cannot recover anything.
-	recipient, findings, err := openpgp.ReadRecipient(certificate)
-
-	// Reported before the error is checked, so a certificate that failed to
-	// yield a usable subkey still surfaces what the parser noticed on the way —
-	// an unevaluable revocation is exactly the finding that matters most when
-	// there is no subkey to fall back to.
-	reportNotes(p.GetLogger(), findings)
-
+	recipient, err := readRecipient(p.GetLogger(), certificate)
 	if err != nil {
 		return err
 	}
@@ -310,6 +303,39 @@ func checkOutput(opts *DecryptOptions, args []string) error {
 	// then it is maintained by hand, which is exactly how the omission
 	// happened.
 	return opdest.CheckNotInput(opts.Output, decryptInputs(opts, args)...)
+}
+
+// readRecipient reads the certificate's subkey parameters for decryption,
+// treating a withdrawn certificate as a loud warning rather than a refusal.
+//
+// The findings are reported before the error is weighed, so a certificate that
+// yielded no usable subkey still surfaces what the parser noticed on the way. A
+// revoked or expired certificate is not fatal here: ReadRecipient returns the
+// recipient alongside the standing error because the key still opens messages
+// sent before the certificate was withdrawn, so this warns and returns it.
+// Anything else is a genuine failure.
+func readRecipient(log warner, r io.Reader) (openpgp.Recipient, error) {
+	recipient, findings, err := openpgp.ReadRecipient(r)
+
+	reportNotes(log, findings)
+
+	if err != nil && !withdrawn(err) {
+		return openpgp.Recipient{}, err
+	}
+
+	if withdrawn(err) {
+		log.Warn("decrypting with a withdrawn certificate: the key still opens messages "+
+			"sent before it was withdrawn, but nothing new should be encrypted to it", "reason", err)
+	}
+
+	return recipient, nil
+}
+
+// withdrawn reports whether an error is a certificate-standing one — revoked or
+// expired — which decryption treats as a loud warning rather than a refusal,
+// since the key still opens messages sent before the certificate was withdrawn.
+func withdrawn(err error) bool {
+	return errors.Is(err, encryption.ErrRevoked) || errors.Is(err, encryption.ErrExpired)
 }
 
 // decryptInputs is every file this run reads, named by the flag that supplied
