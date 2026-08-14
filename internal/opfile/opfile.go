@@ -264,31 +264,39 @@ func describePath(named, at string) string {
 
 // readlink resolves one hop, where the filesystem can.
 func readlink(fsys FS, path string) (string, error) {
-	reader, ok := fsys.(LinkReader)
-	if !ok {
-		return "", fmt.Errorf("%w: %s, and this filesystem cannot resolve links", ErrUnresolvableLink, path)
-	}
+	target, err := fsys.Readlink(path)
 
-	target, err := reader.Readlink(path)
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrCapabilityUnsupported):
+		return "", fmt.Errorf("%w: %s, and this filesystem cannot resolve links", ErrUnresolvableLink, path)
+	case err != nil:
 		return "", fmt.Errorf("%w: %s: %w", ErrUnresolvableLink, path, err)
 	}
 
 	return target, nil
 }
 
-// lstat reports on the path itself rather than what it points at, where the
-// filesystem can tell the difference.
+// lstat reports on the path itself rather than what it points at, falling back
+// to Stat where the filesystem cannot.
 //
-// [Lstater] is optional: a filesystem with no notion of links cannot honour it
-// and must not claim to. Where it is absent, Stat is used and a link is
-// indistinguishable from its target — the honest outcome rather than a guess.
+// The fallback is EXPLICIT here rather than hidden in the adapter, which is the
+// structural half of the fix for the capability lie: opfileafero now refuses
+// Lstat honestly with ErrCapabilityUnsupported instead of passing off a Stat as
+// an Lstat, and this — the package that owns the security policy — decides what
+// to do with that refusal.
+//
+// It falls back to Stat and proceeds. A filesystem that cannot lstat cannot hold
+// symbolic links, since link support requires lstat to be usable at all, so
+// there is no link for the following Stat to have resolved and the result is
+// authoritative. On the operating system, the one filesystem that matters, Lstat
+// is genuine and never reaches this fallback, so a planted link is always seen.
 func lstat(fsys FS, path string) (fs.FileInfo, error) {
-	if lstater, ok := fsys.(Lstater); ok {
-		return lstater.Lstat(path)
+	info, err := fsys.Lstat(path)
+	if errors.Is(err, ErrCapabilityUnsupported) {
+		return fsys.Stat(path)
 	}
 
-	return fsys.Stat(path)
+	return info, err
 }
 
 // describe names a file mode the way an operator would.

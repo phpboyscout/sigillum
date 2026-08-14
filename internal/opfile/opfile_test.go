@@ -469,16 +469,12 @@ func TestFollowSymlinksLeavesAnAbsentDestinationAlone(t *testing.T) {
 
 // linkFS reports every path as a symbolic link and cannot resolve one.
 //
-// It implements [opfile.Lstater] because it genuinely can distinguish a link,
-// and deliberately does NOT implement [opfile.LinkReader]. That split is the
-// thing under test: the estate's rule is that an implementation must not
-// satisfy an optional interface it cannot honour, and the refusal only happens
-// when a filesystem is honest about lacking the capability.
-//
-// The two are separate types rather than one with a nil func, because a method
-// set is fixed at the type: a linkFS carrying a Readlink method would satisfy
-// LinkReader whether or not the func behind it was set, and the first case
-// would then be unreachable while still reporting a pass.
+// It lstat's genuinely — it can tell a link from a target — but REFUSES
+// Readlink with [opfile.ErrCapabilityUnsupported], which is the case under test:
+// a filesystem honest about lacking a capability says so per call, and following
+// is then refused rather than guessed. The refusal is a runtime answer now, not
+// a missing method, so one type expresses it; resolvingFS overrides Readlink to
+// reach the hops past the capability check.
 type linkFS struct{}
 
 func (linkFS) Open(string) (fs.File, error)                        { return nil, fs.ErrNotExist }
@@ -486,10 +482,14 @@ func (linkFS) CreateExcl(string, fs.FileMode) (opfile.File, error) { return nil,
 func (linkFS) Stat(string) (fs.FileInfo, error)                    { return nil, fs.ErrNotExist }
 func (linkFS) Rename(string, string) error                         { return fs.ErrPermission }
 func (linkFS) Remove(string) error                                 { return nil }
+func (linkFS) Chmod(string, fs.FileMode) error                     { return opfile.ErrCapabilityUnsupported }
 
 func (linkFS) Lstat(name string) (fs.FileInfo, error) {
 	return linkInfo{name: filepath.Base(name)}, nil
 }
+
+// Readlink refuses: this filesystem can see a link but not resolve it.
+func (linkFS) Readlink(string) (string, error) { return "", opfile.ErrCapabilityUnsupported }
 
 // resolvingFS is a linkFS that can also resolve, so it reaches the hops past
 // the capability check.

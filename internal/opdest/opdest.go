@@ -62,8 +62,12 @@ func (d Destination) ModeNote() string { return d.modeNote }
 // Open prepares the destination named by path, staging the write unless it is
 // standard output.
 //
-// mode is the mode the committed file will carry exactly, umask
-// notwithstanding — see [opfile.Chmoder].
+// mode is the mode the committed file will carry, exact where the filesystem can
+// set it — umask notwithstanding — and never broader than requested where it
+// cannot. A filesystem without POSIX modes leaves the file tighter and reports
+// that through [Destination.ModeNote], which is why the promise here is
+// "no broader", not "exactly": the old wording claimed an exactness the code
+// deliberately does not guarantee on every filesystem.
 func Open(fsys opfile.FS, path string, mode fs.FileMode, followSymlinks bool) (Destination, error) {
 	if path == "" || path == "-" {
 		return Destination{

@@ -27,9 +27,18 @@ import (
 // concrete type with no in-memory implementation, so nothing can substitute for
 // it in a test.
 //
-// Adding a method here is a breaking change for every implementation, so
-// capability beyond this minimum is an optional interface — see [Lstater] —
-// that an implementation may simply not have.
+// Every method is mandatory, and the capability that varies between filesystems
+// — can this one tell a link from its target, set a POSIX mode — is reported
+// PER CALL with [ErrCapabilityUnsupported] rather than by whether the type
+// happens to carry a method.
+//
+// That is the correction to what came before: four optional interfaces a caller
+// sniffed for. Whether an afero filesystem can lstat is not a property of its
+// type — afero's MemMapFs satisfies the Lstater interface and then falls back to
+// Stat, discarding the flag that said so, so it claimed to have checked for a
+// link when it had not. A method every implementation must provide, answering
+// "I could not" per call, makes the capability a value-and-call fact instead of
+// a type-level guess, which is the only granularity that can be honest.
 type FS interface {
 	// Open reads an existing file.
 	Open(name string) (fs.File, error)
@@ -44,6 +53,33 @@ type FS interface {
 
 	// Stat reports a file's metadata, following symbolic links.
 	Stat(name string) (fs.FileInfo, error)
+
+	// Lstat reports on a path without following a symbolic link, or returns
+	// [ErrCapabilityUnsupported] if this filesystem cannot tell a link from its
+	// target.
+	//
+	// The refusal is honest where the old optional interface was not: a
+	// filesystem that cannot distinguish a link says so per call, and the caller
+	// consults Stat and decides what an unverifiable destination means, rather
+	// than being handed a Stat result dressed up as an Lstat one.
+	Lstat(name string) (fs.FileInfo, error)
+
+	// Readlink resolves one symbolic-link hop, or returns
+	// [ErrCapabilityUnsupported] where the filesystem cannot say what a link
+	// points at.
+	Readlink(name string) (string, error)
+
+	// Chmod sets a file's mode by path, or returns [ErrCapabilityUnsupported]
+	// where the filesystem has no POSIX modes.
+	//
+	// Needed because CreateExcl's perm is a request, not an instruction — the
+	// process umask masks it, so an operator with `umask 077` publishing a
+	// certificate at the documented 0644 got 0600 and a web server that could
+	// not read it. The staged file is chmod'd immediately after creation, before
+	// any content is written, so the mode is exact without ever widening a file
+	// that holds a report. Where it is unsupported the requested mode is subject
+	// to the umask, which narrows and never widens — the safe direction.
+	Chmod(name string, mode fs.FileMode) error
 
 	// Rename moves a file, and is how a write is committed: content is staged
 	// beside the destination and renamed over it, so a reader never observes a
@@ -65,70 +101,37 @@ type FS interface {
 type File interface {
 	io.Writer
 
+	// Chmod sets this open file's mode through its handle, or returns
+	// [ErrCapabilityUnsupported] where the file cannot.
+	//
+	// Preferred over [FS.Chmod] because it closes a window that setting the mode
+	// by path leaves open: chmod(2) resolves the path a second time, after the
+	// file was created, and anyone who can write to the directory can replace the
+	// staged name with a symbolic link in between — the mode then lands on
+	// whatever the link points at. The descriptor already refers to the file that
+	// was created, so it resolves nothing and there is no window. *os.File
+	// honours it; an in-memory file refuses per call and setMode falls back to
+	// [FS.Chmod].
+	Chmod(mode fs.FileMode) error
+
 	Sync() error
 	Close() error
 }
 
-// LinkReader optionally resolves a symbolic link.
-//
-// Separate from [Lstater] because they are different capabilities: a filesystem
-// may be able to say "this is a link" without being able to say what it points
-// at. Only a caller who has opted into following needs the second, so a
-// filesystem that cannot resolve simply does not have the method and following
-// is refused rather than guessed at.
-type LinkReader interface {
-	Readlink(name string) (string, error)
-}
+// ErrModeUnverified means the staged file's mode could not be confirmed no
+// broader than requested — it could not be set and could not be read back, or
+// it read back broader. A refusal, because leaving a decrypted report at a mode
+// this cannot bound is the one outcome the mode handling exists to prevent.
+var ErrModeUnverified = errors.New("staged file mode could not be confirmed no broader than requested")
 
-// Chmoder optionally sets a file's mode after it has been created.
+// ErrCapabilityUnsupported is returned by a per-call capability — Lstat,
+// Readlink, Chmod — that this filesystem or file cannot honour.
 //
-// Optional for the same reason [Lstater] is: not every filesystem has POSIX
-// modes to set, and one that does not must not claim it can.
-//
-// Needed because CreateExcl's perm is a request, not an instruction — the
-// process umask masks it, so an operator with `umask 077` publishing a
-// certificate at the documented 0644 got 0600 and a web server that could not
-// read it. The staged file is chmod'd immediately after creation and before any
-// content is written, so the mode is exact without ever widening a file that
-// holds a report.
-//
-// Where it is absent the requested mode is subject to the umask, which narrows
-// and never widens — the safe direction, and the one that matters for a
-// decrypted report.
-type Chmoder interface {
-	Chmod(name string, mode fs.FileMode) error
-}
-
-// ModeSetter optionally sets an open file's mode through its handle.
-//
-// Preferred over [Chmoder] wherever a [File] provides it, because it closes a
-// window that setting the mode by path leaves open: chmod(2) resolves the path
-// a second time, at a moment after the file was created, and anyone who can
-// write to the directory can replace the staged name with a symbolic link in
-// between. The mode then lands on whatever the link points at. The descriptor
-// already refers to the file that was created, so it resolves nothing and
-// there is no window.
-//
-// *os.File satisfies this, and so does the file afero's OsFs returns, since it
-// is the same type — so the real filesystems both take this path. An in-memory
-// implementation that cannot honour it must simply not have the method, and
-// falls back to [Chmoder].
-type ModeSetter interface {
-	Chmod(mode fs.FileMode) error
-}
-
-// Lstater optionally reports on a path without following a symbolic link.
-//
-// Optional because a filesystem with no notion of links cannot honour it, and
-// per the estate's rule an implementation must not satisfy an optional
-// interface it cannot honour — returning "not a link" from a filesystem that
-// has no links makes every path look checked when nothing was.
-//
-// Where it is absent, [Stat] is used and a link is indistinguishable from its
-// target, which is the honest outcome rather than a guess.
-type Lstater interface {
-	Lstat(name string) (fs.FileInfo, error)
-}
+// The one signal that replaced four optional interfaces. A caller matches it
+// with errors.Is and decides what the absence means for its own operation,
+// rather than discovering the capability's absence from a missing method and
+// having no way to tell "genuinely absent" from "present but faked".
+var ErrCapabilityUnsupported = errors.New("filesystem capability not supported")
 
 // ErrNoStagingName means no unused temporary name could be found beside the
 // destination, which in practice means the directory is unwritable or something
@@ -244,19 +247,31 @@ func setMode(fsys FS, f File, path string, perm fs.FileMode) (note string, err e
 	// comment said the property "is checked here rather than assumed, because
 	// 'the umask only narrows' is a claim about the filesystem and this package
 	// takes the filesystem from its caller".
+	//
+	// why states, in one place, why the mode is not exact — a chmod that failed,
+	// or one the filesystem cannot do at all — so the messages below never wrap a
+	// nil error and never fall silent about which it was.
+	why := "this filesystem does not support changing it"
+	if attempted {
+		why = fmt.Sprintf("this filesystem refused to change it: %v", chmodErr)
+	}
 
 	info, statErr := fsys.Stat(path)
 	if statErr != nil {
-		if chmodErr == nil {
-			return "", nil
-		}
-
-		return "", fmt.Errorf("setting the mode of the staged file: %w", chmodErr)
+		// The mode could neither be set nor read back, so this cannot prove the
+		// file is not broader than requested — the one property it must never
+		// leave unverified. Refused rather than passed silently, which is what it
+		// used to do when no chmod had been attempted (finding #17).
+		return "", fmt.Errorf("%w: mode neither settable nor readable (%s), and reading it back: %w",
+			ErrModeUnverified, why, statErr)
 	}
 
 	if broader := info.Mode().Perm() &^ perm.Perm(); broader != 0 {
-		return "", fmt.Errorf("the staged file is mode %#o, broader than the %#o requested, "+
-			"and this filesystem will not change it: %w", info.Mode().Perm(), perm.Perm(), chmodErr)
+		// Refused whether or not a chmod was attempted, and without wrapping a
+		// nil error: the old form wrapped chmodErr unconditionally, so when no
+		// chmod had been possible the message ended in %!w(<nil>) (finding #18).
+		return "", fmt.Errorf("%w: the staged file is mode %#o, broader than the %#o requested, and %s",
+			ErrModeUnverified, info.Mode().Perm(), perm.Perm(), why)
 	}
 
 	// Tighter than requested, which is safe, so it is a note rather than a
@@ -265,19 +280,26 @@ func setMode(fsys FS, f File, path string, perm fs.FileMode) (note string, err e
 		return "", nil
 	}
 
-	return fmt.Sprintf("%s is mode %#o rather than the %#o requested; this filesystem does not "+
-		"support changing it", path, info.Mode().Perm(), perm.Perm()), nil
+	return fmt.Sprintf("%s is mode %#o rather than the %#o requested; %s",
+		path, info.Mode().Perm(), perm.Perm(), why), nil
 }
 
 // chmod sets the mode through the open handle where it can, and by path where
 // it cannot, reporting whether either was possible.
+//
+// The handle first, because chmod-by-descriptor resolves nothing and so cannot
+// be redirected through a planted link. Each is asked by CALLING it: the file or
+// the filesystem answers ErrCapabilityUnsupported when it has no modes to set,
+// and only then does this fall through — so a filesystem that can chmod by path
+// but not by handle still gets its mode set, which the old handle-or-nothing
+// type assertion missed whenever an afero decorator hid the *os.File.
 func chmod(fsys FS, f File, path string, perm fs.FileMode) (err error, attempted bool) {
-	if setter, ok := f.(ModeSetter); ok {
-		return setter.Chmod(perm), true
+	if ferr := f.Chmod(perm); !errors.Is(ferr, ErrCapabilityUnsupported) {
+		return ferr, true
 	}
 
-	if chmoder, ok := fsys.(Chmoder); ok {
-		return chmoder.Chmod(path, perm), true
+	if perr := fsys.Chmod(path, perm); !errors.Is(perr, ErrCapabilityUnsupported) {
+		return perr, true
 	}
 
 	return nil, false
