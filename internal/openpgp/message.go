@@ -528,65 +528,118 @@ const maxPacketsInspected = 64
 
 // copyLiteral walks the packets inside the encrypted data — compressed or not —
 // and writes the literal contents to out, refusing anything over maxPlaintext.
+//
+// Descent through packetwalk maintains the source stack that a hand-rolled loop
+// once got wrong: descending into a compressed packet used to overwrite the
+// reader and never return, abandoning everything after it, so an empty
+// compressed packet in front of the real literal data made the report
+// unreadable. Exhausting a nested source now pops to its parent by construction.
 func copyLiteral(body io.Reader, out io.Writer) error {
-	// A STACK of readers, not one reader replaced in place.
-	//
-	// Descending into a compressed packet used to overwrite the reader and never
-	// return, so every packet following the compressed one in the outer stream
-	// was abandoned. An empty compressed packet in front of the real literal data
-	// therefore made the report unreadable, and the operator was told there was
-	// no literal data in a message that plainly contained some — the same shape
-	// as a guard that stops work it was never meant to govern.
-	//
-	// Exhausting a nested reader now pops back to its parent and carries on
-	// where it left off. The depth bound is unchanged and still counts how deep
-	// the descent went, because that is what bounds the work.
-	readers := []*packet.Reader{packet.NewReader(body)}
+	// Total descents, not the live stack depth: a message with several sibling
+	// compressed packets is as expensive to walk as one nested that deep, so the
+	// bound counts every descent. Held here rather than taken from the walk's
+	// Tally.Depth, which is the live depth, so the semantics the test pins are
+	// preserved.
+	descents := 0
 
-	depth := 0
+	return packetwalk.Walk(newGCSource(body), packetwalk.Limits{Steps: maxPacketsInspected},
+		func(pkt packet.Packet, _ packetwalk.Tally) packetwalk.Step[packet.Packet] {
+			switch typed := pkt.(type) {
+			case *packet.Compressed:
+				descents++
+				if descents > maxCompressionDepth {
+					return packetwalk.Stop[packet.Packet](fmt.Errorf(
+						"%w: message nests compressed packets more than %d deep",
+						ErrMalformedMessage, maxCompressionDepth))
+				}
 
-	for inspected := 0; ; inspected++ {
-		if inspected >= maxPacketsInspected {
-			return fmt.Errorf("%w: no literal data in the first %d packets inside the encrypted data",
-				ErrMalformedMessage, maxPacketsInspected)
-		}
+				return packetwalk.Descend[packet.Packet](newGCSource(typed.Body))
+			case *packet.LiteralData:
+				if err := copyBounded(out, typed.Body); err != nil {
+					return packetwalk.Stop[packet.Packet](err)
+				}
 
-		p, err := readers[len(readers)-1].Next()
-		if err != nil {
-			// This stream is finished. If it was nested, the packets after the
-			// one we descended into are still unread.
-			if len(readers) > 1 {
-				readers = readers[:len(readers)-1]
-
-				continue
+				return packetwalk.Settle[packet.Packet]()
+			default:
+				// A marker, or anything else that is neither: stepped over. The
+				// gcSource drains its body before the next read, so a streaming
+				// packet skipped here does not desync the reader.
+				return packetwalk.Skip[packet.Packet]()
 			}
+		},
+		packetwalk.Outcomes[error]{
+			// The literal was found and written.
+			Settled: func() error { return nil },
 
-			return fmt.Errorf("%w: no literal data inside the encrypted packet: %w",
-				ErrMalformedMessage, err)
-		}
+			// The stream ended with no literal in it.
+			Exhausted: func() error {
+				return fmt.Errorf("%w: no literal data inside the encrypted packet", ErrMalformedMessage)
+			},
 
-		switch typed := p.(type) {
-		case *packet.Compressed:
-			depth++
-			if depth > maxCompressionDepth {
-				return fmt.Errorf("%w: message nests compressed packets more than %d deep",
-					ErrMalformedMessage, maxCompressionDepth)
-			}
+			// A source error, a too-deep nesting, or a write/size failure — each
+			// carries its own reason from the Stop or the source.
+			Damaged: func(err error) error { return err },
 
-			readers = append(readers, packet.NewReader(typed.Body))
-		case *packet.LiteralData:
-			// One octet beyond the limit is read deliberately, so hitting it
-			// exactly is distinguishable from exceeding it.
-			written, err := io.Copy(out, io.LimitReader(typed.Body, maxPlaintext+1))
-			if err != nil {
-				return fmt.Errorf("writing plaintext: %w", err)
-			}
+			// More packets than the breadth bound allows without a literal: a
+			// compressed packet expanding to millions of markers, walked sideways.
+			Bounded: func() error {
+				return fmt.Errorf("%w: no literal data in the first %d packets inside the encrypted data",
+					ErrMalformedMessage, maxPacketsInspected)
+			},
+		})
+}
 
-			if written > maxPlaintext {
-				return fmt.Errorf("%w: report expands beyond %d octets", ErrTooLarge, maxPlaintext)
-			}
-
-			return nil
-		}
+// copyBounded writes a literal packet's body to out, refusing more than
+// maxPlaintext.
+func copyBounded(out io.Writer, body io.Reader) error {
+	// One octet beyond the limit is read deliberately, so hitting it exactly is
+	// distinguishable from exceeding it.
+	written, err := io.Copy(out, io.LimitReader(body, maxPlaintext+1))
+	if err != nil {
+		return fmt.Errorf("writing plaintext: %w", err)
 	}
+
+	if written > maxPlaintext {
+		return fmt.Errorf("%w: report expands beyond %d octets", ErrTooLarge, maxPlaintext)
+	}
+
+	return nil
+}
+
+// gcSource is a [packetwalk.Source] over a go-crypto packet reader.
+//
+// It drains the previous packet's body before reading the next, because
+// go-crypto leaves a streaming packet's body on the underlying reader and its
+// Reader.Next cannot advance past one left unread. Draining on the NEXT read is
+// exactly right: a packet the walk settled on is never followed by another read,
+// so its body is left for the caller; a packet the walk skipped is drained when
+// the walk reads on; and a packet the walk descended into is consumed by the
+// child source, so draining it here afterwards is a harmless no-op.
+type gcSource struct {
+	reader *packet.Reader
+	prev   packet.Packet
+}
+
+func newGCSource(r io.Reader) *gcSource {
+	return &gcSource{reader: packet.NewReader(r)}
+}
+
+// Next drains the previous packet, then returns the next — io.EOF at a clean end,
+// any other error as damage.
+func (s *gcSource) Next() (packet.Packet, error) {
+	if s.prev != nil {
+		// Errors draining a packet the walk already stepped past are not the
+		// walk's concern: it decided that packet was not the answer.
+		_ = drainPacket(s.prev)
+		s.prev = nil
+	}
+
+	p, err := s.reader.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	s.prev = p
+
+	return p, nil
 }
