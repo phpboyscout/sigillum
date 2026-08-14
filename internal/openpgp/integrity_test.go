@@ -367,6 +367,58 @@ func TestUnprotectedPacketDoesNotHideAProtectedOne(t *testing.T) {
 	}
 }
 
+// TestManyPacketsBeforeTheProtectedOneDoNotHideIt is the other half of the
+// prepend hazard: not one junk packet, but enough of them to overrun a bound.
+//
+// The outer walk over the message packets was capped at maxPacketsInspected —
+// a bound written for copyLiteral's decompressed breadth, where a compression
+// bomb can expand to millions of packets, and wrong here: the outer stream is
+// raw message bytes already capped by maxMessage, with no such asymmetry. An
+// attacker who splices one junk unprotected packet and then sixty-odd inert
+// markers ahead of the genuine encrypted-data packet pushed it past the bound,
+// so the walk ended Bounded before reaching it and — because a junk SED had set
+// the unprotected flag — reported ErrUnprotected. A decryptable, integrity-
+// protected report made undecryptable by prepending a few hundred bytes.
+func TestManyPacketsBeforeTheProtectedOneDoNotHideIt(t *testing.T) {
+	t.Parallel()
+
+	const plaintext = "a genuine report behind a wall of junk"
+
+	der, deriver := testCertificate(t)
+	message := encryptTo(t, der, plaintext, false)
+
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	const tagSED = 9
+
+	// Seventy junk SED packets ahead of the genuine encrypted-data packet. Each
+	// is stepped over (unprotected, so not decrypted) but counts against the
+	// walk, which is what carries the genuine packet past the old 64 bound.
+	// Marker packets would not do: go-crypto's reader skips those for free, so
+	// they never reach the walk — an unprotected SED is an inert packet that
+	// does.
+	var junk []byte
+	for range 70 {
+		junk = append(junk, framePacket(t, tagSED, []byte{0x00, 0x01, 0x02, 0x03})...)
+	}
+
+	spliced := spliceBeforeEncryptedData(t, message, junk)
+
+	var out bytes.Buffer
+
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(spliced), &out); err != nil {
+		t.Fatalf("a genuine protected report behind a wall of junk packets was refused: %v.\n"+
+			"A bound on the outer walk must not let a stranger prepend packets to make a report undecryptable", err)
+	}
+
+	if got := out.String(); got != plaintext {
+		t.Errorf("plaintext = %q, want the report", got)
+	}
+}
+
 // spliceBeforeEncryptedData inserts body immediately before the message's
 // encrypted-data packet.
 func spliceBeforeEncryptedData(t *testing.T, message, body []byte) []byte {

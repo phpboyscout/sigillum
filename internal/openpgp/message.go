@@ -342,8 +342,16 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 		return generic
 	}
 
+	// Unbounded, like eachSessionKey's scan over the same outer stream. The
+	// bytes are already capped by maxMessage and are not decompressed here, so
+	// there is no attacker-cost asymmetry a step bound would defend — and a bound
+	// here let a stranger prepend enough inert unprotected packets to carry the
+	// genuine encrypted-data packet past it, ending the walk Bounded with the
+	// unprotected flag set and a decryptable report refused as ErrUnprotected.
+	// maxPacketsInspected still bounds copyLiteral, where a compressed packet can
+	// expand to millions and the asymmetry is real.
 	return packetwalk.Walk(newGCSource(bytes.NewReader(rest)),
-		packetwalk.Limits{Steps: maxPacketsInspected},
+		packetwalk.Limits{},
 		func(pkt packet.Packet, _ packetwalk.Tally) packetwalk.Step[packet.Packet] {
 			se, ok := pkt.(*packet.SymmetricallyEncrypted)
 			if !ok {
@@ -394,12 +402,11 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 					"%w: no encrypted-data packet after the session key: %w", ErrMalformedMessage, err))
 			},
 
-			// More packets than the bound allows without reaching the data.
-			Bounded: func() error {
-				return unprotectedOr(fmt.Errorf(
-					"%w: no encrypted-data packet in the first %d packets after the session key",
-					ErrMalformedMessage, maxPacketsInspected))
-			},
+			// Unreachable: the walk is unbounded, so it ends by settling on the
+			// encrypted data, exhausting the stream, or damage — never a step
+			// bound. Kept explicit so a bound reintroduced above crashes here
+			// rather than silently refusing a message.
+			Bounded: packetwalk.Unreachable[error](),
 		})
 }
 
