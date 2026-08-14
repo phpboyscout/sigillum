@@ -12,6 +12,7 @@ import (
 
 	"gitlab.com/phpboyscout/go/encryption"
 	"gitlab.com/phpboyscout/go/encryption/certificate"
+	"gitlab.com/phpboyscout/go/encryption/packetwalk"
 )
 
 // Errors reported by this package.
@@ -575,56 +576,67 @@ func eachSessionKey(
 	raw []byte,
 	visit func(pkesk encryption.PKESK, body []byte, err error),
 ) (body []byte, stopped error) {
-	body = raw
+	src := parsePackets(raw)
 
-	for len(body) > 0 {
-		pkt, err := encryption.ParsePacket(body)
+	stopped = packetwalk.Walk(src, packetwalk.Limits{},
+		func(pkt encryption.Packet, _ packetwalk.Tally) packetwalk.Step[encryption.Packet] {
+			// The encrypted data ends the scan. It is settled AT rather than
+			// consumed: From below hands the caller the body beginning with this
+			// packet, which is what the go-crypto reader then opens.
+			if startsEncryptedData(pkt.Tag) {
+				return packetwalk.Settle[encryption.Packet]()
+			}
 
-		// The session-key packets come first and always carry a definite
-		// length; the encrypted data that follows may use a partial length,
-		// which this package deliberately does not parse and go-crypto
-		// handles. So anything that is not a readable PKESK ends the scan and
-		// becomes the body, rather than being an error here.
-		//
-		// The REASON is carried out, though, and that is the whole change. The
-		// scan ending here is ordinary when it is the encrypted data; it is
-		// damage when the framing is broken. Ending both ways silently meant one
-		// malformed packet planted ahead of the genuine session-key packets got
-		// reported as "not addressed to this certificate" — a verdict about who
-		// the message is for, from code that never reached the packets that
-		// would say. The operator went looking for a certificate instead of at
-		// a message somebody had edited.
-		if err != nil {
-			stopped = err
+			// A marker, a padding packet or a tag nothing defines is stepped
+			// over — see startsEncryptedData for why ending the scan on one was
+			// exploitable.
+			if pkt.Tag != encryption.TagPKESK {
+				return packetwalk.Skip[encryption.Packet]()
+			}
 
-			break
-		}
+			pkesk, err := encryption.ParsePKESK(pkt.Body)
 
-		if startsEncryptedData(pkt.Tag) {
-			break
-		}
+			// A co-recipient's packet this cannot read is not a reason to refuse
+			// the message: RSA and a v6 sender both parse as unsupported here, so
+			// propagating it would fail a report over somebody else's key while
+			// ours sat in the next packet. The caller decides what it means.
+			visit(pkesk, pkt.Body, err)
 
-		// Anything else is stepped over rather than treated as the body: a
-		// marker, a padding packet, or a tag nothing defines. See
-		// startsEncryptedData for why ending the scan here was exploitable.
-		if pkt.Tag != encryption.TagPKESK {
-			body = pkt.Rest
+			return packetwalk.Skip[encryption.Packet]()
+		},
+		packetwalk.Outcomes[error]{
+			// Settled at the encrypted data: body starts there, no damage.
+			Settled: func() error {
+				body = src.From()
 
-			continue
-		}
+				return nil
+			},
 
-		pkesk, err := encryption.ParsePKESK(pkt.Body)
+			// Ran out having read only session-key packets — a message with no
+			// encrypted data. Not damage; the empty body then fails to decrypt,
+			// which is the honest outcome.
+			Exhausted: func() error {
+				body = src.Rest()
 
-		// A co-recipient's packet we cannot read is not a reason to refuse the
-		// message. RSA is still the most common key type and parses as
-		// unsupported here, as does a version 6 packet from a modern sender —
-		// so propagating this would fail a report over somebody else's key
-		// while ours sat in the very next packet. The caller decides what the
-		// failure means.
-		visit(pkesk, pkt.Body, err)
+				return nil
+			},
 
-		body = pkt.Rest
-	}
+			// A parse error, carried out as the reason. This is the whole point
+			// of the change round 8 made structural: a malformed packet planted
+			// ahead of the session keys used to end the scan silently and be
+			// reported as "not addressed to this certificate" — a verdict about
+			// who the message is for, from code that never reached the packets
+			// that would say. body begins at the damage so a caller can see where.
+			Damaged: func(err error) error {
+				body = src.From()
+
+				return err
+			},
+
+			// Unbounded: a bound here would let padding crowd out a genuine
+			// candidate, which is the attack the billing model already prevents.
+			Bounded: packetwalk.Unreachable[error](),
+		})
 
 	return body, stopped
 }
