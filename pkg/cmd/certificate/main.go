@@ -30,11 +30,16 @@ var (
 
 	// ErrNoBackends means the binary was built with no key service compiled in.
 	ErrNoBackends = errors.New("no key service backends are compiled into this binary")
-
-	// ErrNoPublicKey means the chosen backend cannot expose the encryption
-	// key's public half, which a certificate must carry as its subkey.
-	ErrNoPublicKey = errors.New("backend cannot expose the encryption key's public half")
 )
+
+// ErrNoPublicKey means the chosen backend cannot expose the encryption key's
+// public half, which a certificate must carry as its subkey.
+//
+// The core's sentinel, re-exported, so this command wraps the same error a
+// backend returns rather than declaring a parallel one with the same meaning —
+// the drift the design review flagged as a class. errors.Is against either the
+// core value or this one matches.
+var ErrNoPublicKey = encryption.ErrNoPublicKey
 
 // ErrOutputOverInput means --output names a key file this run is reading.
 //
@@ -243,23 +248,25 @@ func subkeyFor(
 	// Not every key service can expose the encryption key's public half, and a
 	// certificate cannot be built without it.
 	//
-	// encryption.PublicDeriver rather than an anonymous interface written here.
-	// The contract was declared in neither backend, so a backend could be
-	// complete for decryption and silently unusable for assembly — which is
-	// what the local one was, and nothing said so until a certificate failed to
-	// build with it. Both backends now assert the named interface at compile
-	// time.
-	reader, ok := deriver.(encryption.PublicDeriver)
-	if !ok {
-		return certificate.ECDHPublicKey{}, fmt.Errorf("%w: %q", ErrNoPublicKey, service.Name())
-	}
-
-	pub, err := reader.PublicKey()
+	// Asked by CALLING PublicKey, not by a type assertion. Whether a key service
+	// can hand back its public half is a property of the value — the local
+	// backend held a nil half for an X25519 key while satisfying the old
+	// optional interface at the type level, so the assertion passed and the
+	// assembly path panicked. PublicKey is a mandatory method now: a service
+	// that cannot answer returns encryption.ErrNoPublicKey, and that is the
+	// question, asked the one way it is answerable.
+	pub, err := deriver.PublicKey()
 	if err != nil {
+		if errors.Is(err, encryption.ErrNoPublicKey) {
+			return certificate.ECDHPublicKey{}, fmt.Errorf("%w: %q", ErrNoPublicKey, service.Name())
+		}
+
 		return certificate.ECDHPublicKey{}, fmt.Errorf("reading the encryption key: %w", err)
 	}
 
-	oid, err := curveOID(reader.Curve())
+	// The curve rides on the returned key rather than a separate accessor: there
+	// is no errorless Curve() to dereference a nil public half through.
+	oid, err := curveOID(pub.Curve)
 	if err != nil {
 		return certificate.ECDHPublicKey{}, err
 	}
@@ -271,7 +278,7 @@ func subkeyFor(
 	agreement, err := pub.ECDH()
 	if err != nil {
 		return certificate.ECDHPublicKey{}, fmt.Errorf(
-			"the encryption key is not a usable %s point: %w", reader.Curve().Params().Name, err)
+			"the encryption key is not a usable %s point: %w", pub.Curve.Params().Name, err)
 	}
 
 	point := agreement.Bytes()
