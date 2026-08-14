@@ -10,6 +10,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 
 	"gitlab.com/phpboyscout/go/encryption"
+	"gitlab.com/phpboyscout/go/encryption/packetwalk"
 )
 
 // Message framing lives here rather than in the core module.
@@ -118,23 +119,48 @@ func packetsOrArmour(raw []byte, what string) ([]byte, error) {
 // nothing behind it establishes nothing, which is the property the comment
 // above claims and this is what makes it true.
 func isPacketStream(raw []byte) bool {
-	first := true
+	return packetwalk.Walk(parsePackets(raw), packetwalk.Limits{},
+		func(pkt encryption.Packet, at packetwalk.Tally) packetwalk.Step[encryption.Packet] {
+			// at.Steps == 1 is the first packet, which is where the encrypted-data
+			// tag is not yet allowed to settle the question — carriesContent's own
+			// distinction.
+			if carriesContent(pkt, at.Steps == 1) {
+				return packetwalk.Settle[encryption.Packet]()
+			}
 
-	for rest := raw; len(rest) > 0; {
-		pkt, err := encryption.ParsePacket(rest)
+			return packetwalk.Skip[encryption.Packet]()
+		},
+		packetwalk.Outcomes[bool]{
+			// A packet that carries content: this is a binary stream.
+			Settled: func() bool { return true },
+
+			// Walked to the end without one: not a stream this recognises — a
+			// header with nothing behind it establishes nothing.
+			Exhausted: func() bool { return false },
+
+			// A parse error: armour never parses as a packet, so anything that
+			// fails to parse is not a binary stream. The old bare `return false`
+			// on the parse error, now the framework's Damaged arm.
+			Damaged: func(error) bool { return false },
+
+			// Unbounded on purpose: this asks only "is this binary at all?", and
+			// a bound would make a long armour preamble it should reject look like
+			// something it could not judge.
+			Bounded: packetwalk.Unreachable[bool](),
+		})
+}
+
+// parsePackets is a [packetwalk.Source] over raw bytes using this module's
+// packet parser, shared by the walks in this file.
+func parsePackets(raw []byte) *packetwalk.ByteSource[encryption.Packet] {
+	return packetwalk.NewByteSource(raw, func(b []byte) (encryption.Packet, []byte, error) {
+		pkt, err := encryption.ParsePacket(b)
 		if err != nil {
-			return false
+			return encryption.Packet{}, nil, err
 		}
 
-		if carriesContent(pkt, first) {
-			return true
-		}
-
-		first = false
-		rest = pkt.Rest
-	}
-
-	return false
+		return pkt, pkt.Rest, nil
+	})
 }
 
 // carriesContent reports whether a packet is one that settles the question,
