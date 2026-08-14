@@ -256,14 +256,12 @@ func TestNotesReachTheOperator(t *testing.T) {
 
 	logged := &recordingWarner{}
 
-	recipient := openpgp.Recipient{
-		Notes: []error{
-			fmt.Errorf("%w: version 6", encryption.ErrUnverifiableRevocation),
-			fmt.Errorf("%w: stopped at a bad packet", encryption.ErrIncompleteCertificate),
-		},
+	findings := openpgp.Findings{
+		fmt.Errorf("%w: version 6", encryption.ErrUnverifiableRevocation),
+		fmt.Errorf("%w: stopped at a bad packet", encryption.ErrIncompleteCertificate),
 	}
 
-	reportNotes(logged, recipient)
+	reportNotes(logged, findings)
 
 	for _, want := range []string{"version 6", "stopped at a bad packet"} {
 		if !strings.Contains(logged.String(), want) {

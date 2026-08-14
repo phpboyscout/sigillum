@@ -30,7 +30,7 @@ func TestDecryptReadsArmourUnderACoveringLine(t *testing.T) {
 	der, deriver := testCertificate(t)
 	armoured := encryptTo(t, der, plaintext, true)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestDecryptIsNotHijackedByAnEmbeddedArmourHeader(t *testing.T) {
 	message := encryptTo(t, der, plaintext, false)
 	message = append(message, "\n-----BEGIN PGP MESSAGE-----\n\nZm9v\n-----END PGP MESSAGE-----\n"...)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}

@@ -68,6 +68,11 @@ type SecretDeriver interface {
 // binding signature verified.
 type Recipient = certificate.Recipient
 
+// Findings is re-exported alongside Recipient: the certificate parser reports
+// things it noticed but had no standing to decide — a revocation it could not
+// evaluate, a certificate read only part-way — and a caller surfaces them.
+type Findings = certificate.Findings
+
 // ReadRecipient extracts the encryption subkey's parameters from a certificate.
 //
 // The certificate is the source of truth rather than a set of flags: the key
@@ -78,10 +83,13 @@ type Recipient = certificate.Recipient
 // Armoured and binary certificates are both accepted — a certificate published
 // on a page is armoured, one fetched from WKD is not, and a caller should not
 // have to know which they have.
-func ReadRecipient(r io.Reader) (Recipient, error) {
+// Findings come back on every path, including the error paths, so a caller can
+// surface what the parser noticed even when no usable subkey was found — which
+// is exactly the case where an unevaluable revocation matters most.
+func ReadRecipient(r io.Reader) (Recipient, Findings, error) {
 	raw, err := readBounded(r, "certificate")
 	if err != nil {
-		return Recipient{}, err
+		return Recipient{}, nil, err
 	}
 
 	// The same ordering as a message, and the same reason: a binary certificate
@@ -91,15 +99,15 @@ func ReadRecipient(r io.Reader) (Recipient, error) {
 	// twice, differing only in a label.
 	raw, err = packetsOrArmour(raw, "certificate")
 	if err != nil {
-		return Recipient{}, err
+		return Recipient{}, nil, err
 	}
 
-	recipient, err := certificate.Parse(raw)
+	recipient, findings, err := certificate.Parse(raw)
 	if err != nil {
-		return Recipient{}, err
+		return Recipient{}, findings, err
 	}
 
-	return recipient, nil
+	return recipient, findings, nil
 }
 
 // Decrypt recovers the plaintext of a message addressed to recipient.

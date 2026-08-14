@@ -54,7 +54,7 @@ func TestDecryptsAMessageComposedByGPG(t *testing.T) {
 		}
 	}()
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}

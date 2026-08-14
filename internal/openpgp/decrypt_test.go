@@ -53,7 +53,7 @@ func TestDecryptRoundTrip(t *testing.T) {
 			der, deriver := testCertificate(t)
 			message := encryptTo(t, der, plaintext, armoured)
 
-			recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+			recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 			if err != nil {
 				t.Fatalf("ReadRecipient: %v", err)
 			}
@@ -84,7 +84,7 @@ func TestDecryptRefusesAMessageForAnotherKey(t *testing.T) {
 
 	message := encryptTo(t, theirs, "not for us", false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestDecryptRejectsBadInput(t *testing.T) {
 
 	der, deriver := testCertificate(t)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestDecryptRequiresAKeyService(t *testing.T) {
 
 	der, _ := testCertificate(t)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestReadRecipientRejectsACertificateWithNoEncryptionSubkey(t *testing.T) {
 	// leaving a certificate with nothing to encrypt to.
 	// The core refuses it: a certificate with no ECDH subkey cannot receive
 	// anything, and that is a malformed input for this purpose.
-	if _, err := openpgp.ReadRecipient(&buf); !errors.Is(err, encryption.ErrMalformed) {
+	if _, _, err := openpgp.ReadRecipient(&buf); !errors.Is(err, encryption.ErrMalformed) {
 		t.Errorf("error = %v, want ErrMalformed", err)
 	}
 }
@@ -338,12 +338,12 @@ func TestReadRecipientAcceptsAnArmouredCertificate(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	fromArmour, err := openpgp.ReadRecipient(&armoured)
+	fromArmour, _, err := openpgp.ReadRecipient(&armoured)
 	if err != nil {
 		t.Fatalf("ReadRecipient (armoured): %v", err)
 	}
 
-	fromBinary, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	fromBinary, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient (binary): %v", err)
 	}
@@ -366,7 +366,7 @@ func TestReadRecipientRejectsRubbish(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			if _, err := openpgp.ReadRecipient(strings.NewReader(tc.in)); err == nil {
+			if _, _, err := openpgp.ReadRecipient(strings.NewReader(tc.in)); err == nil {
 				t.Error("accepted something that is not a certificate")
 			}
 		})
@@ -409,7 +409,7 @@ func TestDecryptOpensACompressedMessage(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -434,7 +434,7 @@ func TestDecryptReportsAKeyServiceFailure(t *testing.T) {
 	der, _ := testCertificate(t)
 	message := encryptTo(t, der, "unreadable today", false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestDecryptRejectsAMessageWithNoEncryptedData(t *testing.T) {
 	der, deriver := testCertificate(t)
 	full := encryptTo(t, der, "truncated", false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}

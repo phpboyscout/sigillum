@@ -43,7 +43,7 @@ func TestDecryptFindsOurPKESKAmongSeveral(t *testing.T) {
 	// Theirs first, so ours is not the packet firstPacket would return.
 	message := encryptToMany(t, plaintext, theirs, ours)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestDecryptAcceptsAHiddenRecipient(t *testing.T) {
 		t.Fatalf("read message: %v", err)
 	}
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestDecryptStillRefusesAMessageForSomebodyElse(t *testing.T) {
 
 	message := encryptToMany(t, "not for us", a, b)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestDecryptTriesEveryHiddenRecipient(t *testing.T) {
 	// not depend on the order gpg happens to emit.
 	message := hideRecipients(t, encryptToMany(t, plaintext, other, ours), 2)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestDecryptSkipsACoRecipientItCannotRead(t *testing.T) {
 
 	message := append(rsaSessionKeyPacket(t), encryptToMany(t, plaintext, ours)...)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestDecryptRefusesWhenEveryPacketIsUnreadable(t *testing.T) {
 
 	message := append(rsaSessionKeyPacket(t), encryptToMany(t, "not for us", other)...)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -356,7 +356,7 @@ func TestDecryptCapsTheNumberOfDerivations(t *testing.T) {
 	// Far more anonymous packets than the cap, none of them ours.
 	message := repeatFirstPKESK(t, hideRecipients(t, encryptToMany(t, "not for us", other), 1), 40)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestDecryptClassifiesACorruptArmouredMessage(t *testing.T) {
 	// what a truncated copy out of a ticket looks like.
 	corrupt := bytes.Replace(armoured, []byte("\n\n"), []byte("\n\n!!!!\n"), 1)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}

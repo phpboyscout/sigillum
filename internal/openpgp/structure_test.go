@@ -134,7 +134,7 @@ func TestDecryptStepsOverInertPackets(t *testing.T) {
 	// Two recipients, so there is a position BETWEEN two session-key packets.
 	base := encryptToMany(t, plaintext, other, ours)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(ours))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(ours))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestDecryptSurvivesManyInertPackets(t *testing.T) {
 
 	base := encryptTo(t, der, plaintext, false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestDecryptSurvivesFreeSessionKeyPackets(t *testing.T) {
 	message = append(message, pkesksOnly(t, repeatFirstPKESK(t, genuine, 20))...)
 	message = append(message, genuine...)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestDecryptReportsHonestlyWhenTheCeilingStopsIt(t *testing.T) {
 	genuine := encryptTo(t, der, "a report nobody will reach", false)
 	message := repeatFirstPKESK(t, genuine, 200)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestDecryptReadsArmourUnderAnyCoveringLine(t *testing.T) {
 	der, deriver := testCertificate(t)
 	armoured := encryptTo(t, der, plaintext, true)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}

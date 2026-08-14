@@ -72,12 +72,17 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	// The certificate is the source of truth for the KDF parameters: the
 	// derivation binds the subkey's fingerprint, so values that did not come
 	// from the certificate the sender used cannot recover anything.
-	recipient, err := openpgp.ReadRecipient(certificate)
+	recipient, findings, err := openpgp.ReadRecipient(certificate)
+
+	// Reported before the error is checked, so a certificate that failed to
+	// yield a usable subkey still surfaces what the parser noticed on the way —
+	// an unevaluable revocation is exactly the finding that matters most when
+	// there is no subkey to fall back to.
+	reportNotes(p.GetLogger(), findings)
+
 	if err != nil {
 		return err
 	}
-
-	reportNotes(p.GetLogger(), recipient)
 
 	message, closeMsg, err := openMessage(fsys, args)
 	if err != nil {
@@ -176,8 +181,13 @@ type warner interface {
 //
 // A note nobody reads is the same silence this was changed to break, which is
 // why it is a function with a test rather than a loop inside a long one.
-func reportNotes(log warner, recipient openpgp.Recipient) {
-	for _, note := range recipient.Notes {
+//
+// It takes the findings directly rather than reading them off the Recipient,
+// because the parser now returns them as their own value — and reports them
+// even when parsing failed, so a certificate with no usable subkey but a
+// revocation nobody could evaluate still tells the operator what was seen.
+func reportNotes(log warner, findings openpgp.Findings) {
+	for _, note := range findings {
 		log.Warn("the certificate carries something worth checking", "note", note)
 	}
 }

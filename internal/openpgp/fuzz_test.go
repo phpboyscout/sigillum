@@ -54,7 +54,7 @@ var message = sync.OnceValue(func() (m struct {
 	m.der, m.deriver = testCertificate(t)
 	m.ciphertext = encryptTo(t, m.der, m.plaintext, false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(m.der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(m.der))
 	if err != nil {
 		panic("fuzz fixture: " + err.Error())
 	}
@@ -77,7 +77,7 @@ func FuzzReadRecipientNeverPanics(f *testing.F) {
 			return
 		}
 
-		_, _ = openpgp.ReadRecipient(bytes.NewReader(raw))
+		_, _, _ = openpgp.ReadRecipient(bytes.NewReader(raw))
 	})
 }
 

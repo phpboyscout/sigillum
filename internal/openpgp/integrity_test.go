@@ -42,7 +42,7 @@ func TestTamperedCiphertextIsRefused(t *testing.T) {
 	tampered := append([]byte(nil), message...)
 	tampered[len(tampered)-30] ^= 0x01
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestUnauthenticatedPacketIsRefused(t *testing.T) {
 	der, deriver := testCertificate(t)
 	message := encryptTo(t, der, "unprotected", false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestCompressionBombIsRefused(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestAnOversizedMessageIsRefused(t *testing.T) {
 
 	der, deriver := testCertificate(t)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestDecryptReadsAMessageOpeningWithAMarker(t *testing.T) {
 	message := framePacket(t, tagMarker, []byte("PGP"))
 	message = append(message, encryptTo(t, der, plaintext, false)...)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestUnprotectedPacketDoesNotHideAProtectedOne(t *testing.T) {
 	der, deriver := testCertificate(t)
 	message := encryptTo(t, der, "a genuine report behind a junk packet", false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestScanStoppedByDamageIsNotReportedAsNotAddressed(t *testing.T) {
 	der, deriver := testCertificate(t)
 	message := encryptTo(t, der, "a report behind a damaged packet", false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
@@ -510,7 +510,7 @@ func TestStreamingPacketAfterAnUnprotectedOneDoesNotWedgeTheReader(t *testing.T)
 	der, deriver := testCertificate(t)
 	message := encryptTo(t, der, "the report behind an SED and a streaming packet", false)
 
-	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
 	if err != nil {
 		t.Fatalf("ReadRecipient: %v", err)
 	}
