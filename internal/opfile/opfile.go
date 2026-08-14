@@ -38,6 +38,17 @@ import (
 // ErrNotRegular means the destination exists and is not an ordinary file.
 var ErrNotRegular = errors.New("destination is not a regular file")
 
+// ErrDurabilityUnconfirmed means the destination was replaced but the directory
+// flush that would make the rename survive a crash did not complete.
+//
+// It is deliberately not the same as a failed write. After the rename the new
+// content is in place and the old is gone, so a caller must not report that
+// nothing was written — the operator's previous file is not coming back. What is
+// unconfirmed is only durability: a crash in the window before the directory
+// reaches disk could lose the rename. A command surfaces this as a warning over
+// a successfully written file, not as a failure.
+var ErrDurabilityUnconfirmed = errors.New("destination written but its durability could not be confirmed")
+
 // ErrUnresolvableLink means following was asked for and the filesystem cannot
 // say what a link points at.
 var ErrUnresolvableLink = errors.New("symbolic link cannot be resolved")
@@ -359,16 +370,24 @@ func (w *Writer) Commit() error {
 		return fmt.Errorf("replacing %s: %w", w.final, err)
 	}
 
-	// The rename has landed but is not yet durable: it lives in the directory's
-	// in-memory state until the directory itself is flushed. No discard here —
-	// the file is already in place, so rolling back would delete a correctly
-	// written destination — and a filesystem that cannot flush a directory says
-	// so with ErrCapabilityUnsupported, which is not a failure to report.
-	if err := w.fsys.SyncDir(filepath.Dir(w.final)); err != nil && !errors.Is(err, ErrCapabilityUnsupported) {
-		return fmt.Errorf("flushing the directory of %s: %w", w.final, err)
-	}
-
+	// Committed the instant the rename lands: the new content is in place and the
+	// old is gone, and nothing after this can undo that. done is set HERE, before
+	// the directory flush, so the two failure shapes below are honest — a
+	// deferred Abandon treats the file as placed, and Commit never reports a
+	// post-rename failure as if the write had not happened.
 	w.done = true
+
+	// Durability is separate from placement. The rename is atomic but not durable
+	// until the directory is flushed. A filesystem that cannot flush a directory
+	// says so with ErrCapabilityUnsupported, which is not a failure. A real flush
+	// failure does not un-write the file — it is already visible — so it is
+	// reported as durability unconfirmed, wrapping [ErrDurabilityUnconfirmed], not
+	// as a failed write: the destination has been replaced either way, and a
+	// caller that treated this as "nothing was written" would mislead the
+	// operator into thinking their old file survived.
+	if err := w.fsys.SyncDir(filepath.Dir(w.final)); err != nil && !errors.Is(err, ErrCapabilityUnsupported) {
+		return fmt.Errorf("%w: %s was replaced but not flushed: %w", ErrDurabilityUnconfirmed, w.final, err)
+	}
 
 	return nil
 }

@@ -129,8 +129,11 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 
 	// Only now is the destination replaced. A failure above leaves whatever
 	// was there untouched — which matters because the common failures are
-	// routine: a message addressed to another key, or a truncated paste.
-	if err := out.Commit(); err != nil {
+	// routine: a message addressed to another key, or a truncated paste. A
+	// durability-unconfirmed commit is a warning over a written file, not a
+	// failure — the report is in place, only its survival across a crash is
+	// unconfirmed — which CommitOrWarn handles.
+	if err := out.CommitOrWarn(p.GetLogger().Warn); err != nil {
 		return err
 	}
 

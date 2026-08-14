@@ -187,6 +187,59 @@ func TestCommitSyncsTheDirectoryAfterRenaming(t *testing.T) {
 	}
 }
 
+// TestCommitReportsDurabilityUnconfirmedButKeepsTheFile covers the third
+// outcome a two-step commit has and the plain Commit() error could not express.
+//
+// The staged data is flushed, closed and renamed into place — the destination
+// is replaced and the old content is gone — and only then does the directory
+// flush fail with a real error (EIO, a dying disk), not the capability refusal a
+// filesystem without the operation gives. The write happened: reporting a plain
+// failure would tell the operator their old file survived when it did not. So
+// Commit reports ErrDurabilityUnconfirmed, the file stays in place, and a
+// deferred Abandon leaves it — the rename is the commit point and cannot be
+// rolled back.
+func TestCommitReportsDurabilityUnconfirmedButKeepsTheFile(t *testing.T) {
+	t.Parallel()
+
+	const complete = "a complete report"
+
+	mem := afero.NewMemMapFs()
+	fsys := &syncSpyFS{FS: opfileafero.Wrap(mem), dirSyncErr: errors.New("input/output error")}
+	path := "/reports/report.txt"
+
+	w, err := opfile.Create(fsys, path, 0o600)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if _, err := w.Write([]byte(complete)); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	err = w.Commit()
+	if !errors.Is(err, opfile.ErrDurabilityUnconfirmed) {
+		t.Fatalf("Commit after a failed directory flush: err = %v, want ErrDurabilityUnconfirmed", err)
+	}
+
+	// The content is in place: the rename landed before the flush was attempted.
+	got, readErr := afero.ReadFile(mem, path)
+	if readErr != nil {
+		t.Fatalf("the destination is not there after a durability-unconfirmed commit: %v", readErr)
+	}
+
+	if string(got) != complete {
+		t.Errorf("destination = %q, want the complete report", got)
+	}
+
+	// A deferred Abandon must not undo a commit that replaced the file.
+	w.Abandon()
+
+	after, readErr := afero.ReadFile(mem, path)
+	if readErr != nil || string(after) != complete {
+		t.Errorf("Abandon after a durability-unconfirmed commit removed the committed file")
+	}
+}
+
 // TestCommitReportsAFailedSync is the other half: a sync that fails means the
 // data is not on disk, so the rename must not happen and the destination must
 // be left exactly as it was.
@@ -320,6 +373,11 @@ type syncSpyFS struct {
 	syncedBeforeRename   bool
 	dirSynced            bool
 	dirSyncedAfterRename bool
+
+	// dirSyncErr, when set, is returned by SyncDir instead of flushing — a real
+	// flush failure (EIO), not the capability refusal a filesystem without the
+	// operation gives.
+	dirSyncErr error
 }
 
 func (f *syncSpyFS) CreateExcl(name string, perm os.FileMode) (opfile.File, error) {
@@ -340,6 +398,10 @@ func (f *syncSpyFS) Rename(oldpath, newpath string) error {
 func (f *syncSpyFS) SyncDir(name string) error {
 	f.dirSynced = true
 	f.dirSyncedAfterRename = f.renamed
+
+	if f.dirSyncErr != nil {
+		return f.dirSyncErr
+	}
 
 	return f.FS.SyncDir(name)
 }

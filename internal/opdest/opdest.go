@@ -14,6 +14,7 @@
 package opdest
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -25,11 +26,17 @@ import (
 // Destination is somewhere a command's output will land.
 //
 // Nothing replaces the operator's file until [Destination.Commit] is called, so
-// a run that fails part way leaves whatever was there untouched. That matters
-// for both commands and for different reasons: a failed decryption is routine —
-// a message addressed to another key, a truncated paste — and a published
-// certificate replaced by a half-written one is worse than writing nothing,
-// because correspondents encrypt to it.
+// a run that fails BEFORE the commit leaves whatever was there untouched. That
+// matters for both commands and for different reasons: a failed decryption is
+// routine — a message addressed to another key, a truncated paste — and a
+// published certificate replaced by a half-written one is worse than writing
+// nothing, because correspondents encrypt to it.
+//
+// The one exception is durability. Once Commit's rename lands the destination is
+// replaced whatever happens next; a failure to flush the directory afterwards
+// leaves the new content in place but its survival across a crash unconfirmed,
+// reported as [ErrDurabilityUnconfirmed] rather than as a failed write, because
+// the old file is already gone.
 type Destination struct {
 	// Writer takes the output. Never nil.
 	Writer io.Writer
@@ -97,8 +104,35 @@ func Open(fsys opfile.FS, path string, mode fs.FileMode, followSymlinks bool) (D
 	}, nil
 }
 
+// ErrDurabilityUnconfirmed is [opfile.ErrDurabilityUnconfirmed], re-exported so
+// a command holding this package matches the one sentinel without importing
+// opfile — the destination was replaced but the directory flush that makes the
+// rename survive a crash did not complete. A warning over a written file, not a
+// failed write.
+var ErrDurabilityUnconfirmed = opfile.ErrDurabilityUnconfirmed
+
 // Commit puts the staged content in place. A no-op for standard output.
 func (d Destination) Commit() error { return d.commit() }
+
+// CommitOrWarn commits, treating a durability-unconfirmed result as a warning
+// over a written file rather than a failure.
+//
+// The destination was replaced the instant the rename landed; only the flush
+// that makes that survive a crash did not complete. Returning the error would
+// tell the operator nothing was written when their old file is already gone, so
+// this passes it to warn and reports success. warn is the logger's Warn method,
+// taken as a function so this needs no logging interface of its own. Any other
+// commit error is returned unchanged.
+func (d Destination) CommitOrWarn(warn func(msg string, keyvals ...any)) error {
+	err := d.Commit()
+	if err == nil || !errors.Is(err, ErrDurabilityUnconfirmed) {
+		return err
+	}
+
+	warn("the output was written but its durability could not be confirmed", "detail", err)
+
+	return nil
+}
 
 // Reporter is the sliver of a logger [Destination.Report] needs.
 type Reporter interface {

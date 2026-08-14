@@ -106,8 +106,10 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 
 	// Committed before it is announced: announcing first meant a failed commit
 	// still told the operator the certificate had been written. Where it landed
-	// and whether its mode is exact are said once, by opdest.Report.
-	if err := out.Commit(); err != nil {
+	// and whether its mode is exact are said once, by opdest.Report. A
+	// durability-unconfirmed commit is a warning over a written certificate, not
+	// a failure, which CommitOrWarn handles.
+	if err := out.CommitOrWarn(p.GetLogger().Warn); err != nil {
 		return err
 	}
 
