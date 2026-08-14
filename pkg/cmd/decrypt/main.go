@@ -107,6 +107,16 @@ func RunDecrypt(ctx context.Context, p *props.Props, opts *DecryptOptions, args 
 	// owner-readable, sometimes holding part of a report.
 	defer out.Abandon()
 
+	// The preflight in checkFlags compared the path the operator typed. It
+	// cannot see a followed symbolic link: an --output that is a link to --key
+	// passes it and resolves here to the key itself. Rechecked against the
+	// resolved destination, by identity, before a single byte is written —
+	// otherwise the decrypted report replaces the private key in a run that
+	// exits 0.
+	if err := opdest.CheckResolvedNotInput(fsys, out.Path(), decryptInputs(opts, args)...); err != nil {
+		return err
+	}
+
 	// Wired lazily, and that matters. Decrypt refuses a message addressed to
 	// another certificate before it asks for a shared secret, so building the
 	// key service up front would spend an API call — and require credentials —
@@ -296,6 +306,13 @@ func checkOutput(opts *DecryptOptions, args []string) error {
 	// The D4 spine makes this list declarative with a completeness test; until
 	// then it is maintained by hand, which is exactly how the omission
 	// happened.
+	return opdest.CheckNotInput(opts.Output, decryptInputs(opts, args)...)
+}
+
+// decryptInputs is every file this run reads, named by the flag that supplied
+// it. Shared by the lexical preflight (checkOutput) and the post-resolution
+// identity check, so the two cannot fall out of step about what an input is.
+func decryptInputs(opts *DecryptOptions, args []string) []opdest.Input {
 	inputs := []opdest.Input{
 		{Flag: "--certificate", Path: opts.Certificate},
 		{Flag: "--key", Path: opts.Key},
@@ -304,7 +321,7 @@ func checkOutput(opts *DecryptOptions, args []string) error {
 		inputs = append(inputs, opdest.Input{Flag: "the message", Path: args[0]})
 	}
 
-	return opdest.CheckNotInput(opts.Output, inputs...)
+	return inputs
 }
 
 // checkFlags refuses the arguments that cannot produce a plaintext.

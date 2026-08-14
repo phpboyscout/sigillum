@@ -1,6 +1,7 @@
 package opdest_test
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,6 +13,51 @@ import (
 	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 )
+
+// TestCheckResolvedNotInputCatchesAFollowedSymlink covers the destructive case
+// the lexical guard cannot see: an --output that is a symbolic link to an input.
+//
+// report.txt -> key.pem passes CheckNotInput because the two names differ; once
+// --follow-symlinks resolves it, the write lands on key.pem. The resolved-path
+// check must refuse it — by filesystem identity when the resolved name is still
+// spelled differently (the symlink itself), and by cleaned path once opfile has
+// resolved it to the target.
+func TestCheckResolvedNotInputCatchesAFollowedSymlink(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	key := filepath.Join(dir, "key.pem")
+	if err := os.WriteFile(key, []byte("PRIVATE KEY MATERIAL"), 0o600); err != nil {
+		t.Fatalf("seeding the key: %v", err)
+	}
+
+	link := filepath.Join(dir, "report.txt")
+	if err := os.Symlink(key, link); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+
+	fsys := opfileafero.Wrap(afero.NewOsFs())
+	keyInput := opdest.Input{Flag: "--key", Path: key}
+
+	// The symlink's name differs from the key's, so the cleaned-path comparison
+	// does not catch it; identity must.
+	if err := opdest.CheckResolvedNotInput(fsys, link, keyInput); !errors.Is(err, opdest.ErrOutputOverInput) {
+		t.Fatalf("a symlink to the key was not caught by identity: err = %v", err)
+	}
+
+	// The resolved target itself — what opfile actually hands back after
+	// following the link — is caught on the cleaned path.
+	if err := opdest.CheckResolvedNotInput(fsys, key, keyInput); !errors.Is(err, opdest.ErrOutputOverInput) {
+		t.Fatalf("the resolved key path was not caught: err = %v", err)
+	}
+
+	// A genuinely different destination is allowed through.
+	other := filepath.Join(dir, "out.asc")
+	if err := opdest.CheckResolvedNotInput(fsys, other, keyInput); err != nil {
+		t.Fatalf("an unrelated destination was refused: %v", err)
+	}
+}
 
 // The staged-write behaviour both commands depend on.
 //

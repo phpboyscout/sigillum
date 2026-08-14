@@ -3,8 +3,11 @@ package opdest
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+
+	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 )
 
 // ErrOutputOverInput means --output names a file the run is reading.
@@ -80,4 +83,67 @@ func CheckNotInput(output string, inputs ...Input) error {
 	}
 
 	return fmt.Errorf("%w: %s is also %s", ErrOutputOverInput, output, strings.Join(hit, " and "))
+}
+
+// CheckResolvedNotInput refuses an output whose RESOLVED destination is one of
+// the inputs, which the lexical [CheckNotInput] cannot see.
+//
+// [CheckNotInput] compares the path the operator typed, and that is the check
+// for the slip they actually make. It is not enough once --follow-symlinks is
+// in play: a destination named `report.txt` that is a symbolic link to
+// `key.pem` passes the lexical check — the two names differ — and then opfile
+// resolves it and writes through the link, replacing the private key with the
+// decrypted report in a run that exits 0. A hard link cannot do this, because
+// the write is a stage-and-rename that replaces the directory entry rather than
+// the inode; a followed symbolic link can, because the resolved path is the
+// target itself.
+//
+// So this runs AFTER the destination is resolved, on that resolved path, and
+// compares by filesystem identity ([os.SameFile]) as well as by cleaned path —
+// identity because the resolved name and the input name may still be spelled
+// differently, cleaned path because a destination that does not exist yet has no
+// identity to compare and the lexical match is all there is.
+func CheckResolvedNotInput(fsys opfile.FS, resolved string, inputs ...Input) error {
+	if resolved == "" || resolved == "-" {
+		return nil
+	}
+
+	clean := filepath.Clean(resolved)
+
+	var hit []string
+
+	for _, in := range inputs {
+		if in.Path == "" || in.Path == "-" {
+			continue
+		}
+
+		if filepath.Clean(in.Path) == clean || sameFile(fsys, resolved, in.Path) {
+			hit = append(hit, in.Flag)
+		}
+	}
+
+	if len(hit) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("%w: it resolves to %s, which is also %s",
+		ErrOutputOverInput, resolved, strings.Join(hit, " and "))
+}
+
+// sameFile reports whether two paths name the same file on disk, following
+// symbolic links. False when either cannot be stat'd — a destination that does
+// not exist yet is not identical to anything — or when the filesystem cannot
+// carry the identity, which leaves the cleaned-path comparison as the check.
+func sameFile(fsys opfile.FS, a, b string) bool {
+	ai, err := fsys.Stat(a)
+	if err != nil {
+		return false
+	}
+
+	bi, err := fsys.Stat(b)
+	if err != nil {
+		return false
+	}
+
+	return os.SameFile(ai, bi)
 }

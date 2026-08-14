@@ -17,6 +17,7 @@ import (
 	"gitlab.com/phpboyscout/go/encryption/certificate"
 
 	"gitlab.com/phpboyscout/sigillum/internal/opdest"
+	"gitlab.com/phpboyscout/sigillum/internal/opfile"
 	"gitlab.com/phpboyscout/sigillum/internal/opfile/opfileafero"
 	"gitlab.com/phpboyscout/sigillum/internal/oprun"
 )
@@ -90,11 +91,7 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 		return err
 	}
 
-	// World-readable on purpose: a certificate is public, and is meant to
-	// be published.
-	const certificateMode = 0o644
-
-	out, err := opdest.Open(opfileafero.Wrap(p.GetFS()), opts.Output, certificateMode, opts.FollowSymlinks)
+	out, err := openCertificateOutput(opfileafero.Wrap(p.GetFS()), opts)
 	if err != nil {
 		return err
 	}
@@ -217,14 +214,47 @@ func checkFlags(opts *CertificateOptions) (time.Time, error) {
 	// Before the key service is reached and before anything is staged. With the
 	// local backend these two flags name PEM files on disk, so this is the check
 	// that stands between a mistyped --output and an unrecoverable private key.
-	if err := opdest.CheckNotInput(opts.Output,
-		opdest.Input{Flag: "--certify-key", Path: opts.CertifyKey},
-		opdest.Input{Flag: "--encrypt-key", Path: opts.EncryptKey},
-	); err != nil {
+	if err := opdest.CheckNotInput(opts.Output, certificateInputs(opts)...); err != nil {
 		return time.Time{}, err
 	}
 
 	return creationTime(opts.Created)
+}
+
+// certificateInputs is every file this run reads, named by the flag that
+// supplied it. Shared by the lexical preflight and the post-resolution identity
+// check so the two agree on what an input is.
+func certificateInputs(opts *CertificateOptions) []opdest.Input {
+	return []opdest.Input{
+		{Flag: "--certify-key", Path: opts.CertifyKey},
+		{Flag: "--encrypt-key", Path: opts.EncryptKey},
+	}
+}
+
+// openCertificateOutput stages the destination and refuses one whose resolved
+// path is a key file this run reads.
+//
+// The preflight in checkFlags compared the typed path; this catches a followed
+// symbolic link whose resolved destination is one of the key files, before the
+// certificate is written over a private key. On refusal the staged file is
+// discarded, since the caller never receives the destination to defer Abandon.
+func openCertificateOutput(fsys opfile.FS, opts *CertificateOptions) (opdest.Destination, error) {
+	// World-readable on purpose: a certificate is public, and is meant to be
+	// published.
+	const certificateMode = 0o644
+
+	out, err := opdest.Open(fsys, opts.Output, certificateMode, opts.FollowSymlinks)
+	if err != nil {
+		return opdest.Destination{}, err
+	}
+
+	if err := opdest.CheckResolvedNotInput(fsys, out.Path(), certificateInputs(opts)...); err != nil {
+		out.Abandon()
+
+		return opdest.Destination{}, err
+	}
+
+	return out, nil
 }
 
 // creationTime parses --created, which is required rather than defaulted.
