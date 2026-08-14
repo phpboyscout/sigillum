@@ -132,12 +132,29 @@ func Decrypt(
 		return err
 	}
 
-	cipherID, sessionKey, rest, err := recoverSessionKey(ctx, deriver, recipient, raw)
+	candidates, rest, err := recoverSessionKeys(ctx, deriver, recipient, raw)
 	if err != nil {
 		return err
 	}
 
-	return decryptBody(rest, packet.CipherFunction(cipherID), sessionKey, out)
+	// A candidate is only the answer once it opens the encrypted body. Unwrapping
+	// proved the PKESK internally valid, not that its key belongs to this message
+	// — a decoy anyone can mint unwraps to a key the body's integrity check
+	// rejects — so each is tried against the body in turn and the first that
+	// authenticates wins. copyAuthenticated buffers the plaintext until the
+	// integrity check passes, so a rejected candidate writes nothing and the next
+	// is tried on an untouched out. The candidate count is bounded by the
+	// derivation ceiling, so this is not a decrypt-per-packet amplification.
+	var bodyErr error
+
+	for _, c := range candidates {
+		bodyErr = decryptBody(rest, packet.CipherFunction(c.cipherID), c.sessionKey, out)
+		if bodyErr == nil {
+			return nil
+		}
+	}
+
+	return bodyErr
 }
 
 // recoverSessionKey attempts the candidates in order and returns the first that
@@ -171,6 +188,20 @@ type attemptRun struct {
 	namedFailure, otherFailure error
 	skipped, tried             int
 
+	// candidates are the session keys that unwrapped, in the order they were
+	// read. Unwrapping proves a PKESK is internally valid, NOT that its key opens
+	// this message's body: anyone with the public certificate can encrypt a
+	// random session key to it, so a decoy PKESK unwraps cleanly and yields a key
+	// that fails the body's integrity check. So every unwrap is kept and tried
+	// against the body in turn, and only the one that authenticates it wins. The
+	// count is bounded by the derivation ceiling, so this retains nothing a
+	// message can grow without paying for.
+	candidates []sessionCandidate
+}
+
+// sessionCandidate is one session key that unwrapped, with the cipher it names,
+// still to be proven against the encrypted body.
+type sessionCandidate struct {
 	cipherID   byte
 	sessionKey []byte
 }
@@ -192,7 +223,7 @@ func (r *attemptRun) attempt(pkesk encryption.PKESK, named bool) {
 
 	cipher, key, err := unwrap(r.ctx, r.billed, r.recipient, pkesk)
 	if err == nil {
-		r.cipherID, r.sessionKey = cipher, key
+		r.candidates = append(r.candidates, sessionCandidate{cipherID: cipher, sessionKey: key})
 
 		return
 	}
@@ -207,9 +238,6 @@ func (r *attemptRun) named(raw []byte) []byte {
 		switch {
 		case parseErr != nil:
 			r.found.fileUnreadable(pktBody, parseErr)
-
-		case r.sessionKey != nil:
-			return
 
 		case pkesk.KeyID == r.recipient.KeyID:
 			r.attempt(pkesk, true)
@@ -231,7 +259,7 @@ func (r *attemptRun) named(raw []byte) []byte {
 // has been read since one of those may match and cost nothing.
 func (r *attemptRun) wildcards(raw []byte) {
 	_, _ = eachSessionKey(raw, func(pkesk encryption.PKESK, _ []byte, parseErr error) {
-		if parseErr != nil || pkesk.KeyID != wildcardKeyID || r.sessionKey != nil {
+		if parseErr != nil || pkesk.KeyID != wildcardKeyID {
 			return
 		}
 
@@ -276,12 +304,12 @@ func (r *attemptRun) outcome() error {
 		ErrNotAddressed, r.tried)
 }
 
-func recoverSessionKey(
+func recoverSessionKeys(
 	ctx context.Context,
 	deriver SecretDeriver,
 	recipient Recipient,
 	raw []byte,
-) (cipherID byte, sessionKey []byte, body []byte, err error) {
+) (candidates []sessionCandidate, body []byte, err error) {
 	// The memo is scoped to this message, so nothing is remembered between
 	// calls and a key rotation between two messages is never served from cache.
 	run := &attemptRun{ctx: ctx, recipient: recipient, billed: newBilledOnce(deriver)}
@@ -289,26 +317,31 @@ func recoverSessionKey(
 	// Two passes over the message rather than one pass into a slice, and that
 	// is the whole of the memory story.
 	//
-	// Collecting candidates meant the message chose how much memory the walk
-	// held live, so a bound was put on the collection — and that bound then
-	// dropped genuine packets that cost nothing to try, which is the crowding
-	// defect this package has now produced at three separate bounds. Nothing is
-	// retained here, so there is nothing to bound and nothing to crowd out.
+	// Collecting candidate PACKETS meant the message chose how much memory the
+	// walk held live, so a bound was put on the collection — and that bound then
+	// dropped genuine packets that cost nothing to try, the crowding defect this
+	// package produced at three separate bounds. What is retained instead is the
+	// unwrapped session KEYS, which the derivation ceiling already bounds, so a
+	// message cannot grow the retention without paying for it.
 	//
 	// The message is already in memory: readMessage read it whole, under its
 	// own bound. A second walk over bytes already held is cheap, and it is what
 	// preserves the ordering that keeps a message naming only other keys free.
 	body = run.named(raw)
 
-	if run.sessionKey == nil && run.found.hidden > 0 {
+	// The wildcards are read whenever the message hides recipients, not only when
+	// the named packets yielded no key: a named packet can unwrap to a decoy that
+	// does not open the body, so whether a wildcard is needed is not known until
+	// the body is tried, and that happens after this returns.
+	if run.found.hidden > 0 {
 		run.wildcards(raw)
 	}
 
-	if run.sessionKey != nil {
-		return run.cipherID, run.sessionKey, body, nil
+	if len(run.candidates) > 0 {
+		return run.candidates, body, nil
 	}
 
-	return 0, nil, nil, run.outcome()
+	return nil, nil, run.outcome()
 }
 
 // exhausted reports running out of attempts without discarding what was learned

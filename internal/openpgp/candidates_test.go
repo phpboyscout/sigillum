@@ -1171,3 +1171,60 @@ func TestDecryptIsNotCrowdedOutByTheMemoryBound(t *testing.T) {
 			counting.calls)
 	}
 }
+
+// TestADecoyPKESKDoesNotHideTheGenuineOne covers the candidate-authentication
+// boundary: an unwrap that succeeds is not proof the key opens the message.
+//
+// A PKESK unwraps when its AES key-wrap integrity check passes, which proves it
+// is internally valid — nothing more. Anyone holding the public certificate can
+// encrypt a random session key to it and produce a decoy PKESK that unwraps
+// cleanly to a key that does not open the body. Stopping at the first unwrap
+// tried that key against the body once, failed its integrity check, and never
+// reached the genuine packet behind it: the "stop at the first candidate" defect
+// relocated across the unwrap/body boundary. Each unwrapped candidate must be
+// tried through body authentication, and the genuine one recovered.
+func TestADecoyPKESKDoesNotHideTheGenuineOne(t *testing.T) {
+	t.Parallel()
+
+	der, deriver := testCertificate(t)
+
+	const wanted = "the report that must still open"
+
+	// Two genuine messages to the same certificate. Each PKESK unwraps to a valid
+	// session key, but each key opens only its own body.
+	genuine := encryptTo(t, der, wanted, false)
+	decoyMessage := encryptTo(t, der, "a different message entirely", false)
+
+	// The decoy's own PKESK, prepended before the genuine message: it names our
+	// key and unwraps cleanly, but its key does not open the genuine body.
+	spliced := append(append([]byte(nil), leadingPacket(t, decoyMessage)...), genuine...)
+
+	recipient, _, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	var out bytes.Buffer
+
+	if err := openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(spliced), &out); err != nil {
+		t.Fatalf("a genuine report behind a decoy session-key packet was refused: %v.\n"+
+			"An unwrap that does not open the body must not stop the genuine candidate being tried", err)
+	}
+
+	if got := out.String(); got != wanted {
+		t.Errorf("plaintext = %q, want the genuine report", got)
+	}
+}
+
+// leadingPacket returns the first packet of a message — for an ordinary message,
+// its PKESK.
+func leadingPacket(t *testing.T, message []byte) []byte {
+	t.Helper()
+
+	pkt, err := encryption.ParsePacket(message)
+	if err != nil {
+		t.Fatalf("ParsePacket: %v", err)
+	}
+
+	return message[:len(message)-len(pkt.Rest)]
+}
