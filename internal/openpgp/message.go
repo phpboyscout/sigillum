@@ -320,95 +320,87 @@ func readBounded(r io.Reader, what string) ([]byte, error) {
 // OpenPGP concern — symmetric modes, integrity protection, compression — and a
 // mature implementation already handles it. The core's job ends at the key.
 func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, out io.Writer) error {
-	reader := packet.NewReader(bytes.NewReader(rest))
-
-	// Bounded like the structurally identical walk in copyLiteral, and for the
-	// same reason: the message chooses how many packets sit between the session
-	// keys and the encrypted data, and this one had no bound at all while its
-	// twin did. Reaching the limit is not a verdict about the message's
-	// contents, only about how far this will look.
-	// Set when an unprotected packet was seen and stepped over, so that a
-	// message carrying ONLY unprotected packets still reports the specific
-	// refusal rather than the generic "no encrypted-data packet".
+	// Set when an unprotected packet was seen and stepped over, so a message
+	// carrying ONLY unprotected packets reports the specific refusal rather than
+	// the generic "no encrypted-data packet".
 	var unprotected bool
 
-	for range maxPacketsInspected {
-		p, err := reader.Next()
-		if err != nil {
-			if unprotected {
-				return ErrUnprotected
-			}
+	// The decrypt-and-copy result, captured when the walk settles on the
+	// protected packet — it is the answer, not a verdict about the stream, so it
+	// rides out through the Settled arm rather than a Stop the framework would
+	// treat as damage.
+	var settledErr error
 
-			return fmt.Errorf("%w: no encrypted-data packet after the session key: %w",
-				ErrMalformedMessage, err)
+	// unprotectedOr reports the same refusal both non-settling non-damaged endings
+	// share: the specific "no integrity protection" if one was seen, else the
+	// generic reason the caller passes.
+	unprotectedOr := func(generic error) error {
+		if unprotected {
+			return ErrUnprotected
 		}
 
-		se, ok := p.(*packet.SymmetricallyEncrypted)
-		if !ok {
-			// Drained before moving on, for the same reason the unprotected arm
-			// below drains: go-crypto leaves a streaming packet's body on the
-			// reader, and skipping one undrained leaves the reader mid-body so
-			// the next read desyncs. The SED fix that added draining below fixed
-			// one arm and left this one (design-review N3). Reachable only after
-			// a drained unprotected packet — the first packet here is always the
-			// encrypted data — but there the desync reported ErrUnprotected for
-			// a message that did carry a protected packet, one step further on.
-			//
-			// drainPacket handles the non-streaming case as a no-op, so this is
-			// unconditional rather than type-switched.
-			if err := drainPacket(p); err != nil {
-				return fmt.Errorf("%w: unreadable packet before the encrypted data: %w",
-					ErrMalformedMessage, err)
-			}
-
-			continue
-		}
-
-		// Refuse the legacy Symmetrically Encrypted Data packet outright.
-		//
-		// It carries no modification detection at all, so an attacker who can
-		// touch the ciphertext can flip plaintext bits at will — the EFAIL
-		// shape. go-crypto's high-level reader refuses it for the same reason;
-		// reading packets directly means re-establishing that guard here.
-		// The certificate this package publishes advertises SEIPD support, so
-		// a well-behaved sender never produces the unprotected form.
-		//
-		// Noted and stepped over rather than returned on. The guard governs
-		// THIS packet — which is never decrypted, then or now — and says
-		// nothing about the packets after it. Returning here meant anyone who
-		// could prepend one junk SED packet made a genuine protected report
-		// undecryptable, and the operator was told the message had no integrity
-		// protection, which was false of the message they were sent.
-		//
-		// If the walk ends having seen nothing else, the refusal is still the
-		// answer and still absolute: see the return below.
-		if !se.IntegrityProtected {
-			unprotected = true
-
-			// Drained through the same helper as the skip arm above, so the two
-			// cannot drift: both step over a streaming packet, and both must
-			// consume its body or the reader desyncs.
-			if err := drainPacket(p); err != nil {
-				return fmt.Errorf("%w: unreadable unprotected packet: %w", ErrMalformedMessage, err)
-			}
-
-			continue
-		}
-
-		body, err := se.Decrypt(cipher, sessionKey)
-		if err != nil {
-			return fmt.Errorf("decrypting the message body: %w", err)
-		}
-
-		return copyAuthenticated(body, out)
+		return generic
 	}
 
-	if unprotected {
-		return ErrUnprotected
-	}
+	return packetwalk.Walk(newGCSource(bytes.NewReader(rest)),
+		packetwalk.Limits{Steps: maxPacketsInspected},
+		func(pkt packet.Packet, _ packetwalk.Tally) packetwalk.Step[packet.Packet] {
+			se, ok := pkt.(*packet.SymmetricallyEncrypted)
+			if !ok {
+				// A non-encrypted packet before the data: stepped over, and
+				// gcSource drains its body so the reader does not desync.
+				return packetwalk.Skip[packet.Packet]()
+			}
 
-	return fmt.Errorf("%w: no encrypted-data packet in the first %d packets after the session key",
-		ErrMalformedMessage, maxPacketsInspected)
+			// Refuse the legacy Symmetrically Encrypted Data packet — no
+			// modification detection at all, the EFAIL shape — but NOTE and step
+			// over it rather than return on it. The guard governs this packet,
+			// which is never decrypted, and says nothing about the packets after
+			// it: returning here let anyone prepend one junk SED packet to make a
+			// genuine protected report undecryptable. gcSource drains it.
+			if !se.IntegrityProtected {
+				unprotected = true
+
+				return packetwalk.Skip[packet.Packet]()
+			}
+
+			// The protected packet: decrypt and copy, capturing the result to
+			// hand back through Settled.
+			body, err := se.Decrypt(cipher, sessionKey)
+			if err != nil {
+				settledErr = fmt.Errorf("decrypting the message body: %w", err)
+
+				return packetwalk.Settle[packet.Packet]()
+			}
+
+			settledErr = copyAuthenticated(body, out)
+
+			return packetwalk.Settle[packet.Packet]()
+		},
+		packetwalk.Outcomes[error]{
+			// The protected packet was found; the decrypt/copy result is the
+			// answer.
+			Settled: func() error { return settledErr },
+
+			// Ran out with no encrypted data — or only unprotected data.
+			Exhausted: func() error {
+				return unprotectedOr(fmt.Errorf(
+					"%w: no encrypted-data packet after the session key", ErrMalformedMessage))
+			},
+
+			// A source error before any encrypted data.
+			Damaged: func(err error) error {
+				return unprotectedOr(fmt.Errorf(
+					"%w: no encrypted-data packet after the session key: %w", ErrMalformedMessage, err))
+			},
+
+			// More packets than the bound allows without reaching the data.
+			Bounded: func() error {
+				return unprotectedOr(fmt.Errorf(
+					"%w: no encrypted-data packet in the first %d packets after the session key",
+					ErrMalformedMessage, maxPacketsInspected))
+			},
+		})
 }
 
 // drainPacket consumes a packet's body so the reader can advance past it.
