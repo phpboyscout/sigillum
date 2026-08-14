@@ -491,3 +491,36 @@ func (s *countingKeyService) Signer(context.Context, string) (crypto.Signer, err
 type discardLogger struct{}
 
 func (discardLogger) Debug(string, ...any) {}
+
+// TestCheckFlagsRefusesAnOutputThatNamesTheKey covers design-review finding N2
+// — the round-8 #1 class, alive in this command one day after its sibling was
+// fixed.
+//
+// The guard was moved into opdest precisely so the next command could not
+// forget it, and then this command's wiring omitted an input: --key is a PEM
+// path under the local backend (the e2e suite passes one), so
+//
+//	sigillum decrypt --backend local --key k.pem --output k.pem
+//
+// read the private key, decrypted the report, renamed the plaintext over the
+// key, and exited 0. The private half is unrecoverable and unrelated to the
+// report that replaced it.
+//
+// Under aws-kms the flag carries an alias, not a path; the guard still fires
+// only on (cleaned) string equality with --output, and an operator writing to
+// a file literally named like their alias is refused with a message that names
+// both flags — an acceptable cost for never destroying a key.
+func TestCheckFlagsRefusesAnOutputThatNamesTheKey(t *testing.T) {
+	t.Parallel()
+
+	opts := DecryptOptions{Certificate: "security.asc", Key: "keys/encrypt.pem", Output: "./keys/encrypt.pem"}
+
+	err := checkFlags(&opts, []string{"report.pgp"})
+	if !errors.Is(err, ErrOutputOverInput) {
+		t.Fatalf("--output naming --key was accepted: err = %v", err)
+	}
+
+	if !strings.Contains(err.Error(), "--key") {
+		t.Errorf("error %q does not name --key as the input hit", err)
+	}
+}

@@ -319,6 +319,22 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 
 		se, ok := p.(*packet.SymmetricallyEncrypted)
 		if !ok {
+			// Drained before moving on, for the same reason the unprotected arm
+			// below drains: go-crypto leaves a streaming packet's body on the
+			// reader, and skipping one undrained leaves the reader mid-body so
+			// the next read desyncs. The SED fix that added draining below fixed
+			// one arm and left this one (design-review N3). Reachable only after
+			// a drained unprotected packet — the first packet here is always the
+			// encrypted data — but there the desync reported ErrUnprotected for
+			// a message that did carry a protected packet, one step further on.
+			//
+			// drainPacket handles the non-streaming case as a no-op, so this is
+			// unconditional rather than type-switched.
+			if err := drainPacket(p); err != nil {
+				return fmt.Errorf("%w: unreadable packet before the encrypted data: %w",
+					ErrMalformedMessage, err)
+			}
+
 			continue
 		}
 
@@ -343,11 +359,10 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 		if !se.IntegrityProtected {
 			unprotected = true
 
-			// Drained before moving on. go-crypto hands back the packet body as
-			// a stream, and its reader cannot advance past a packet whose body
-			// was never consumed — skipping without this left the walk stuck on
-			// the packet it had just declined to read.
-			if _, err := io.Copy(io.Discard, se.Contents); err != nil {
+			// Drained through the same helper as the skip arm above, so the two
+			// cannot drift: both step over a streaming packet, and both must
+			// consume its body or the reader desyncs.
+			if err := drainPacket(p); err != nil {
 				return fmt.Errorf("%w: unreadable unprotected packet: %w", ErrMalformedMessage, err)
 			}
 
@@ -368,6 +383,33 @@ func decryptBody(rest []byte, cipher packet.CipherFunction, sessionKey []byte, o
 
 	return fmt.Errorf("%w: no encrypted-data packet in the first %d packets after the session key",
 		ErrMalformedMessage, maxPacketsInspected)
+}
+
+// drainPacket consumes a packet's body so the reader can advance past it.
+//
+// go-crypto leaves the bodies of streaming packets — Compressed, LiteralData,
+// SymmetricallyEncrypted — as readers over the underlying stream, and its
+// Reader.Next cannot move past one whose body was never read. A non-streaming
+// packet has already been consumed by parsing, so its typed value carries no
+// reader and this is a no-op. Every skip in decryptBody routes through here so
+// the drain rule is stated once rather than per arm.
+func drainPacket(p packet.Packet) error {
+	var body io.Reader
+
+	switch typed := p.(type) {
+	case *packet.Compressed:
+		body = typed.Body
+	case *packet.LiteralData:
+		body = typed.Body
+	case *packet.SymmetricallyEncrypted:
+		body = typed.Contents
+	default:
+		return nil
+	}
+
+	_, err := io.Copy(io.Discard, body)
+
+	return err
 }
 
 // copyAuthenticated writes the plaintext out only once its integrity is proven.

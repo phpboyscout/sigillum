@@ -487,3 +487,74 @@ func foreignPKESK(t *testing.T, message []byte) []byte {
 
 	return nil
 }
+
+// TestStreamingPacketAfterAnUnprotectedOneDoesNotWedgeTheReader covers
+// design-review finding N3, at its ACTUAL reach.
+//
+// The panel and the first verification both overstated it. The candidate walk
+// stops at the first encrypted-data tag, so decryptBody's body always begins
+// with a SymmetricallyEncrypted packet and the `!ok` continue never fires on
+// the first packet. The arm is reachable only AFTER a legacy unprotected SED
+// packet has been drained and stepped over: at that point a streaming packet
+// before the real SEIPD is skipped undrained, and go-crypto's reader desyncs on
+// the next read — returning "malformed" for a message whose genuine report sits
+// one packet further on.
+//
+// Narrow, but real and adversarial: [SED][Compressed][SEIPD] is something an
+// attacker prepends, not a shape a sender emits, and the effect is the
+// guard-that-stops denial this class keeps producing. The empty compressed
+// packet is drained now, so the walk reaches the SEIPD behind it.
+func TestStreamingPacketAfterAnUnprotectedOneDoesNotWedgeTheReader(t *testing.T) {
+	t.Parallel()
+
+	der, deriver := testCertificate(t)
+	message := encryptTo(t, der, "the report behind an SED and a streaming packet", false)
+
+	recipient, err := openpgp.ReadRecipient(bytes.NewReader(der))
+	if err != nil {
+		t.Fatalf("ReadRecipient: %v", err)
+	}
+
+	// An empty compressed packet: streaming, well-formed, carrying nothing.
+	var compressed bytes.Buffer
+
+	w, err := packet.SerializeCompressed(nopWC{&compressed}, packet.CompressionZIP, nil)
+	if err != nil {
+		t.Fatalf("SerializeCompressed: %v", err)
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("closing: %v", err)
+	}
+
+	// A legacy unprotected SED packet (tag 9) with a token body. decryptBody
+	// drains and steps over it as unprotected; the drain is not the bug under
+	// test. What follows it is.
+	const tagSED = 9
+
+	sed := framePacket(t, tagSED, []byte{0x00, 0x01, 0x02, 0x03})
+
+	// [PKESK...] [SED] [Compressed] [SEIPD] — the SED is where the session-key
+	// walk stops, so everything after it reaches decryptBody.
+	prefix := sed
+	prefix = append(prefix, compressed.Bytes()...)
+
+	spliced := spliceBeforeEncryptedData(t, message, prefix)
+
+	var out bytes.Buffer
+
+	err = openpgp.Decrypt(t.Context(), deriver, recipient, bytes.NewReader(spliced), &out)
+	if err != nil {
+		t.Fatalf("a report behind an unprotected packet and a streaming packet was refused: %v.\n"+
+			"decryptBody skipped the streaming packet without draining and the reader desynced", err)
+	}
+
+	if got := out.String(); got != "the report behind an SED and a streaming packet" {
+		t.Errorf("plaintext = %q, want the report", got)
+	}
+}
+
+// nopWC adapts a buffer for go-crypto serializers, which want a WriteCloser.
+type nopWC struct{ io.Writer }
+
+func (nopWC) Close() error { return nil }

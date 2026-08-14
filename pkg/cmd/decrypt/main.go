@@ -334,7 +334,21 @@ var ErrOutputOverInput = opdest.ErrOutputOverInput
 // run — the same defect checkFlags was fixed for, reintroduced two hundred lines
 // below the test that guards against it.
 func checkOutput(opts *DecryptOptions, args []string) error {
-	inputs := []opdest.Input{{Flag: "--certificate", Path: opts.Certificate}}
+	// --key is an input. Under the local backend it is a PEM path — the e2e
+	// suite passes one — so an --output naming it replaced the private key with
+	// the decrypted report in a run that exited 0: round 8's top finding,
+	// reproduced in this command one day after its sibling was fixed
+	// (design-review N2). Under aws-kms the flag carries an alias and the
+	// cleaned-string comparison almost never fires; when it does, refusing a
+	// file literally named like the alias is the cheap side of the trade.
+	//
+	// The D4 spine makes this list declarative with a completeness test; until
+	// then it is maintained by hand, which is exactly how the omission
+	// happened.
+	inputs := []opdest.Input{
+		{Flag: "--certificate", Path: opts.Certificate},
+		{Flag: "--key", Path: opts.Key},
+	}
 	if len(args) == 1 {
 		inputs = append(inputs, opdest.Input{Flag: "the message", Path: args[0]})
 	}
