@@ -31,6 +31,8 @@ sigillum certificate --user-id <id> --certify-key <id> --encrypt-key <id> \
 | `--created` | **yes** | — | Creation time, RFC 3339. See below |
 | `--backend` | when several are compiled in | the only one | Which key service to use |
 | `--armor` | no | `false` | Emit ASCII armour instead of binary |
+| `--signed-at` | no | now | Signature time as RFC 3339; pin it for byte-reproducible output |
+| `--reproducible` | no | `false` | Drop the random salt for byte-identical output; requires `--signed-at` |
 | `--output` | no | stdout | Write here, created mode `0644` |
 | `--follow-symlinks` | no | off | Write *through* a symbolic link named by `--output` rather than refusing it |
 
@@ -61,10 +63,27 @@ every time you regenerate.
 
 ## Reproducibility
 
-Assembly is not byte-reproducible: each signature carries a random salt, which
-is a deliberate security measure. The *fingerprints* are stable, so a
-regenerated certificate accepts exactly the same messages as the one it
-replaces — which is the property that actually matters.
+By default assembly is **not** byte-reproducible: each signature is stamped with
+the current time and carries a random salt, both deliberate. The *fingerprints*
+are stable regardless — they are fixed by `--created` — so a regenerated
+certificate accepts exactly the same messages as the one it replaces, which is
+the property that usually matters.
+
+When you need the **bytes** to match too — publishing from a pipeline that
+verifies the output against a checksum, say — pass both:
+
+- `--signed-at <RFC 3339>` pins the signature time instead of stamping now. It is
+  logged when used, so the same value can be supplied on the next run.
+- `--reproducible` additionally drops the random salt. It **requires**
+  `--signed-at`: the signature time has to be one you choose, because defaulting
+  it to now would make two rotations stamped in the same second impossible to
+  order.
+
+`--signed-at` is distinct from `--created` on purpose. `--created` is the key's
+identity, hashed into the fingerprint and held fixed across a rotation;
+`--signed-at` is when the signatures were made, an event. Pinning the second
+gives byte-identical output; pinning only the first gives a certificate with the
+same identity but different bytes each run.
 
 ## Two keys, not one
 
@@ -77,6 +96,7 @@ signature is PKCS#1 v1.5, which is what a KMS will produce.
 | Message contains | Means |
 |---|---|
 | `required flag not set` | A required flag is missing; `--created` explains why it has no default |
+| `--reproducible requires --signed-at` | `--reproducible` was given without an explicit signature time to pin |
 | `no key service backends are compiled into this binary` | A build with no backend linked in; nothing can be published |
 | `backend cannot expose the encryption key's public half` | The chosen key service cannot supply the subkey point |
 | `unsupported curve` | The encryption key is not on P-256, P-384 or P-521 |

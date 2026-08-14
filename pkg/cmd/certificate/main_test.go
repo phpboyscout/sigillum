@@ -147,3 +147,73 @@ func TestCheckFlagsAllowsAnOutputThatNamesNoInput(t *testing.T) {
 // validCreated keeps the fixtures above from tripping the --created check and
 // reporting a pass for the wrong reason.
 const validCreated = "2026-01-01T00:00:00Z"
+
+// nopLogger swallows the reproducibility helper's log line.
+type nopLogger struct{}
+
+func (nopLogger) Info(string, ...any) {}
+
+// TestReproducibilityOptions covers the command layer of finding #19: turning
+// --signed-at and --reproducible into the assembly options that make output
+// deterministic, and refusing --reproducible without an explicit time.
+func TestReproducibilityOptions(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		opts     CertificateOptions
+		wantErr  error
+		wantOpts int
+	}{
+		{
+			name:     "neither flag: assembly stamps now, no options",
+			opts:     CertificateOptions{},
+			wantOpts: 0,
+		},
+		{
+			name:     "--signed-at alone pins the signature time",
+			opts:     CertificateOptions{SignedAt: "2026-01-01T00:00:00Z"},
+			wantOpts: 1,
+		},
+		{
+			name:     "--reproducible with --signed-at pins the time and drops the salt",
+			opts:     CertificateOptions{SignedAt: "2026-01-01T00:00:00Z", Reproducible: true},
+			wantOpts: 2,
+		},
+		{
+			name:    "--reproducible without --signed-at is refused",
+			opts:    CertificateOptions{Reproducible: true},
+			wantErr: ErrReproducibleNeedsTime,
+		},
+		{
+			name:    "an unparseable --signed-at is refused",
+			opts:    CertificateOptions{SignedAt: "not a time"},
+			wantErr: nil, // a parse error, not a sentinel — asserted as non-nil below
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts, err := reproducibilityOptions(&tc.opts, nopLogger{})
+
+			switch {
+			case tc.wantErr != nil:
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("error = %v, want %v", err, tc.wantErr)
+				}
+			case tc.name == "an unparseable --signed-at is refused":
+				if err == nil {
+					t.Fatal("an unparseable --signed-at was accepted")
+				}
+			default:
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+
+				if len(opts) != tc.wantOpts {
+					t.Errorf("returned %d assembly options, want %d", len(opts), tc.wantOpts)
+				}
+			}
+		})
+	}
+}

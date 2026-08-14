@@ -36,32 +36,31 @@ release_source:
   owner: phpboyscout
   repo: sigillum
 version:
-  gtb: v0.36.1
+  gtb: v0.37.1
 hashes:
   .gitignore: 660975e0ad0d5136feb10221a14835d0d6a0bf86788a08f8c97d4f9cbd06c453
-  .gitlab-ci.yml: b4c2873817c3b1aa28b46cf76202fe9da85b082c52ea6623ef4b8941f7ecdda7
+  .gitlab-ci.yml: ff2660e3c28321b1b14242a09245e4a211aeef103bdf0519ae575e2b01505d7f
   .gitlab/CODEOWNERS: 6384f3b0fa79ff53d5428c8499b4af97bd5c35328a3b7058df34164b2e875f2f
   .golangci.yaml: b41c089be6a30fbd149cf43812e2b08a6c8c6420de9d63545420539d0e256ea4
   .goreleaser.yaml: 29edede866c86cea0291dc7dc9e07c71ca16c4d855b6fba6809d26c2212e07cc
   .mockery.yml: e2ada0fc97ec0a6f64c091ba6fb9f4a3308a678082588745ea23e9d4682bff15
   .pre-commit-config.yaml: 1dbbf5621e83f9665e0e88df4641c942b45a79ace7e21b04135d2ac5ebab679c
-  CHANGELOG.md: e490286ada2303e57e1157d7b03b5ca245ea5b44d8884d42b19391f80e2ab48a
-  README.md: d9f5b0bca77546cdbde8252339a191cd011d4f4ac3cb824017fa9aff549d7a12
-  docs/explanation/components/index.md: 7e1427d20c235eb76f9514996a79180bbfa820034eecced13e0deefdfb894dd9
-  docs/explanation/concepts/index.md: 0a3b2608855a7524b5e7ef21655385a26e3725bfb0b967b73406cc94bdf6739e
-  docs/explanation/index.md: e3862079f2ff3bd7d5a88bf255a41a34550145ec5d9c8581634ced1eb8562e38
-  docs/getting-started.md: 9cac9b48f6d779cd69d8dc4300bd19bd7725fe8c7d16f49ee334150b1d6ab2c5
-  docs/how-to/index.md: 8c44977b6c11f6fc54e8672205307091faad355b1190f25851da1041e544d074
-  docs/index.md: 559afa033df9d26928733a342ed2d6a9b3cd17fb7403ee0aa427684657f9b092
-  docs/reference/cli/index.md: 585f002f5880cd59c3e0c288c1e6270c8a18f64b5c156e735433999ffd7d5b2a
-  docs/reference/config/index.md: ffe949851fe69297c8e8ec774ed8c1e6b15236cf01ce38e9c3666aee90d34ae7
-  docs/reference/index.md: 154c3c04dc21141048c0d01f693bc419ad2a969b03012f85cb24d53c655fb96b
-  docs/tutorials/index.md: 8cd0fbd5ff19c692961fc1f5f0425c40bc1a87a740b8638e08a9e4ba1edf44fa
-  go.mod: 3d0c8c693089a9bd8fab151d3e693607b8485fedb0d79fa46432ff02bb9c7ff2
-  justfile: 6886294c05073799f9efd2ff6f3d4e24e35c0eced7677977d8036f06d6c72d3c
+  CHANGELOG.md: de743a34f624af84b57c5db3f8ad74f4ef317c36aaa0853352bfa7cd7bef118a
+  README.md: af1fab847c4f1d5991d9b7c3d809bfa6f80580af9d30528a21d5dc26df4e0f83
+  docs/explanation/components/index.md: 525882cd1314ff693b3ab92db1c0a98767c7dff9ad45626cff517f550a94fbfc
+  docs/explanation/concepts/index.md: 30b47f2f8c5f7b7339723fbce3fe1d4b40e65ef9a7c3d30735bd5216f31ff121
+  docs/explanation/index.md: be0eb95193dd025a0eede9a87675cd9bb7f70d93b220e395ddf4bf76d4b2df19
+  docs/how-to/index.md: 41f02a27e5c69eea70d10086610aee2a91d9d5f8ab5d54fdcf2eef6ae321854d
+  docs/index.md: d2833b621c0a9302036b9c52a8bfd5020b8b97f03b69c24b6a61d4ab48d36e90
+  docs/reference/cli/index.md: a437fe7155a3b212ce1242315be00f318bd27f8d34b49f0417a8dd815a4ba810
+  docs/reference/config/index.md: ca9277bce465eb9c7b362ce5d6eb694c8c3a4eec1177d68aa4f14bbb32b24656
+  docs/reference/index.md: 887162811f8500fb7b48e9ccc24e489a2dad83ec3905924113bc97a5e44b51b3
+  docs/tutorials/index.md: 6604be2517c925e4e997d9145bc134a2bd05661cdb08e0f72c38433f6c25f427
+  go.mod: a906aa6ddae8063563df250366c8274dc01dfc6982ce8cd5f682ff7e7a19a813
+  justfile: 0086e91304b5cf6b41dfe19b2e10663e28d67d56aa6d3c21ca489f77ff6beadd
   pkg/cmd/root/assets/init/config.yaml: 93df4d1e86bfa4be31b5761ca0adf65adc8ea399686a60a3a776305478b64c15
-  renovate.json5: ee382029c06673485816d302f4627e8e02b9ecb97b781c0a149e9ac17f6f3cd4
-  zensical.toml: 218748b58234af73c4a0b8feab5555da0260facb1782ee247e8722c0e01ef70a
+  renovate.json5: a23407c44075c497db8434b7f1fdb60b7b107eda75e0d109738306122325d8c5
+  zensical.toml: 0d404f0ed26e48fa98ebe9335be8636e1334f2a26912a8f46afa353567536910
 commands:
   - name: decrypt
     description: Decrypt an OpenPGP message addressed to a KMS-backed certificate
@@ -89,7 +88,7 @@ commands:
     description: Assemble and emit an OpenPGP certificate backed by key-service keys
     long_description: Assemble and emit an OpenPGP certificate backed by key-service keys
     hashes:
-      cmd.go: 62a7d4b39383d3d619431c0430be4823782f9eec57b67d9a15783b20ec6d367e
+      cmd.go: 5b0be342a564d10be3510068258e6f741dd1384ae046910d4363e611351c16b3
     protected: true
     flags:
       - name: user-id
@@ -110,6 +109,12 @@ commands:
       - name: armor
         type: bool
         description: Emit ASCII armour instead of binary
+      - name: signed-at
+        type: string
+        description: Signature time as RFC 3339; defaults to now, and is logged so it can be supplied again
+      - name: reproducible
+        type: bool
+        description: Emit a byte-identical certificate across runs; requires --signed-at and disables the random salt
       - name: output
         type: string
         description: Write the certificate here instead of stdout

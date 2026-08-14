@@ -15,6 +15,8 @@ type CertificateOptions struct {
 	Backend        string
 	Created        string
 	Armor          bool
+	SignedAt       string
+	Reproducible   bool
 	Output         string
 	FollowSymlinks bool
 }
@@ -41,6 +43,8 @@ func NewCmdCertificate(props *props.Props) *setup.Command {
 	cmd.Flags().StringVar(&opts.Backend, "backend", "", "Key service backend to use")
 	cmd.Flags().StringVar(&opts.Created, "created", "", "Key creation time as RFC 3339; must not change between runs")
 	cmd.Flags().BoolVar(&opts.Armor, "armor", false, "Emit ASCII armour instead of binary")
+	cmd.Flags().StringVar(&opts.SignedAt, "signed-at", "", "Signature time as RFC 3339; defaults to now, and is logged so it can be supplied again")
+	cmd.Flags().BoolVar(&opts.Reproducible, "reproducible", false, "Emit a byte-identical certificate across runs; requires --signed-at and disables the random salt")
 	cmd.Flags().StringVar(&opts.Output, "output", "", "Write the certificate here instead of stdout")
 	cmd.Flags().BoolVar(&opts.FollowSymlinks, "follow-symlinks", false, "Write through a symbolic link named by --output instead of refusing it")
 

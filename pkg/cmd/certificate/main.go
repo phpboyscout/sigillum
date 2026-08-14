@@ -2,6 +2,7 @@ package certificate
 
 import (
 	"context"
+	"crypto"
 	"crypto/elliptic"
 	"errors"
 	"fmt"
@@ -29,6 +30,9 @@ var (
 	// ErrUnsupportedCurve reports a key on a curve OpenPGP algorithm 18 does
 	// not admit.
 	ErrUnsupportedCurve = errors.New("unsupported curve")
+
+	// ErrReproducibleNeedsTime means --reproducible was set without --signed-at.
+	ErrReproducibleNeedsTime = errors.New("--reproducible requires --signed-at")
 )
 
 // ErrNoPublicKey means the chosen backend cannot expose the encryption key's
@@ -81,11 +85,7 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 
 	p.GetLogger().Debug("assembling", "backend", service.Name(), "created", created)
 
-	der, err := certificate.Certificate{
-		UserID:  opts.UserId,
-		Created: created,
-		Subkey:  subkey,
-	}.Assemble(signer)
+	der, err := assemble(opts, created, subkey, signer, p.GetLogger())
 	if err != nil {
 		return err
 	}
@@ -117,6 +117,74 @@ func RunCertificate(ctx context.Context, p *props.Props, opts *CertificateOption
 	out.Report(p.GetLogger(), "certificate written")
 
 	return nil
+}
+
+// assemble builds the certificate, applying the reproducibility options the
+// operator asked for.
+func assemble(
+	opts *CertificateOptions,
+	created time.Time,
+	subkey certificate.ECDHPublicKey,
+	signer crypto.Signer,
+	log interface {
+		Info(msg string, args ...any)
+	},
+) ([]byte, error) {
+	assembleOpts, err := reproducibilityOptions(opts, log)
+	if err != nil {
+		return nil, err
+	}
+
+	return certificate.Certificate{
+		UserID:  opts.UserId,
+		Created: created,
+		Subkey:  subkey,
+	}.Assemble(signer, assembleOpts...)
+}
+
+// reproducibilityOptions turns --signed-at and --reproducible into the assembly
+// options that make output deterministic, or leaves assembly stamping the
+// current time.
+//
+// This is where the certificate command makes good on what its docs promise.
+// Assemble was called with no options, so both signatures were stamped with the
+// clock and carried a random salt — every run produced different bytes, while
+// --created's help said it "must not change between runs" and creationTime's
+// error called that the thing "that makes a certificate reproducible" (#19).
+// --created fixes the certificate's IDENTITY, the fingerprint; it does not fix
+// the bytes, and never could while the signature time and salt varied.
+//
+// --signed-at pins the signature time. --reproducible additionally drops the
+// salt, and REQUIRES --signed-at rather than defaulting the signature time to
+// now: defaulting it would reintroduce the rotation ambiguity WithSignatureTime
+// exists to avoid — two assemblies at the same instant produce bindings a reader
+// cannot order — so the operator states the instant explicitly. The chosen time
+// is logged so a later reproduction can supply the same one.
+func reproducibilityOptions(opts *CertificateOptions, log interface {
+	Info(msg string, args ...any)
+},
+) ([]certificate.AssembleOption, error) {
+	if opts.Reproducible && opts.SignedAt == "" {
+		return nil, ErrReproducibleNeedsTime
+	}
+
+	var out []certificate.AssembleOption
+
+	if opts.SignedAt != "" {
+		signedAt, err := time.Parse(time.RFC3339, opts.SignedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parsing --signed-at: %w", err)
+		}
+
+		out = append(out, certificate.WithSignatureTime(signedAt.UTC()))
+		log.Info("signing at the given time", "signed-at", signedAt.UTC().Format(time.RFC3339))
+	}
+
+	if opts.Reproducible {
+		out = append(out, certificate.WithoutSignatureSalt())
+	}
+
+	return out, nil
 }
 
 // checkFlags refuses the arguments that cannot produce a certificate, and
