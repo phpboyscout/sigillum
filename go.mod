@@ -13,7 +13,7 @@ tool (
 require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
-	gitlab.com/phpboyscout/go-tool-base v0.37.1
+	gitlab.com/phpboyscout/go-tool-base v0.38.0
 	gitlab.com/phpboyscout/go/credentials v0.3.1
 	gitlab.com/phpboyscout/go/errorhandling v0.3.0
 	gitlab.com/phpboyscout/go/signing-cli v0.5.0
