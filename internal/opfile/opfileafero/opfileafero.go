@@ -15,8 +15,10 @@ package opfileafero
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"syscall"
 
 	"github.com/spf13/afero"
 
@@ -61,6 +63,35 @@ func (w wrapper) Stat(name string) (fs.FileInfo, error)     { return w.fsys.Stat
 func (w wrapper) Chmod(name string, mode fs.FileMode) error { return w.fsys.Chmod(name, mode) }
 func (w wrapper) Rename(oldpath, newpath string) error      { return w.fsys.Rename(oldpath, newpath) }
 func (w wrapper) Remove(name string) error                  { return w.fsys.Remove(name) }
+
+// SyncDir opens the directory through the wrapped filesystem and flushes it.
+//
+// afero.File carries Sync, so an OS-backed afero.Fs performs the real directory
+// fsync that makes a rename durable, while an in-memory one flushes nothing and
+// returns nil — durable trivially, with no writeback to wait for.
+//
+// A filesystem that does not support flushing a directory answers EINVAL or
+// ENOTSUP, which is the capability being absent and is reported as
+// [opfile.ErrCapabilityUnsupported] — the same translation osFS.SyncDir makes,
+// so the production wrapper keeps opfile's promise that an unflushable directory
+// is not a failed write. Any other error is a real failure to flush and is
+// surfaced unchanged.
+func (w wrapper) SyncDir(name string) error {
+	d, err := w.fsys.Open(name)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+
+	switch err := d.Sync(); {
+	case err == nil:
+		return nil
+	case errors.Is(err, syscall.EINVAL), errors.Is(err, syscall.ENOTSUP):
+		return fmt.Errorf("%w: directories cannot be flushed on this filesystem", opfile.ErrCapabilityUnsupported)
+	default:
+		return err
+	}
+}
 
 // Lstat reports on a path without following a link, or refuses per call.
 //

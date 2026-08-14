@@ -3,6 +3,7 @@ package opfileafero_test
 import (
 	"errors"
 	"io/fs"
+	"syscall"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -92,6 +93,65 @@ func TestReadlinkRefusesWhereItCannotResolve(t *testing.T) {
 	if _, err := wrapped.Readlink("/whatever"); !errors.Is(err, opfile.ErrCapabilityUnsupported) {
 		t.Fatalf("Readlink on a link-blind filesystem: err = %v, want ErrCapabilityUnsupported", err)
 	}
+}
+
+// TestSyncDirRefusesWhereTheDirectoryCannotBeFlushed covers the capability
+// translation the production wrapper owes, matching its twin osFS.SyncDir.
+//
+// A directory fsync returns EINVAL or ENOTSUP on a filesystem that does not
+// support it — vfat, exfat, some network mounts, the very USB case setMode goes
+// out of its way to keep working. That is the capability being absent and must
+// be reported as [opfile.ErrCapabilityUnsupported], so Writer.Commit treats a
+// destination it has already renamed into place as written rather than failing
+// on it. Returned raw, the EINVAL would fail a commit whose file is on disk.
+func TestSyncDirRefusesWhereTheDirectoryCannotBeFlushed(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	if err := afero.WriteFile(mem, "/reports/report.txt", []byte("x"), 0o600); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+
+	wrapped := opfileafero.Wrap(einvalSyncFS{mem})
+
+	if err := wrapped.SyncDir("/reports"); !errors.Is(err, opfile.ErrCapabilityUnsupported) {
+		t.Fatalf("SyncDir on a directory-fsync-refusing filesystem: err = %v, want ErrCapabilityUnsupported", err)
+	}
+}
+
+// TestSyncDirIsGenuineWhereTheDirectoryCanBeFlushed is the other half: a
+// filesystem that flushes a directory does so, and the capability is honoured
+// rather than refused.
+func TestSyncDirIsGenuineWhereTheDirectoryCanBeFlushed(t *testing.T) {
+	t.Parallel()
+
+	mem := afero.NewMemMapFs()
+	if err := afero.WriteFile(mem, "/reports/report.txt", []byte("x"), 0o600); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+
+	if err := opfileafero.Wrap(mem).SyncDir("/reports"); err != nil {
+		t.Fatalf("SyncDir on a flushable filesystem was refused: %v", err)
+	}
+}
+
+// einvalSyncFS is an afero filesystem whose files refuse to sync with EINVAL,
+// modelling a directory fsync on a filesystem that has no such operation.
+type einvalSyncFS struct{ afero.Fs }
+
+func (f einvalSyncFS) Open(name string) (afero.File, error) {
+	inner, err := f.Fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return einvalSyncFile{inner}, nil
+}
+
+type einvalSyncFile struct{ afero.File }
+
+func (einvalSyncFile) Sync() error {
+	return &fs.PathError{Op: "fsync", Path: "directory", Err: syscall.EINVAL}
 }
 
 // TestFileChmodRefusesWhereTheHandleCannot covers finding #16: the mode-through-

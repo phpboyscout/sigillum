@@ -359,6 +359,15 @@ func (w *Writer) Commit() error {
 		return fmt.Errorf("replacing %s: %w", w.final, err)
 	}
 
+	// The rename has landed but is not yet durable: it lives in the directory's
+	// in-memory state until the directory itself is flushed. No discard here —
+	// the file is already in place, so rolling back would delete a correctly
+	// written destination — and a filesystem that cannot flush a directory says
+	// so with ErrCapabilityUnsupported, which is not a failure to report.
+	if err := w.fsys.SyncDir(filepath.Dir(w.final)); err != nil && !errors.Is(err, ErrCapabilityUnsupported) {
+		return fmt.Errorf("flushing the directory of %s: %w", w.final, err)
+	}
+
 	w.done = true
 
 	return nil

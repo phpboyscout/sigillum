@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // FS is the filesystem surface this package needs, and the whole of it.
@@ -86,6 +87,18 @@ type FS interface {
 	// half-written file.
 	Rename(oldpath, newpath string) error
 
+	// SyncDir flushes a directory's own entries to disk, or returns
+	// [ErrCapabilityUnsupported] where the filesystem cannot.
+	//
+	// Rename is atomic with respect to a directory entry but not durable: after
+	// the temporary file's data is flushed and renamed over the destination, the
+	// rename itself lives only in the directory's in-memory state until the
+	// directory is flushed. A crash in that window can leave the destination
+	// pointing at the old name, or at nothing — the very partial-report outcome
+	// [File.Sync] exists to prevent, one level up. An in-memory filesystem has
+	// no writeback and satisfies this trivially and truthfully.
+	SyncDir(name string) error
+
 	// Remove deletes a file, used to discard staged content never committed.
 	Remove(name string) error
 }
@@ -125,7 +138,7 @@ type File interface {
 var ErrModeUnverified = errors.New("staged file mode could not be confirmed no broader than requested")
 
 // ErrCapabilityUnsupported is returned by a per-call capability — Lstat,
-// Readlink, Chmod — that this filesystem or file cannot honour.
+// Readlink, Chmod, SyncDir — that this filesystem or file cannot honour.
 //
 // The one signal that replaced four optional interfaces. A caller matches it
 // with errors.Is and decides what the absence means for its own operation,
@@ -153,9 +166,34 @@ func (osFS) CreateExcl(name string, perm fs.FileMode) (File, error) {
 	return os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, perm)
 }
 
-func (osFS) Stat(name string) (fs.FileInfo, error)     { return os.Stat(name) }
-func (osFS) Rename(oldpath, newpath string) error      { return os.Rename(oldpath, newpath) }
-func (osFS) Remove(name string) error                  { return os.Remove(name) }
+func (osFS) Stat(name string) (fs.FileInfo, error) { return os.Stat(name) }
+func (osFS) Rename(oldpath, newpath string) error  { return os.Rename(oldpath, newpath) }
+func (osFS) Remove(name string) error              { return os.Remove(name) }
+
+// SyncDir opens the directory and flushes it. On a POSIX filesystem this is the
+// fsync that makes a rename durable; where a directory cannot be flushed the
+// caller reads [ErrCapabilityUnsupported] and decides what the absence of a
+// durability guarantee means for its write.
+//
+// A filesystem that does not support flushing a directory answers EINVAL or
+// ENOTSUP, which is the capability being absent and is reported as such; any
+// other error is a real failure to flush and is surfaced unchanged.
+func (osFS) SyncDir(name string) error {
+	d, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+
+	switch err := d.Sync(); {
+	case err == nil:
+		return nil
+	case errors.Is(err, syscall.EINVAL), errors.Is(err, syscall.ENOTSUP):
+		return fmt.Errorf("%w: directories cannot be flushed on this filesystem", ErrCapabilityUnsupported)
+	default:
+		return err
+	}
+}
 func (osFS) Lstat(name string) (fs.FileInfo, error)    { return os.Lstat(name) }
 func (osFS) Chmod(name string, mode fs.FileMode) error { return os.Chmod(name, mode) }
 func (osFS) Readlink(name string) (string, error)      { return os.Readlink(name) }

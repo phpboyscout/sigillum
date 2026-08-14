@@ -151,6 +151,42 @@ func TestCommitSyncsBeforeRenaming(t *testing.T) {
 	}
 }
 
+// TestCommitSyncsTheDirectoryAfterRenaming covers the second half of
+// durability. Flushing the staged file's data makes the CONTENT durable;
+// flushing the containing directory makes the RENAME durable. Without the
+// second flush a crash after Commit can leave the directory entry pointing at
+// the old name — a complete file that is not where it was written — which is the
+// same partial-report outcome the data sync prevents, one level up.
+//
+// The directory flush must come after the rename: it is the rename it makes
+// durable.
+func TestCommitSyncsTheDirectoryAfterRenaming(t *testing.T) {
+	t.Parallel()
+
+	fsys := &syncSpyFS{FS: opfileafero.Wrap(afero.NewMemMapFs())}
+
+	w, err := opfile.Create(fsys, "/reports/report.txt", 0o600)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if _, err := w.Write([]byte("a complete report")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	if err := w.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	if !fsys.dirSynced {
+		t.Fatal("Commit renamed without flushing the directory, so the rename can be lost across a crash")
+	}
+
+	if !fsys.dirSyncedAfterRename {
+		t.Error("the directory was flushed before the rename, which cannot make the rename durable")
+	}
+}
+
 // TestCommitReportsAFailedSync is the other half: a sync that fails means the
 // data is not on disk, so the rename must not happen and the destination must
 // be left exactly as it was.
@@ -278,10 +314,12 @@ func assertNoTemporaries(t *testing.T, fsys afero.Fs, dir, keep string) {
 type syncSpyFS struct {
 	opfile.FS
 
-	fail               error
-	synced             bool
-	renamed            bool
-	syncedBeforeRename bool
+	fail                 error
+	synced               bool
+	renamed              bool
+	syncedBeforeRename   bool
+	dirSynced            bool
+	dirSyncedAfterRename bool
 }
 
 func (f *syncSpyFS) CreateExcl(name string, perm os.FileMode) (opfile.File, error) {
@@ -297,6 +335,13 @@ func (f *syncSpyFS) Rename(oldpath, newpath string) error {
 	f.renamed = true
 
 	return f.FS.Rename(oldpath, newpath)
+}
+
+func (f *syncSpyFS) SyncDir(name string) error {
+	f.dirSynced = true
+	f.dirSyncedAfterRename = f.renamed
+
+	return f.FS.SyncDir(name)
 }
 
 type syncSpyFile struct {
@@ -481,6 +526,7 @@ func (linkFS) Open(string) (fs.File, error)                        { return nil,
 func (linkFS) CreateExcl(string, fs.FileMode) (opfile.File, error) { return nil, fs.ErrPermission }
 func (linkFS) Stat(string) (fs.FileInfo, error)                    { return nil, fs.ErrNotExist }
 func (linkFS) Rename(string, string) error                         { return fs.ErrPermission }
+func (linkFS) SyncDir(string) error                                { return opfile.ErrCapabilityUnsupported }
 func (linkFS) Remove(string) error                                 { return nil }
 func (linkFS) Chmod(string, fs.FileMode) error                     { return opfile.ErrCapabilityUnsupported }
 
