@@ -1,0 +1,34 @@
+# gitleaks configuration.
+#
+# Extends the stock rule set rather than replacing it, so every default rule
+# still applies; this file only carves out the test fixtures a scanner reads as
+# secrets when they protect nothing.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "test fixtures and retired history, none of which protect anything"
+
+# Matched against the secret, not a path, so it survives a rebase and cannot be
+# defeated by moving the fixture.
+regexes = [
+  # A KMS alias names a key; it is what the operator passes as --key. In the
+  # command tests it appears as Key: "alias/encrypt", which the generic-api-key
+  # rule reads as a credential because of the field name. An alias is public and
+  # selects a key rather than authorising anything — nothing here is secret. The
+  # pattern is anchored, so only a bare alias name is exempt, never a real key
+  # that happens to contain the word.
+  '''^alias/[a-z]+$''',
+]
+
+# Retired throwaway fixtures that live only in this repository's HISTORY — the
+# known-answer vectors, a throwaway PGP key and a fake encrypted PEM — from
+# before the OpenPGP packages split out to go/encryption. None of the three
+# files exists in the tree any longer, but a scanner reads history and the
+# finding follows the path. Allowlisted by these retired test-only paths: a real
+# key would still be caught at any live path, and these paths hold nothing now.
+paths = [
+  '''testdata/vectors\.json''',
+  '''testdata/testkey-secret\.asc''',
+  '''local/local_test\.go''',
+]
