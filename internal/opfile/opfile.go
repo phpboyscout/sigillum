@@ -172,9 +172,6 @@ func Create(fsys FS, path string, mode fs.FileMode, opts ...Option) (*Writer, er
 	}
 
 	dir, name := filepath.Split(final)
-	if dir == "" {
-		dir = "."
-	}
 
 	// Created at its final mode rather than widened afterwards: a certificate
 	// is public and a decrypted report is not, and there must be no window in
