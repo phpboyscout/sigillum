@@ -298,6 +298,13 @@ const maxMessage = 128 << 20
 
 // readBounded reads at most maxMessage octets, naming what it was reading so
 // the error says which limit was hit.
+// exceeds reports whether n is past limit — strictly past, so reaching the
+// limit exactly is allowed and only one octet more is refused. Factored out of
+// the two size gates (the whole message, and the expanded plaintext) so that
+// boundary is pinned by a unit test rather than by a fixture the size of the
+// limit itself.
+func exceeds(n, limit int64) bool { return n > limit }
+
 func readBounded(r io.Reader, what string) ([]byte, error) {
 	// One octet beyond the limit, so reaching it exactly is distinguishable
 	// from exceeding it.
@@ -306,7 +313,7 @@ func readBounded(r io.Reader, what string) ([]byte, error) {
 		return nil, fmt.Errorf("reading %s: %w", what, err)
 	}
 
-	if len(raw) > maxMessage {
+	if exceeds(int64(len(raw)), maxMessage) {
 		return nil, fmt.Errorf("%w: %s exceeds %d octets", ErrTooLarge, what, maxMessage)
 	}
 
@@ -598,7 +605,7 @@ func copyBounded(out io.Writer, body io.Reader) error {
 		return fmt.Errorf("writing plaintext: %w", err)
 	}
 
-	if written > maxPlaintext {
+	if exceeds(written, maxPlaintext) {
 		return fmt.Errorf("%w: report expands beyond %d octets", ErrTooLarge, maxPlaintext)
 	}
 

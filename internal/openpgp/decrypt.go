@@ -335,7 +335,7 @@ func recoverSessionKeys(
 	// the named packets yielded no key: a named packet can unwrap to a decoy that
 	// does not open the body, so whether a wildcard is needed is not known until
 	// the body is tried, and that happens after this returns.
-	if run.found.hidden > 0 {
+	if run.found.hasHidden() {
 		run.wildcards(raw)
 	}
 
@@ -729,6 +729,15 @@ type candidateSet struct {
 	// for, only that it is damaged.
 	malformed int
 }
+
+// hasHidden reports whether the message named a wildcard recipient, so the
+// second, wildcard-only pass runs only when there is one to find.
+//
+// A method rather than an inline count, so the decision — a POSITIVE count, not
+// zero-or-more — is pinned by a unit test. Left inline, mutating it to accept a
+// zero count is invisible: the extra pass it would trigger tries no packet and
+// changes nothing, so nothing observed the difference.
+func (c *candidateSet) hasHidden() bool { return c.hidden > 0 }
 
 // recordOther notes a packet addressed to somebody else, for the error that
 // tells an operator which certificate they should have used.
