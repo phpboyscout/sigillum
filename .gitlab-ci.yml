@@ -102,7 +102,7 @@ workflow:
 # committed.
 go-fuzz:
   stage: test
-  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.2
+  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.4
   script:
     - |
       status=0
@@ -149,7 +149,7 @@ go-fuzz:
 # is a coverage signal, reported by the coverage job already.
 go-mutation:
   stage: test
-  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.2
+  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.4
   script:
     - |
       status=0
@@ -169,7 +169,7 @@ go-mutation:
 
 go-cross-arch:
   stage: test
-  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.2
+  image: registry.gitlab.com/phpboyscout/images/dev-tools:v0.3.4
   script:
     - GOARCH=386 GOOS=linux go test ./internal/... ./pkg/...
     - GOARCH=arm GOOS=linux go vet ./...
