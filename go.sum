@@ -842,8 +842,8 @@ gitlab.com/phpboyscout/go/encryption v0.2.0 h1:DyZDspNIECzG9a+0a3MVzX538z0v4JHxr
 gitlab.com/phpboyscout/go/encryption v0.2.0/go.mod h1:h6EZI/Sfk0+cwXd6Z7aTVdxz4c9A37a924xVMGtbn0o=
 gitlab.com/phpboyscout/go/encryption-aws-kms v0.2.0 h1:RmkuBgns7VtQ0qPOkd+JD3HtGhlPjPa5r9SNkC0zMUo=
 gitlab.com/phpboyscout/go/encryption-aws-kms v0.2.0/go.mod h1:i7guf/yC9nUZGXMCTup5tGlf/5LIwjDOwEgFLzrFnYI=
-gitlab.com/phpboyscout/go/errorhandling v0.3.0 h1:mRpbLiQFqj+1P9ocvQTgTMDX0N3cUXl3kuIVVulgWW8=
-gitlab.com/phpboyscout/go/errorhandling v0.3.0/go.mod h1:czdB/NQMmcg9Yu3Na/1AC/UfqQkc4ZEjCXgxkzkt2KE=
+gitlab.com/phpboyscout/go/errorhandling v0.4.0 h1:JI/72hUKUH5QChymMCuASkrZqzktNbyQWS5W/fCBP6s=
+gitlab.com/phpboyscout/go/errorhandling v0.4.0/go.mod h1:VbNyrWBoAMX+VnTKGkKKxRNTalYOM2JOgSQEszG2i18=
 gitlab.com/phpboyscout/go/errors v0.2.0 h1:m/I+1oI2Qr77JBAVUvIsj7bNnExh+/yrdfHLmVg4nUg=
 gitlab.com/phpboyscout/go/errors v0.2.0/go.mod h1:PXvnIO9P3Vanx1n0KYGr5s0rD0eKrrKBdbNfWUQWDjw=
 gitlab.com/phpboyscout/go/forge v0.11.0 h1:/YUUQ/co7z0eTNf+AzX2XmnGBeAr8BiTJnOhZqIopTo=
