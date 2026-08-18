@@ -13,11 +13,11 @@ tool (
 require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
-	gitlab.com/phpboyscout/go-tool-base v0.38.0
+	gitlab.com/phpboyscout/go-tool-base v0.39.0
 	gitlab.com/phpboyscout/go/credentials v0.3.1
 	gitlab.com/phpboyscout/go/encryption v0.2.0
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.0
-	gitlab.com/phpboyscout/go/errorhandling v0.4.0
+	gitlab.com/phpboyscout/go/errorhandling v0.5.0
 	gitlab.com/phpboyscout/go/signing-cli v0.5.0
 )
 
@@ -53,7 +53,7 @@ require (
 	github.com/ryancurrah/gomodguard/v2 v2.1.3 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.0 // indirect
 	gitlab.com/phpboyscout/go/clientlifecycle v0.1.0 // indirect
-	gitlab.com/phpboyscout/go/errors v0.2.0 // indirect
+	gitlab.com/phpboyscout/go/errors v0.3.0 // indirect
 	go.augendre.info/arangolint v0.4.0 // indirect
 	go.augendre.info/fatcontext v0.9.0 // indirect
 )
@@ -65,7 +65,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.8 // indirect
 	charm.land/glamour/v2 v2.0.1 // indirect
 	charm.land/huh/v2 v2.0.3 // indirect
-	charm.land/lipgloss/v2 v2.0.5 // indirect
+	charm.land/lipgloss/v2 v2.0.6 // indirect
 	charm.land/log/v2 v2.0.0 // indirect
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.22.0 // indirect
@@ -90,7 +90,7 @@ require (
 	github.com/alexkohler/prealloc v1.1.0 // indirect
 	github.com/alingse/asasalint v0.0.11 // indirect
 	github.com/alingse/nilnesserr v0.2.0 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.61.0 // indirect
+	github.com/anthropics/anthropic-sdk-go v1.62.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.43.6 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.37 // indirect
@@ -127,8 +127,8 @@ require (
 	github.com/charithe/durationcheck v0.0.11 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/keygen v0.5.4 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260720091822-7cc6674724ac // indirect
-	github.com/charmbracelet/x/ansi v0.11.7 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260811164956-006e29f97886 // indirect
+	github.com/charmbracelet/x/ansi v0.11.8 // indirect
 	github.com/charmbracelet/x/exp/ordered v0.1.0 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20260727090823-41c9e6be3365 // indirect
 	github.com/charmbracelet/x/exp/strings v0.1.0 // indirect
@@ -148,7 +148,6 @@ require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dave/dst v0.27.4 // indirect
 	github.com/dave/jennifer v1.7.1 // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
@@ -245,7 +244,7 @@ require (
 	github.com/ldez/usetesting v0.5.0 // indirect
 	github.com/leodido/go-conventionalcommits v0.13.0 // indirect
 	github.com/leonklingele/grouper v1.1.2 // indirect
-	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
+	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/macabu/inamedparam v0.2.0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/maratori/testableexamples v1.0.1 // indirect
@@ -269,7 +268,7 @@ require (
 	github.com/nishanths/predeclared v0.2.2 // indirect
 	github.com/njayp/ophis v1.1.4 // indirect
 	github.com/nunnatsa/ginkgolinter v0.23.0 // indirect
-	github.com/openai/openai-go/v3 v3.49.0 // indirect
+	github.com/openai/openai-go/v3 v3.50.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
@@ -313,14 +312,13 @@ require (
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.3.1 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/stretchr/testify v1.12.0 // indirect
 	github.com/subosito/gotenv v1.4.1 // indirect
 	github.com/tetafro/godot v1.5.6 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/tiktoken-go/tokenizer v0.8.1 // indirect
 	github.com/timakin/bodyclose v0.0.0-20260129054331-73d1f95b84b4 // indirect
 	github.com/timonwong/loggercheck v0.11.0 // indirect
 	github.com/tomarrell/wrapcheck/v2 v2.12.0 // indirect
@@ -349,11 +347,11 @@ require (
 	gitlab.com/phpboyscout/go/authn v0.2.1 // indirect
 	gitlab.com/phpboyscout/go/browser v0.2.1 // indirect
 	gitlab.com/phpboyscout/go/changelog v0.2.1 // indirect
-	gitlab.com/phpboyscout/go/chat v0.9.2 // indirect
-	gitlab.com/phpboyscout/go/chat-anthropic v0.8.2 // indirect
-	gitlab.com/phpboyscout/go/chat-gemini v0.8.2 // indirect
-	gitlab.com/phpboyscout/go/chat-openai v0.8.2 // indirect
-	gitlab.com/phpboyscout/go/config v0.16.0 // indirect
+	gitlab.com/phpboyscout/go/chat v0.10.1 // indirect
+	gitlab.com/phpboyscout/go/chat-anthropic v0.9.1 // indirect
+	gitlab.com/phpboyscout/go/chat-gemini v0.9.1 // indirect
+	gitlab.com/phpboyscout/go/chat-openai v0.9.1 // indirect
+	gitlab.com/phpboyscout/go/config v0.17.0 // indirect
 	gitlab.com/phpboyscout/go/config-afero v0.1.8 // indirect
 	gitlab.com/phpboyscout/go/controls v0.3.1 // indirect
 	gitlab.com/phpboyscout/go/forge v0.11.0 // indirect
@@ -408,7 +406,7 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/api v0.290.0 // indirect
-	google.golang.org/genai v1.66.0 // indirect
+	google.golang.org/genai v1.67.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/grpc v1.83.0 // indirect
