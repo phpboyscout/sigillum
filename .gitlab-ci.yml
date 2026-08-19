@@ -31,8 +31,8 @@ include:
   # Quality gates — MR-only by default. Toolchain images are left at the
   # component defaults; let Renovate/cicd carry the toolchain rather than
   # pinning point-in-time overrides here.
-  - component: gitlab.com/phpboyscout/cicd/go-lint@v0.37.0
-  - component: gitlab.com/phpboyscout/cicd/go-test@v0.37.0
+  - component: gitlab.com/phpboyscout/cicd/go-lint@v0.38.0
+  - component: gitlab.com/phpboyscout/cicd/go-test@v0.38.0
     inputs:
       # The Godog suite in test/e2e drives the BUILT binary — the only
       # place sigillum's own risk lives, since it is a thin shell over
@@ -40,11 +40,11 @@ include:
       # value lands on.
       enable_e2e: true
       e2e_timeout: "10m"
-  - component: gitlab.com/phpboyscout/cicd/go-security@v0.37.0
+  - component: gitlab.com/phpboyscout/cicd/go-security@v0.38.0
 
   # Release — tag-gated goreleaser + default-branch zensical-pages deploy.
-  - component: gitlab.com/phpboyscout/cicd/goreleaser@v0.37.0
-  - component: gitlab.com/phpboyscout/cicd/zensical-pages@v0.37.0
+  - component: gitlab.com/phpboyscout/cicd/goreleaser@v0.38.0
+  - component: gitlab.com/phpboyscout/cicd/zensical-pages@v0.38.0
 
   # Release MR machinery — the phpboyscout wrapper, NOT apricote's component
   # directly. The wrapper leads its rules with a schedule-never guard (the
@@ -53,7 +53,7 @@ include:
   # releaser-pleaser:verify, which keeps the Release MR squashing on merge so
   # the tag cannot land on a commit that is not on the release branch.
   # See phpboyscout/cicd issue #7 and wiki spec 0061.
-  - component: gitlab.com/phpboyscout/cicd/releaser-pleaser@v0.37.0
+  - component: gitlab.com/phpboyscout/cicd/releaser-pleaser@v0.38.0
     inputs:
       token: $RELEASER_PLEASER_TOKEN
       branch: main
@@ -63,7 +63,7 @@ include:
   # major cuts only by default; the webhook comes from the
   # DISCORD_RELEASE_WEBHOOK group variable, which is protected and so
   # reaches this job because `v*` is a protected tag here.
-  - component: gitlab.com/phpboyscout/cicd/discord-release@v0.37.0
+  - component: gitlab.com/phpboyscout/cicd/discord-release@v0.38.0
     inputs:
       # Headline project: patch releases are news here too.
       announce_patches: true
