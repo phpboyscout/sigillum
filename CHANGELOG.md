@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.4.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.4.0)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.3.0...v0.4.0)
+
+### Features
+
+- **deps**: bump the signing stack to enable named backend instances ([1d9c415](https://gitlab.com/phpboyscout/sigillum/-/commit/1d9c415f0977a41c5b7dc80bb842485890cb5712))
+
+### Bug Fixes
+
+- **deps**: update go modules ([1e642b9](https://gitlab.com/phpboyscout/sigillum/-/commit/1e642b90a6f7be983bdce8c674a4d1b916fdc80b))
+- **deps**: update module gitlab.com/phpboyscout/go/errorhandling to v0.4.0 ([630d732](https://gitlab.com/phpboyscout/sigillum/-/commit/630d732ee9edd3effd5f62ee7708103787b5e06f))
+
 ## [v0.3.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.3.0)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.2.2...v0.3.0)
