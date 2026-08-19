@@ -18,7 +18,7 @@ require (
 	gitlab.com/phpboyscout/go/encryption v0.2.0
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.0
 	gitlab.com/phpboyscout/go/errorhandling v0.5.0
-	gitlab.com/phpboyscout/go/signing-cli v0.5.0
+	gitlab.com/phpboyscout/go/signing-cli v0.6.0
 )
 
 require (
@@ -101,7 +101,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.38 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.37 // indirect
-	github.com/aws/aws-sdk-go-v2/service/kms v1.55.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kms v1.55.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.5.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.33.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.6 // indirect
@@ -365,8 +365,8 @@ require (
 	gitlab.com/phpboyscout/go/redact v0.2.1 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.2.1 // indirect
 	gitlab.com/phpboyscout/go/repo v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/signing v0.6.2
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.5.0
+	gitlab.com/phpboyscout/go/signing v0.8.0
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.6.0
 	gitlab.com/phpboyscout/go/tls v0.2.1 // indirect
 	gitlab.com/phpboyscout/go/transit v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/transport v0.6.0 // indirect
