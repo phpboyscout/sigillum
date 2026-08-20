@@ -874,8 +874,8 @@ gitlab.com/phpboyscout/go/signing v0.8.0 h1:T3e4K7DsiBIBl2GdJopWlNcdrGim18CiVLcN
 gitlab.com/phpboyscout/go/signing v0.8.0/go.mod h1:vOJQNM3hsWRIuaOBM/qNWAnw6uoQ4gUDz5ydH44nON0=
 gitlab.com/phpboyscout/go/signing-aws-kms v0.6.0 h1:cu1W3gWVA1A+TPk5FLP+EFyxEI5lUsC4kDrrTDwQcBQ=
 gitlab.com/phpboyscout/go/signing-aws-kms v0.6.0/go.mod h1:snZKEkySgnD4mWMXz8rcmIxBndMYhwpKelf+FyUqFeg=
-gitlab.com/phpboyscout/go/signing-cli v0.6.0 h1:1S9HqDL9CGB7W0Nly1ICO+70KRrfSrxgpPCNr2wPRKY=
-gitlab.com/phpboyscout/go/signing-cli v0.6.0/go.mod h1:T/0X37OoY1hvPnxDUL9TEO3NtUJVctR3OT9u+hO8Z5A=
+gitlab.com/phpboyscout/go/signing-cli v0.6.1 h1:ML46R9Dx9j24+pIhfzGjyYuoozpnGniNT8U/Un3PVxM=
+gitlab.com/phpboyscout/go/signing-cli v0.6.1/go.mod h1:ZQ9O6iUX/sqoSCZ41ikoo+XLtVPWTtCofwsLPs39oJk=
 gitlab.com/phpboyscout/go/tls v0.2.1 h1:YaEVXYy650PMvi8bSXmGVB44wC3ERamk70T/k2nxxLQ=
 gitlab.com/phpboyscout/go/tls v0.2.1/go.mod h1:g3yjpOVOx2ObtiEZJQzP+dgBqSjB+lmlEZfmDWXgQp0=
 gitlab.com/phpboyscout/go/transit v0.2.2 h1:UXJD6j33USeY/CLmmJukJkmg9MzLA0p9GjpvC7Adfb8=
