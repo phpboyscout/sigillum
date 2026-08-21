@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.4.1](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.4.1)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.4.0...v0.4.1)
+
+### Bug Fixes
+
+- **deps**: update module gitlab.com/phpboyscout/go/signing-cli to v0.6.1 ([0d9a4bd](https://gitlab.com/phpboyscout/sigillum/-/commit/0d9a4bd1a331d80cab945125f25ff7a7a4a995eb))
+
 ## [v0.4.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.4.0)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.3.0...v0.4.0)
