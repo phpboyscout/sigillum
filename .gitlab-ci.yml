@@ -2,20 +2,20 @@
 #
 #   merge_request_event → lint, test, security        (the merge gate)
 #   tag v*.*.*          → goreleaser, pages docs       (the release fan-out)
-#   default branch      → releaser-pleaser, zensical-pages deploy
+#   default branch      → colophon (publish then propose), zensical-pages deploy
 #
 # Quality gates live exclusively at the MR level — pushing to the default
-# branch runs nothing except releaser-pleaser (which itself opens an MR that
+# branch runs nothing except colophon (which itself opens an MR that
 # gets the full gate), so by the time anything lands it has already been
 # vetted. Goreleaser and the zensical-pages deploy both fire from the tag
-# releaser-pleaser cuts when its Release MR merges, which means the docs site
+# colophon cuts when its Release MR merges, which means the docs site
 # always corresponds to a real tagged release.
 #
 # Project setting prerequisites (configure these on the GitLab project before
 # the pipeline can function):
 #   • RELEASER_PLEASER_TOKEN — a project access token with the Maintainer
 #     role and the api, read_repository, write_repository scopes, set as a
-#     CI/CD variable. releaser-pleaser uses it to open/update the Release MR
+#     CI/CD variable. colophon uses it to open/update the Release MR
 #     and cut the tag. The component does not support floating tags.
 #   • Merge method: fast-forward + squash (so the tested commit is what lands
 #     on the default branch).
@@ -47,15 +47,24 @@ include:
   - component: gitlab.com/phpboyscout/cicd/zensical-pages@v0.39.4
 
   # Release MR machinery — the phpboyscout wrapper, NOT apricote's component
-  # directly. The wrapper leads its rules with a schedule-never guard (the
-  # upstream component gates only on the branch name, so it also fires on
-  # scheduled pipelines running against the default branch), and it adds
-  # releaser-pleaser:verify, which keeps the Release MR squashing on merge so
-  # the tag cannot land on a commit that is not on the release branch.
-  # See phpboyscout/cicd issue #7 and wiki spec 0061.
-  - component: gitlab.com/phpboyscout/cicd/releaser-pleaser@v0.39.4
+  # colophon, the release orchestrator this estate owns. See cicd wiki spec
+  # 0077. Second project to swap, after colophon itself.
+  #
+  # publish runs BEFORE propose, and the component enforces it with `needs:`.
+  # After a Release MR merges the release commit is on main but the tag does
+  # not exist yet, and in that window colophon computes the same release again
+  # — so proposing first would re-open a Release MR for the version about to be
+  # tagged.
+  #
+  # No verify job and no forced squash. releaser-pleaser needed both because it
+  # falls back to the merge request's RECORDED HEAD when choosing the release
+  # commit, and GitLab's automatic rebase never updates that record. colophon
+  # resolves the commit against the target branch, so the class cannot arise.
+  #
+  # Checked before swapping: colophon and releaser-pleaser compute the SAME
+  # version for this repository (v0.4.1) from the same commits.
+  - component: gitlab.com/phpboyscout/cicd/colophon@v0.41.0
     inputs:
-      token: $RELEASER_PLEASER_TOKEN
       branch: main
       stage: release
 

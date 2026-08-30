@@ -53,8 +53,14 @@ release:
   use_existing_draft: true
   replace_existing_artifacts: true
   make_latest: true
-  # releaser-pleaser creates the Release (with its changelog) when the
-  # Release PR/MR is merged; this job only attaches the build artefacts.
+  # colophon creates the Release (with its changelog) when the Release MR
+  # merges; this job only attaches the build artefacts.
+  #
+  # colophon must tag BEFORE creating the release — forge.CreateRelease refuses
+  # an absent tag, so that a create cannot become a tagging operation with
+  # whichever credential is to hand. Pushing the tag fires this pipeline, so in
+  # principle goreleaser could look for a release not yet created; runner
+  # pickup latency closes it, and releaser-pleaser had the same gap.
   mode: keep-existing
 
 checksum:
@@ -64,7 +70,7 @@ snapshot:
   version_template: "{{ incpatch .Version }}-dev{{.ShortCommit}}"
 
 changelog:
-  # releaser-pleaser owns the changelog and Release notes.
+  # colophon owns the changelog and Release notes.
   disable: true
 
 gitlab_urls:
