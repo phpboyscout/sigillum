@@ -63,7 +63,7 @@ include:
   #
   # Checked before swapping: colophon and releaser-pleaser compute the SAME
   # version for this repository (v0.4.1) from the same commits.
-  - component: gitlab.com/phpboyscout/cicd/colophon@v0.41.0
+  - component: gitlab.com/phpboyscout/cicd/colophon@v0.41.1
     inputs:
       branch: main
       stage: release
