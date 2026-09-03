@@ -31,8 +31,8 @@ include:
   # Quality gates — MR-only by default. Toolchain images are left at the
   # component defaults; let Renovate/cicd carry the toolchain rather than
   # pinning point-in-time overrides here.
-  - component: gitlab.com/phpboyscout/cicd/go-lint@v0.43.1
-  - component: gitlab.com/phpboyscout/cicd/go-test@v0.43.1
+  - component: gitlab.com/phpboyscout/cicd/go-lint@main
+  - component: gitlab.com/phpboyscout/cicd/go-test@main
     inputs:
       # The Godog suite in test/e2e drives the BUILT binary — the only
       # place sigillum's own risk lives, since it is a thin shell over
@@ -40,11 +40,11 @@ include:
       # value lands on.
       enable_e2e: true
       e2e_timeout: "10m"
-  - component: gitlab.com/phpboyscout/cicd/go-security@v0.43.1
+  - component: gitlab.com/phpboyscout/cicd/go-security@main
 
   # Release — tag-gated goreleaser + default-branch zensical-pages deploy.
-  - component: gitlab.com/phpboyscout/cicd/goreleaser@v0.43.1
-  - component: gitlab.com/phpboyscout/cicd/zensical-pages@v0.43.1
+  - component: gitlab.com/phpboyscout/cicd/goreleaser@main
+  - component: gitlab.com/phpboyscout/cicd/zensical-pages@main
 
   # Release MR machinery — the phpboyscout wrapper, NOT apricote's component
   # colophon, the release orchestrator this estate owns. See cicd wiki spec
@@ -63,7 +63,7 @@ include:
   #
   # Checked before swapping: colophon and releaser-pleaser compute the SAME
   # version for this repository (v0.4.1) from the same commits.
-  - component: gitlab.com/phpboyscout/cicd/colophon@v0.43.1
+  - component: gitlab.com/phpboyscout/cicd/colophon@main
     inputs:
       branch: main
       stage: release
@@ -72,7 +72,7 @@ include:
   # major cuts only by default; the webhook comes from the
   # DISCORD_RELEASE_WEBHOOK group variable, which is protected and so
   # reaches this job because `v*` is a protected tag here.
-  - component: gitlab.com/phpboyscout/cicd/discord-release@v0.43.1
+  - component: gitlab.com/phpboyscout/cicd/discord-release@main
     inputs:
       # Headline project: patch releases are news here too.
       announce_patches: true
