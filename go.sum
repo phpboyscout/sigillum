@@ -872,8 +872,8 @@ gitlab.com/phpboyscout/go/regexutil v0.2.1 h1:UC9osporhKlFCT9fyT0BbFzv44tAfh8Dkl
 gitlab.com/phpboyscout/go/regexutil v0.2.1/go.mod h1:VGtPECm7QO8bfl/oufcQDHXRlzDs0/1R527njpvuUCQ=
 gitlab.com/phpboyscout/go/repo v0.2.2 h1:cpFdv9q2fmJCYtwlxlFQ7PZgytyZGX74z0dGhhIl/xQ=
 gitlab.com/phpboyscout/go/repo v0.2.2/go.mod h1:9zoMOPJ0TayIXmX43nyFJSUHZfoe+kWjP/9QoRucLpM=
-gitlab.com/phpboyscout/go/signing v0.8.1 h1:a0tVjGrifJnzu5K0QBSFRjZP1Agt/F9wnBTzsKONhn4=
-gitlab.com/phpboyscout/go/signing v0.8.1/go.mod h1:MX3me56EDyXZw7bppwwZ3Y+pU6iXPcmXmqiuMnY+fAs=
+gitlab.com/phpboyscout/go/signing v0.8.2 h1:bPu1NIA+3atGiJKQjES5St7QTL3GYpIJ88eKLxxh0l0=
+gitlab.com/phpboyscout/go/signing v0.8.2/go.mod h1:A1A6qNPOtIqjozGxrpgKHsrkxFgztWyWFo0QfMnwOaA=
 gitlab.com/phpboyscout/go/signing-aws-kms v0.6.1 h1:vY+ZGYYm6lbb7JAPhGDKOyMIaBpMt5hqM/rtqRjlDYY=
 gitlab.com/phpboyscout/go/signing-aws-kms v0.6.1/go.mod h1:5wffEdFIRlTTylrAVG2ZJqYTD5F0Us9OJGgkkzK6TR8=
 gitlab.com/phpboyscout/go/signing-cli v0.6.1 h1:ML46R9Dx9j24+pIhfzGjyYuoozpnGniNT8U/Un3PVxM=

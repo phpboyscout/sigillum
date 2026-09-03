@@ -20,7 +20,7 @@ require (
 	gitlab.com/phpboyscout/go/encryption v0.2.1
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.1
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1
-	gitlab.com/phpboyscout/go/signing v0.8.1
+	gitlab.com/phpboyscout/go/signing v0.8.2
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.6.1
 	gitlab.com/phpboyscout/go/signing-cli v0.6.1
 )
