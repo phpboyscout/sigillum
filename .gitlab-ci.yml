@@ -127,9 +127,14 @@ go-fuzz:
     paths:
       - "**/testdata/fuzz/**"
     expire_in: 30 days
+  # Not deterministic: each run explores new inputs, so a second run is more
+  # fuzzing rather than a repeat. That is worth having, but tying it to merge
+  # frequency means a quiet week fuzzes less than a busy one. It runs on merge
+  # requests, and nightly on its own schedule with a longer FUZZTIME, instead of
+  # on every push to the default branch. cicd spec 0079 D3.
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $FUZZ_NIGHTLY == "true"'
 
 # The test suite on a 32-bit target. See go/encryption's copy for why this runs
 # `go test` rather than `go vet`: a test that only means something on one
@@ -172,9 +177,11 @@ go-mutation:
         fi
       done
       exit $status
+  # Deterministic given the tree, and under fast-forward the merge-request
+  # pipeline runs on the commit that lands (a rebase reruns it), so the
+  # default-branch run recomputed an answer it already had. cicd spec 0079 D3.
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 go-cross-arch:
   stage: test
@@ -182,9 +189,11 @@ go-cross-arch:
   script:
     - GOARCH=386 GOOS=linux go test ./internal/... ./pkg/...
     - GOARCH=arm GOOS=linux go vet ./...
+  # Deterministic given the tree, and under fast-forward the merge-request
+  # pipeline runs on the commit that lands (a rebase reruns it), so the
+  # default-branch run recomputed an answer it already had. cicd spec 0079 D3.
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 variables:
   # releaser-pleaser + goreleaser walk the full commit history.
