@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.4.2](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.4.2)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.4.1...v0.4.2)
+
+### Notes
+
+- `sigillum sign` now works in released binaries. Every published release to date shipped without any signing backends compiled in, so `sign` failed with "no backends are registered" whatever `--backend` was given — the release build compiled `cmd/sigillum/main.go` alone rather than the package, which excluded the file that registers them. Installing from source with `go install` was unaffected and remains so. `decrypt` was excluded by the same mechanism and is also restored.
+
+### Bug Fixes
+
+- **release**: build the package, so the signing backends are registered ([0ac89e2](https://gitlab.com/phpboyscout/sigillum/-/commit/0ac89e27acf647d5266a34c36b24b80c7ac6ce5e))
+- **deps**: update module gitlab.com/phpboyscout/go/signing to v0.8.2 ([bd84e35](https://gitlab.com/phpboyscout/sigillum/-/commit/bd84e358f9e986760fc7da6edd4e9c2bb49c809a))
+- **deps**: bump grpc to v1.83.1 and x/crypto to v0.56.0 together ([91b70d5](https://gitlab.com/phpboyscout/sigillum/-/commit/91b70d5b983254aeb6b2fdcec463c02d5be68658))
+
 ## [v0.4.1](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.4.1)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.4.0...v0.4.1)
