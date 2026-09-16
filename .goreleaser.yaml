@@ -8,7 +8,18 @@ before:
 
 builds:
   - id: sigillum
-    main: cmd/sigillum/main.go
+    # The PACKAGE, not cmd/sigillum/main.go. `go build <file>` compiles that
+    # file alone, so every other `package main` file in the directory is
+    # silently excluded — and this package has three: signing.go, which
+    # registers the AWS KMS and local signing backends, encryption.go, and
+    # keychain.go.
+    #
+    # Without them, `sigillum sign` fails with "no backends are registered"
+    # — every published binary to date. It went unnoticed because the only
+    # consumer installs with `go install`, which builds the package.
+    #
+    # See issue #10, and go-tool-base #79 for the generator fix.
+    main: ./cmd/sigillum
     env:
       - CGO_ENABLED=0
     goos:
