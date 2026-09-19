@@ -4,53 +4,50 @@ package root
 
 import (
 	"embed"
-	"os"
-
 	afero "github.com/spf13/afero"
 	gtbRoot "gitlab.com/phpboyscout/go-tool-base/pkg/cmd/root"
 	logger "gitlab.com/phpboyscout/go-tool-base/pkg/logger"
 	props "gitlab.com/phpboyscout/go-tool-base/pkg/props"
 	setup "gitlab.com/phpboyscout/go-tool-base/pkg/setup"
+	forge "gitlab.com/phpboyscout/go-tool-base/pkg/setup/forge"
 	version "gitlab.com/phpboyscout/go-tool-base/pkg/version"
-	errorhandling "gitlab.com/phpboyscout/go/errorhandling"
 	signingcli "gitlab.com/phpboyscout/go/signing-cli"
-
 	trustkeys "gitlab.com/phpboyscout/sigillum/internal/trustkeys"
 	certificate "gitlab.com/phpboyscout/sigillum/pkg/cmd/certificate"
 	decrypt "gitlab.com/phpboyscout/sigillum/pkg/cmd/decrypt"
+	"os"
 )
 
 //go:embed assets/*
 var assets embed.FS
 
-func NewCmdRoot(v version.Info) (*setup.Command, *props.Props) {
+// NewCmdRoot builds the tool's Props through props.New, the one construction
+// path, and the command tree on it. The error is a wiring defect in this
+// file (an unnamed tool, a feature enabled that no import declares); main
+// exits 2 on it.
+func NewCmdRoot(v version.Info) (*setup.Command, *props.Props, error) {
 	l := logger.NewCharm(os.Stderr, logger.WithTimestamp(true), logger.WithLevel(logger.InfoLevel))
 
-	p := &props.Props{
-		Assets: props.NewAssets(props.AssetMap{"root": &assets}),
-		FS:     afero.NewOsFs(),
-		Logger: l,
-		Tool: props.Tool{
-			Description: "Standalone artefact signing and verification CLI for the phpboyscout ecosystem",
-			Features:    props.SetFeatures(props.Disable(props.InitCmd), props.Disable(props.McpCmd), props.Enable(props.ConfigCmd)),
-			Name:        "sigillum",
-			ReleaseSource: props.ReleaseSource{
-				Host:  "gitlab.com",
-				Owner: "phpboyscout",
-				Repo:  "sigillum",
-				Type:  "gitlab",
-			},
-			Signing: props.SigningConfig{EmbeddedKeys: trustkeys.Keys()},
-			Summary: "sigillum utility",
+	tool := props.Tool{
+		Description: "Standalone artefact signing and verification CLI for the phpboyscout ecosystem",
+		Features:    props.SetFeatures(props.Disable(props.InitCmd), props.Enable(props.ConfigCmd), props.Enable(forge.GitlabFeature)),
+		Name:        "sigillum",
+		ReleaseSource: props.ReleaseSource{
+			Host:  "gitlab.com",
+			Owner: "phpboyscout",
+			Repo:  "sigillum",
+			Type:  "gitlab",
 		},
-		Version: v,
+		Signing: props.SigningConfig{EmbeddedKeys: trustkeys.Keys()},
+		Summary: "sigillum utility",
 	}
 
-	p.ErrorHandler = errorhandling.New(logger.ToSlog(l), p.Tool.Help)
+	p, err := props.New(tool, l, afero.NewOsFs(), props.WithAssets(props.NewAssets(props.AssetMap{"root": &assets})), props.WithVersion(v))
+	if err != nil {
+		return nil, nil, err
+	}
 
-	rootCmd := gtbRoot.NewCmdRoot(p, setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())), setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())),
-		decrypt.NewCmdDecrypt(p),
-		certificate.NewCmdCertificate(p))
+	rootCmd := gtbRoot.NewCmdRoot(p, decrypt.NewCmdDecrypt(p), certificate.NewCmdCertificate(p), setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())), setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())))
 
-	return rootCmd, p
+	return rootCmd, p, nil
 }

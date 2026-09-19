@@ -35,7 +35,7 @@ func init() {
 	if version == "dev" {
 		if info.Main.Version != "" && info.Main.Version != "(devel)" {
 			version = info.Main.Version
-		} else {
+		} else if commit != "none" {
 			version = commit
 		}
 	}

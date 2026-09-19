@@ -10,6 +10,8 @@ properties:
       enabled: false
     - name: init
       enabled: false
+    - name: gitlab
+      enabled: true
   signing:
     enabled: true
     key_source: embedded
@@ -17,6 +19,7 @@ properties:
     key_id: alias/gtb-release-signing-v2
     kms_region: eu-west-2
     public_key: internal/trustkeys/keys/signing-key-v2.asc
+  module_path: gitlab.com/phpboyscout/sigillum
   docs_layout: diataxis
   external_commands:
     - module: gitlab.com/phpboyscout/go/signing-cli
@@ -32,35 +35,36 @@ properties:
           wrap: true
 release_source:
   type: gitlab
+  backend: gitlab
   host: gitlab.com
   owner: phpboyscout
   repo: sigillum
 version:
-  gtb: v0.37.1
+  gtb: v0.44.0
+  go: 1.27.1
 hashes:
   .gitignore: 660975e0ad0d5136feb10221a14835d0d6a0bf86788a08f8c97d4f9cbd06c453
-  .gitlab-ci.yml: ff2660e3c28321b1b14242a09245e4a211aeef103bdf0519ae575e2b01505d7f
+  .gitlab-ci.yml: 14d8b60d4314e5c07459816a04fd065223fd1e6e7183494027be31d7d3543b26
   .gitlab/CODEOWNERS: 6384f3b0fa79ff53d5428c8499b4af97bd5c35328a3b7058df34164b2e875f2f
   .golangci.yaml: b41c089be6a30fbd149cf43812e2b08a6c8c6420de9d63545420539d0e256ea4
-  .goreleaser.yaml: 29edede866c86cea0291dc7dc9e07c71ca16c4d855b6fba6809d26c2212e07cc
+  .goreleaser.yaml: 5344a20f0a269be99c05f4bb89db273c883d1c04732b70288e68fd7504896437
   .mockery.yml: e2ada0fc97ec0a6f64c091ba6fb9f4a3308a678082588745ea23e9d4682bff15
   .pre-commit-config.yaml: 1dbbf5621e83f9665e0e88df4641c942b45a79ace7e21b04135d2ac5ebab679c
-  CHANGELOG.md: de743a34f624af84b57c5db3f8ad74f4ef317c36aaa0853352bfa7cd7bef118a
+  CHANGELOG.md: 17286a0c192b88e4d0ef4b48d554ff545e8f8a8d797ea8e942b335b32fd2cfcd
   README.md: af1fab847c4f1d5991d9b7c3d809bfa6f80580af9d30528a21d5dc26df4e0f83
   docs/explanation/components/index.md: 525882cd1314ff693b3ab92db1c0a98767c7dff9ad45626cff517f550a94fbfc
   docs/explanation/concepts/index.md: 30b47f2f8c5f7b7339723fbce3fe1d4b40e65ef9a7c3d30735bd5216f31ff121
   docs/explanation/index.md: be0eb95193dd025a0eede9a87675cd9bb7f70d93b220e395ddf4bf76d4b2df19
   docs/how-to/index.md: 41f02a27e5c69eea70d10086610aee2a91d9d5f8ab5d54fdcf2eef6ae321854d
-  docs/index.md: d2833b621c0a9302036b9c52a8bfd5020b8b97f03b69c24b6a61d4ab48d36e90
+  docs/index.md: 2da22fed8c9f0bf622c9e0ce53ee7cb2709c282f329b28fca9b18fdb21fdeb85
   docs/reference/cli/index.md: a437fe7155a3b212ce1242315be00f318bd27f8d34b49f0417a8dd815a4ba810
   docs/reference/config/index.md: ca9277bce465eb9c7b362ce5d6eb694c8c3a4eec1177d68aa4f14bbb32b24656
   docs/reference/index.md: 887162811f8500fb7b48e9ccc24e489a2dad83ec3905924113bc97a5e44b51b3
   docs/tutorials/index.md: 6604be2517c925e4e997d9145bc134a2bd05661cdb08e0f72c38433f6c25f427
-  go.mod: a906aa6ddae8063563df250366c8274dc01dfc6982ce8cd5f682ff7e7a19a813
   justfile: 0086e91304b5cf6b41dfe19b2e10663e28d67d56aa6d3c21ca489f77ff6beadd
   pkg/cmd/root/assets/init/config.yaml: 93df4d1e86bfa4be31b5761ca0adf65adc8ea399686a60a3a776305478b64c15
   renovate.json5: a23407c44075c497db8434b7f1fdb60b7b107eda75e0d109738306122325d8c5
-  zensical.toml: 0d404f0ed26e48fa98ebe9335be8636e1334f2a26912a8f46afa353567536910
+  zensical.toml: 7b5f064fd8128937ea1e427ced1ceb052a932cf0a4629c5ae601f78d5da63379
 commands:
   - name: decrypt
     description: Decrypt an OpenPGP message addressed to a KMS-backed certificate

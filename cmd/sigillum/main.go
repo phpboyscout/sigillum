@@ -3,16 +3,26 @@
 package main
 
 import (
+	"fmt"
 	gtbRoot "gitlab.com/phpboyscout/go-tool-base/pkg/cmd/root"
+	errorhandling "gitlab.com/phpboyscout/go/errorhandling"
 	version "gitlab.com/phpboyscout/sigillum/internal/version"
 	root "gitlab.com/phpboyscout/sigillum/pkg/cmd/root"
+	"os"
 )
 
 // main delegates to gtbRoot.Execute, which runs the command tree with a
 // signal-aware context: SIGINT/SIGTERM cancel cmd.Context() for graceful
 // shutdown, a second signal force-exits immediately, and a signal-terminated
 // run exits 128+signum (130 SIGINT, 143 SIGTERM).
+// A construction error (an unnamed tool, an undeclared feature enabled) is a
+// defect in this project's wiring and exits 2, the usage code, before any
+// command runs.
 func main() {
-	rootCmd, p := root.NewCmdRoot(version.Get())
+	rootCmd, p, err := root.NewCmdRoot(version.Get())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(errorhandling.ExitCodeUsage)
+	}
 	gtbRoot.Execute(rootCmd, p)
 }
