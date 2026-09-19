@@ -67,6 +67,11 @@ include:
     inputs:
       branch: main
       stage: release
+      # Spec 0004: the main pipeline only tags; colophon-release creates the
+      # release on the tag pipeline after goreleaser has uploaded.
+      assets: true
+      # Must agree with blobs.directory in .goreleaser.yaml (colophon 0025 D16).
+      asset_base: "https://pkg.phpboyscout.uk/sigillum/$CI_COMMIT_TAG"
 
   # Announce releases to the Discord announcements channel. Minor and
   # major cuts only by default; the webhook comes from the
@@ -205,10 +210,6 @@ variables:
 # sigillum signs with the SHARED v2 release-signing key (same trust root as
 # go-tool-base); the v2 signer role trusts this project's tag pipelines via
 # ci_subject_filters in infra/src/main.signing-kms.tf.
-#
-# DORMANT until infra MR (sigillum -> v2 role) is applied: a v* tag pipeline
-# cut before then will fail the sign step (no assumable role). Apply the infra
-# change first, then cut the release.
 goreleaser:
   id_tokens:
     AWS_WEB_IDENTITY_TOKEN:
@@ -223,5 +224,9 @@ goreleaser:
     # In variables: (not just an export) because GitLab runs each script entry
     # in its own shell.
     AWS_WEB_IDENTITY_TOKEN_FILE: /tmp/oidc-token
+    # The release store's keys, for goreleaser's `blobs` pipe; `signs.env`
+    # blanks them for the signer (colophon 0025 D15).
+    AWS_ACCESS_KEY_ID: $R2_RELEASE_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $R2_RELEASE_SECRET_ACCESS_KEY
   before_script:
     - echo "$AWS_WEB_IDENTITY_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"

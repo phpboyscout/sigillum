@@ -60,19 +60,30 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
+# goreleaser BUILDS and UPLOADS; it does not own the release.
+#
+# colophon creates the release on the tag pipeline, after this job, carrying
+# links to what was uploaded here (colophon spec 0004), which also closes the
+# gap the old keep-existing mode relied on runner latency to cover. `disable`
+# rather than `skip_upload`: the upload still happens, through `blobs`, which
+# needs no release to exist.
 release:
-  use_existing_draft: true
-  replace_existing_artifacts: true
-  make_latest: true
-  # colophon creates the Release (with its changelog) when the Release MR
-  # merges; this job only attaches the build artefacts.
-  #
-  # colophon must tag BEFORE creating the release — forge.CreateRelease refuses
-  # an absent tag, so that a create cannot become a tagging operation with
-  # whichever credential is to hand. Pushing the tag fires this pipeline, so in
-  # principle goreleaser could look for a release not yet created; runner
-  # pickup latency closes it, and releaser-pleaser had the same gap.
-  mode: keep-existing
+  disable: true
+
+# The release store (colophon spec 0025). `directory` is the tag and must agree
+# with the cicd colophon component's `asset_base`: written twice on purpose, so
+# a mismatch is a visible configuration error rather than a release full of
+# 404s. Every object is write-once, hence immutable (0025 D18).
+blobs:
+  - provider: s3
+    bucket: pbs-release-binaries
+    endpoint: "{{ .Env.R2_RELEASE_ENDPOINT }}"
+    region: auto
+    directory: "sigillum/{{ .Tag }}"
+    s3_force_path_style: true
+    content_disposition: inline
+    cache_control:
+      - "public, max-age=31536000, immutable"
 
 checksum:
   name_template: 'checksums.txt'
@@ -99,6 +110,11 @@ signs:
   # time; the AWS OIDC env from the tag pipeline drives the aws-kms backend.
   - id: checksums
     cmd: go
+    # The R2 keys the process carries for `blobs` outrank the OIDC identity in
+    # the SDK's chain, so they are blanked for the signer (0025 D15).
+    env:
+      - "AWS_ACCESS_KEY_ID="
+      - "AWS_SECRET_ACCESS_KEY="
     args:
       - "run"
       - "./cmd/sigillum"
