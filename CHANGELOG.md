@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.5.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.0)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.4.2...v0.5.0)
+
+### Notes
+
+- Release archives are now published to https://pkg.phpboyscout.uk/sigillum/<tag>/ and the release links point there; GitLab's package registry no longer receives new releases.
+
+### Features
+
+- **release**: publish archives to the release store, not the package registry ([712297b](https://gitlab.com/phpboyscout/sigillum/-/commit/712297b204874cc8d08b5db9833bfa5031288e39))
+
 ## [v0.4.2](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.4.2)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.4.1...v0.4.2)
