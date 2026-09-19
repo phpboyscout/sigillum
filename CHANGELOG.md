@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.1](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.1)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.0...v0.5.1)
+
+### Other
+
+- **gtb**: regenerate against go-tool-base v0.44.0 ([a3b1b70](https://gitlab.com/phpboyscout/sigillum/-/commit/a3b1b706b9e02ea0ef88d6a6198b86229e15cbc0))
+
 ## [v0.5.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.0)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.4.2...v0.5.0)
