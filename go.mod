@@ -12,7 +12,7 @@ require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
-	gitlab.com/phpboyscout/go-tool-base v0.45.2
+	gitlab.com/phpboyscout/go-tool-base v0.45.3
 	gitlab.com/phpboyscout/go/encryption v0.2.1
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.1
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1

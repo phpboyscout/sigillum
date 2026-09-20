@@ -369,8 +369,8 @@ github.com/zalando/go-keyring v0.2.8 h1:6sD/Ucpl7jNq10rM2pgqTs0sZ9V3qMrqfIIy5YPc
 github.com/zalando/go-keyring v0.2.8/go.mod h1:tsMo+VpRq5NGyKfxoBVjCuMrG47yj8cmakZDO5QGii0=
 gitlab.com/gitlab-org/api/client-go/v2 v2.64.0 h1:PrLDC9rS6je6scB0VgXAh6gmoB7fk50bgdweKT37Vdg=
 gitlab.com/gitlab-org/api/client-go/v2 v2.64.0/go.mod h1:jLHVjfgFX/BsZnWXp6OsoXv1hKzBp2tSnNoxQTl3A08=
-gitlab.com/phpboyscout/go-tool-base v0.45.2 h1:ZKSkUc5PBaDw8E4G3IZi4tjoaf+C3gPXPlpX+kd0ELg=
-gitlab.com/phpboyscout/go-tool-base v0.45.2/go.mod h1:H5ekYc7jPKow1B7w9nnffMylk+BkBtWP9s6qcQ6YvYI=
+gitlab.com/phpboyscout/go-tool-base v0.45.3 h1:wzH3q+K6Sozu4kFv17/dSys5Fb2sN9BylLu0rWnom8w=
+gitlab.com/phpboyscout/go-tool-base v0.45.3/go.mod h1:H5ekYc7jPKow1B7w9nnffMylk+BkBtWP9s6qcQ6YvYI=
 gitlab.com/phpboyscout/go/authn v0.2.3 h1:b938V083Z4XZgcsL10PL0VmLwUBuFydz8CCN8C+gRGs=
 gitlab.com/phpboyscout/go/authn v0.2.3/go.mod h1:slBcN4EawwcR0D4oKKF66qWOeHntZ2mCKB5nIc+XnE8=
 gitlab.com/phpboyscout/go/awsclient v0.1.0 h1:fm1jBeCNKzUS8WuACE9ClP7YUY6ZVqKvSf0LvZ2Uwio=
