@@ -8,7 +8,7 @@ tool (
 )
 
 require (
-	github.com/ProtonMail/go-crypto v1.4.1
+	github.com/ProtonMail/go-crypto v1.5.0
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
