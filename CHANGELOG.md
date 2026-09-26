@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.5.2](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.2)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.1...v0.5.2)
+
+### Notes
+
+- Releases are announced to the estate's release feed and to Discord.
+
+### Bug Fixes
+
+- **deps**: update module github.com/protonmail/go-crypto to v1.5.0 ([364c408](https://gitlab.com/phpboyscout/sigillum/-/commit/364c408ed6428a5ec2e1904deba49b99e2b97b6e))
+- **deps**: update module gitlab.com/phpboyscout/go-tool-base to v0.45.3 ([eb34e0a](https://gitlab.com/phpboyscout/sigillum/-/commit/eb34e0a0291493bec4db6aeda614b674e434b7ab))
+- **deps**: update module gitlab.com/phpboyscout/go-tool-base to v0.45.2 ([779bdb4](https://gitlab.com/phpboyscout/sigillum/-/commit/779bdb4c55e68146a47fbff9449562695c30d736))
+
 ## [v0.5.1](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.1)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.0...v0.5.1)
