@@ -72,6 +72,10 @@ include:
       assets: true
       # Must agree with blobs.directory in .goreleaser.yaml (colophon 0025 D16).
       asset_base: "https://pkg.phpboyscout.uk/sigillum/$CI_COMMIT_TAG"
+  - component: gitlab.com/phpboyscout/cicd/go-core-currency@main
+    inputs:
+      feed: https://phpboyscout.uk/projects.json
+      stage: release
 
 stages:
   - lint
