@@ -98,6 +98,7 @@ changelog:
 gitlab_urls:
   api: https://gitlab.com/api/v4/
   download: https://gitlab.com/
+  use_job_token: true
   skip_tls_verify: false
 
 # Release signing: gtb enable signing wired this. The signature over
