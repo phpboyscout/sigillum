@@ -158,6 +158,18 @@ func (w *world) haveEd25519PEMKey() error {
 	return w.commandSucceeds()
 }
 
+func (w *world) haveEd25519OpenPGPKey() error {
+	if err := w.run("keys", "generate",
+		"--algorithm", "ed25519",
+		"--name", "E2E Demo",
+		"--email", "e2e@example.com",
+		"--output", "demo.asc"); err != nil {
+		return err
+	}
+
+	return w.commandSucceeds()
+}
+
 // --- artefacts and signing ---
 
 func (w *world) aReleaseArtefact(name string) error {
@@ -228,6 +240,17 @@ func (w *world) signPassingAnOpenPGPPublicKey() error {
 	return w.run("sign", "--format", "minisign",
 		"--backend", "local", "--key-id", "./demo.pem",
 		"--public-key", "demo.asc", w.artefact)
+}
+
+func (w *world) signAsOpenPGPWithOpenPGPPrivateHalf() error {
+	return w.run("sign",
+		"--backend", "local", "--key-id", "./demo.priv.asc",
+		"--public-key", "demo.asc", w.artefact)
+}
+
+func (w *world) signAsMinisignWithOpenPGPPrivateHalf() error {
+	return w.run("sign", "--format", "minisign",
+		"--backend", "local", "--key-id", "./demo.priv.asc", w.artefact)
 }
 
 // --- public key ---
@@ -550,6 +573,7 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Given(`^a freshly built sigillum binary$`, w.aFreshlyBuiltBinary)
 	ctx.Given(`^an empty working directory$`, w.anEmptyWorkingDirectory)
 	ctx.Given(`^an ed25519 key with a pem private half$`, w.haveEd25519PEMKey)
+	ctx.Given(`^an ed25519 key with its default openpgp private half$`, w.haveEd25519OpenPGPKey)
 	ctx.Given(`^a release artefact "([^"]*)"$`, w.aReleaseArtefact)
 	ctx.Given(`^I have signed that artefact as minisign for project "([^"]*)"$`, w.haveSignedAsMinisign)
 	ctx.Given(`^I have published the public key for project "([^"]*)"$`, w.havePublishedForRecording)
@@ -559,6 +583,8 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	ctx.When(`^I sign that artefact as minisign at a pinned time$`, w.signAtPinnedTime)
 	ctx.When(`^I sign that artefact as minisign at a pinned time again$`, w.signAtPinnedTimeAgain)
 	ctx.When(`^I sign that artefact as minisign passing an OpenPGP public key$`, w.signPassingAnOpenPGPPublicKey)
+	ctx.When(`^I sign that artefact as openpgp with the openpgp private half$`, w.signAsOpenPGPWithOpenPGPPrivateHalf)
+	ctx.When(`^I sign that artefact as minisign with the openpgp private half$`, w.signAsMinisignWithOpenPGPPrivateHalf)
 	ctx.When(`^I ask for the minisign public key$`, w.askForTheMinisignPublicKey)
 	ctx.When(`^I publish the public key for project "([^"]*)"$`, w.publishFor)
 	ctx.When(`^I verify the signature against the key$`, w.verifySignatureAgainstKey)

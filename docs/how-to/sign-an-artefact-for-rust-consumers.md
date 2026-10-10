@@ -47,8 +47,9 @@ so a wrong combination stops rather than silently doing something else.
 
 `keys generate --algorithm ed25519` writes its private half as an armored
 OpenPGP secret-key block by default, and the `local` backend cannot read that —
-it reads PEM. Pointing `--key-id` at the default `.priv.asc` fails with *no PEM
-block found in file*.
+it reads PEM. Pointing `--key-id` at the default `.priv.asc` fails with
+*unsupported key type for --backend local*, and the message names
+`--private-format pem` as the fix.
 
 Pass `--private-format pem` to get the PKCS#8 PEM the backend does read:
 

@@ -83,8 +83,9 @@ how you catch signing with the wrong key.
 
 RSA is deliberate here. RSA keys drive the OpenPGP path; Ed25519 keys drive the
 minisign path and cannot produce an OpenPGP signature at all. Pick
-`--algorithm ed25519` instead and the signing step below fails with *unsupported
-key type: only RSA is supported*. The
+`--algorithm ed25519` instead and the signing step below fails with
+*unsupported key type for --format openpgp*, and the message goes on to name
+`--format minisign` as the lane that takes the key. The
 [minisign guide](../how-to/sign-an-artefact-for-rust-consumers.md) covers that
 other lane.
 

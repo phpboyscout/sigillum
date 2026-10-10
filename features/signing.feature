@@ -100,3 +100,20 @@ Feature: Signing release artefacts
     When I sign that artefact as minisign passing an OpenPGP public key
     Then the command fails
     And stderr mentions "--public-key is not accepted"
+
+  Scenario: OpenPGP signing refuses an Ed25519 key by its type
+    # keys generate writes this file itself, so "no PEM block found" would
+    # read as a broken key rather than the wrong lane.
+    Given an ed25519 key with its default openpgp private half
+    And a release artefact "checksums.txt"
+    When I sign that artefact as openpgp with the openpgp private half
+    Then the command fails
+    And stderr mentions "unsupported key type"
+    And stderr mentions "--format minisign"
+
+  Scenario: Minisign signing names the private format it needs
+    Given an ed25519 key with its default openpgp private half
+    And a release artefact "tool_1.2.3_linux_amd64.tar.gz"
+    When I sign that artefact as minisign with the openpgp private half
+    Then the command fails
+    And stderr mentions "--private-format pem"

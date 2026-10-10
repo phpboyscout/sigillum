@@ -74,10 +74,11 @@ is *not* readable by the `local` signing backend.
 | `rsa` | *(unset)* or `pem` | PKCS#1 PEM | `.asc` → `.pem` | Yes |
 | `rsa` | `openpgp` | *refused* | — | — |
 
-Pointing `--backend local --key-id` at an Ed25519 `.priv.asc` fails with
-`no PEM block found in file`. Generate with `--private-format pem` when the key
-is going to sign anything locally; that is what makes minisign artefact signing
-possible without an HSM.
+Pointing `--backend local --key-id` at an Ed25519 `.priv.asc` is refused as
+`unsupported key type`, and the rest of the message says which lane takes the
+key (see [`sign`](sign.md#which-flag-combinations-are-refused)). Generate with
+`--private-format pem` when the key is going to sign anything locally; that is
+what makes minisign artefact signing possible without an HSM.
 
 `--private-format openpgp` with `--algorithm rsa` fails with `--private-format
 openpgp is not supported for --algorithm rsa; RSA private halves are written as

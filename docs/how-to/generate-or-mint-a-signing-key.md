@@ -57,8 +57,8 @@ Notes:
 `--algorithm ed25519` writes its private half as an **armored OpenPGP
 secret-key block** (`.priv.asc`) — the same wire format `gpg
 --export-secret-keys` produces. The `local` signing backend cannot read that; it
-reads PEM, and pointing `--key-id` at a `.priv.asc` fails with `no PEM block
-found in file`.
+reads PEM, and pointing `--key-id` at a `.priv.asc` is refused with
+`unsupported key type`, followed by the flag that produces a key it can use.
 
 Add `--private-format pem` when the key needs to sign locally:
 
