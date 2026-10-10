@@ -1,5 +1,20 @@
 # Changelog
 
+## [v0.5.3](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.3)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.2...v0.5.3)
+
+### Notes
+
+- `sigillum sign --backend local` given an armored OpenPGP secret key, such as the default private half of `keys generate --algorithm ed25519`, now fails with "unsupported key type" and names the lane that takes the key, instead of "no PEM block found in file".
+
+- Rebuilt on Go 1.27.2 to pick up its standard-library security fixes.
+
+### Bug Fixes
+
+- **sign**: refuse an armored OpenPGP secret key by its key type ([5026c12](https://gitlab.com/phpboyscout/sigillum/-/commit/5026c12fa8c39ace2da6f051d1d0610cf3b02829))
+- **deps**: build with Go 1.27.2 and golang.org/x/net v0.60.0 ([fd40362](https://gitlab.com/phpboyscout/sigillum/-/commit/fd4036263b553e1faae1fe1441ebd8c2c7341b74))
+
 ## [v0.5.2](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.2)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.1...v0.5.2)
