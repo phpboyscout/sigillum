@@ -1,6 +1,6 @@
 ---
 title: keys command
-description: Reference for `sigillum keys` — every flag of generate, mint, wkd, minisign and publish, with defaults, output layouts, file permissions and failure modes.
+description: Reference for `sigillum keys`, with every flag of generate, mint, wkd, minisign and publish, with defaults, output layouts, file permissions and failure modes.
 date: 2026-08-02
 tags: [reference, commands, keys, signing, openpgp, minisign, wkd, publish]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -8,7 +8,7 @@ authors: [Matt Cockayne <matt@phpboyscout.uk>]
 
 # `keys` command
 
-`sigillum keys` manages the keys used for release signing — OpenPGP for checksum
+`sigillum keys` manages the keys used for release signing: OpenPGP for checksum
 manifests, minisign for the artefacts themselves.
 
 ```bash
@@ -40,15 +40,15 @@ parses OpenPGP.
 | Public keys, WKD trees, `keys.json` | `0644` | Publishing them is the entire point. |
 
 Output files are created with `O_EXCL`, so the "does it exist?" check and the
-create are one atomic syscall — there is no window between them. `--force`
+create are one atomic syscall, with no window between them. `--force`
 switches to truncate-and-rewrite.
 
 ---
 
 ## `keys generate` {#keys-generate}
 
-Generate a fresh keypair entirely in-process — no shell-out, no `gpg` — and
-write both halves.
+Generate a fresh keypair entirely in-process, with no shell-out and no `gpg`,
+and write both halves.
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -106,7 +106,7 @@ WARN Move the private-half file to offline storage now. private_output=release.p
 
 ## `keys mint` {#keys-mint}
 
-Wrap a signer that already exists — a KMS key or a local PEM — in OpenPGP
+Wrap a signer that already exists (a KMS key or a local PEM) in OpenPGP
 framing and write the armored public half. It does **not** generate a private
 key; the private half never leaves its backend.
 
@@ -123,10 +123,10 @@ key; the private half never leaves its backend.
 
 ### What minting actually does
 
-1. Resolve the signer through the backend — for KMS, one `GetPublicKey` call.
+1. Resolve the signer through the backend. For KMS that is one `GetPublicKey` call.
 2. Build a v4 OpenPGP entity around the public half with your user ID, and
    produce the positive-cert self-signature. That self-signature is **one**
-   `kms:Sign` call — the only time the private half is consulted.
+   `kms:Sign` call, and it is the only time the private half is consulted.
 3. Armor the result to `--output` and log the fingerprint at INFO.
 
 The creation time folds into the fingerprint, which is why `--created` exists:
@@ -146,7 +146,7 @@ Stdout is refused because the armored bytes would interleave with log lines.
 
 If the armored key is written but cannot be parsed back, mint logs
 `WARN Wrote armored key but could not parse it back to read fingerprint` and
-still succeeds — the file exists and `gpg --show-key` can recover the
+still succeeds. The file exists, and `gpg --show-key` can recover the
 fingerprint.
 
 ---
@@ -168,11 +168,11 @@ At least one key file is required.
 | `--email` | *(every distinct email found in the input keys)* | Address(es) to publish under. Repeatable, and comma-separated values are also split. |
 | `--output` | `./wkd-staging` | Staging directory receiving the `.well-known/openpgpkey/…` tree. |
 | `--method` | `advanced` | URL layout: `advanced` (served from `openpgpkey.<domain>`) or `direct` (served from `<domain>`). |
-| `--submission-address` | *(none — the file is omitted)* | Address written to the WKD submission-address file. `auto` uses the first `--email`; an explicit address is used verbatim. |
+| `--submission-address` | *(none; the file is omitted)* | Address written to the WKD submission-address file. `auto` uses the first `--email`; an explicit address is used verbatim. |
 
 **`--email` is not required.** Only `--domain` is. With `--email` omitted, every
-distinct email across the input keys gets its own bucket — which is usually what
-you want and is why the flag has no `MarkFlagRequired`.
+distinct email across the input keys gets its own bucket. That is usually what
+you want, and it is why the flag has no `MarkFlagRequired`.
 
 ### What the tree looks like
 
@@ -188,7 +188,7 @@ wkd-staging/
 
 Keys matching an email are concatenated in **lexicographic fingerprint order**,
 so the tree is reproducible across deploys. A key with several matching UIDs
-lands in every matching bucket — standard WKD behaviour. A multi-entity key ring
+lands in every matching bucket, which is standard WKD behaviour. A multi-entity key ring
 file is split per entity, so no entity is cross-published into another's bucket.
 
 ### Failure modes
@@ -205,14 +205,14 @@ file is split per entity, so no entity is cross-published into another's bucket.
 ## `keys minisign` {#keys-minisign}
 
 Resolve an Ed25519 signing key through a backend and emit its minisign public
-key — the base64 string release consumers pin. Nothing secret is involved: for a
+key: the base64 string release consumers pin. Nothing secret is involved: for a
 KMS key this is one `GetPublicKey` call.
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--backend` | *(required)* | `aws-kms` or `local`. |
 | `--key-id` | *(required)* | Key ID/ARN/alias, or a PEM path for `local`. |
-| `--output` | *(none — print to stdout)* | Write the two-line minisign public-key file here instead of printing the bare key. |
+| `--output` | *(none; print to stdout)* | Write the two-line minisign public-key file here instead of printing the bare key. |
 | `--comment` | *(minisign's own wording)* | Untrusted comment for the public-key file. Nothing signs it. |
 | `--force` | `false` | Overwrite `--output` if it exists. |
 | `--kms-region` | `eu-west-2` | Contributed by the AWS KMS backend. |
@@ -230,7 +230,7 @@ same key produces the same output on any machine. Re-derive rather than store.
 | Consumer | Field | Form |
 |---|---|---|
 | cargo-binstall | `pubkey` in `[package.metadata.binstall.signing]` | the base64 string as printed |
-| rtb-update | `ToolMetadata::update_public_keys` | the **raw 32 bytes** — the last 32 bytes of the decoded body, not the base64 string |
+| rtb-update | `ToolMetadata::update_public_keys` | the **raw 32 bytes**: the last 32 bytes of the decoded body, not the base64 string |
 
 ### Failure modes
 
@@ -261,7 +261,7 @@ Exactly one `.pub` file, produced by `keys minisign --output`.
 | `--purpose` | `artefact` | What this key signs. Recorded in the manifest. |
 | `--valid-from` | *(today, UTC)* | Date the key started signing, `YYYY-MM-DD`. Pin it for reproducible output. |
 
-`--project` must match `^[a-z0-9][a-z0-9._-]{0,63}$` — lowercase alphanumeric
+`--project` must match `^[a-z0-9][a-z0-9._-]{0,63}$`: lowercase alphanumeric
 with dots, dashes or underscores. That constraint exists because the value
 becomes a path segment: rejecting separators and traversal here is what stops
 any input writing outside the site root.
@@ -305,8 +305,8 @@ the key material is compared.
 | Same project + generation, same `pubkey` | The entry is replaced, so `--status` can move from `active` to `retired`. |
 
 Consumers pin these keys. Changing one under them is exactly what must never
-happen. Retired and revoked keys stay published — a signature made under a key
-must remain checkable long after its private half is destroyed — so rotation is
+happen. Retired and revoked keys stay published, because a signature made under a key
+must remain checkable long after its private half is destroyed. Rotation is
 publishing a new generation, never removing an old one.
 
 ### Failure modes

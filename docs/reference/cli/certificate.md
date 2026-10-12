@@ -1,6 +1,6 @@
 ---
 title: certificate command
-description: Reference for `sigillum certificate` — every flag, and why the creation time must never change.
+description: Reference for `sigillum certificate`, with every flag, and why the creation time must never change.
 date: 2026-08-11
 tags: [reference, commands, certificate, encryption, openpgp]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -11,14 +11,14 @@ authors: [Matt Cockayne <matt@phpboyscout.uk>]
 `sigillum certificate` assembles a publishable OpenPGP certificate whose
 certification primary and encryption subkey are both held by a key service.
 
-Both signatures — the identity self-certification and the subkey binding — are
+Both signatures (the identity self-certification and the subkey binding) are
 made remotely. No private key material exists in the process at any point.
 
 ## Usage
 
 ```bash
-sigillum certificate --user-id <id> --certify-key <id> --encrypt-key <id> \
-  --created <rfc3339> [flags]
+sigillum certificate --backend <name> --user-id <id> --certify-key <id> \
+  --encrypt-key <id> --created <rfc3339> [flags]
 ```
 
 ## Flags
@@ -29,7 +29,7 @@ sigillum certificate --user-id <id> --certify-key <id> --encrypt-key <id> \
 | `--certify-key` | **yes** | — | Key service id for the certification primary |
 | `--encrypt-key` | **yes** | — | Key service id for the encryption subkey |
 | `--created` | **yes** | — | Creation time, RFC 3339. See below |
-| `--backend` | when several are compiled in | the only one | Which key service to use |
+| `--backend` | when several are compiled in, which the distributed binary has (`aws-kms`, `local`) | the only one | Which key service to use |
 | `--armor` | no | `false` | Emit ASCII armour instead of binary |
 | `--signed-at` | no | now | Signature time as RFC 3339; pin it for byte-reproducible output |
 | `--reproducible` | no | `false` | Drop the random salt for byte-identical output; requires `--signed-at` |
@@ -48,8 +48,9 @@ publishing arrangement, and silently flattening it means the next publish writes
 to the web root while everything else still reads the original.
 
 Turning it on writes through the link and leaves the link in place. When the
-resolved destination differs from what you typed, the command says so at `Info`
-— silence is the failure mode of following, and that part is cheap to remove.
+resolved destination differs from what you typed, the command says so at
+`Info`. Following a link silently is the risk, and saying so costs one log
+line.
 
 ## `--created` is required on purpose
 
@@ -65,12 +66,12 @@ every time you regenerate.
 
 By default assembly is **not** byte-reproducible: each signature is stamped with
 the current time and carries a random salt, both deliberate. The *fingerprints*
-are stable regardless — they are fixed by `--created` — so a regenerated
+are stable regardless, because `--created` fixes them, so a regenerated
 certificate accepts exactly the same messages as the one it replaces, which is
 the property that usually matters.
 
-When you need the **bytes** to match too — publishing from a pipeline that
-verifies the output against a checksum, say — pass both:
+When you need the **bytes** to match too (publishing from a pipeline that
+verifies the output against a checksum, say), pass both:
 
 - `--signed-at <RFC 3339>` pins the signature time instead of stamping now. It is
   logged when used, so the same value can be supplied on the next run.
@@ -95,7 +96,7 @@ signature is PKCS#1 v1.5, which is what a KMS will produce.
 
 | Message contains | Means |
 |---|---|
-| `required flag not set` | A required flag is missing; `--created` explains why it has no default |
+| `required flag not set` | A required flag is missing, or `--backend` was omitted when several backends are compiled in. The message for `--created` explains why it has no default |
 | `--reproducible requires --signed-at` | `--reproducible` was given without an explicit signature time to pin |
 | `no key service backends are compiled into this binary` | A build with no backend linked in; nothing can be published |
 | `backend cannot expose the encryption key's public half` | The chosen key service cannot supply the subkey point |
@@ -114,7 +115,7 @@ signature is PKCS#1 v1.5, which is what a KMS will produce.
 The curve, the point width, the KDF hash and the KEK algorithm are all validated
 before the subkey packet is built. Each of them is hashed into the fingerprint
 and each is read back by every correspondent who encrypts to the result, so a
-value this build cannot honour is not a local inconvenience — it is a published
+value this build cannot honour is not a local inconvenience. It is a published
 certificate that fails at the far end, after somebody has already encrypted a
 report to it.
 
@@ -129,7 +130,7 @@ the moment you run the command.
 
 Choosing a `--created` in the future therefore produces a certificate whose
 signatures are older than the keys they cover. GnuPG and other implementations
-treat that as invalid and silently drop the encryption subkey on import — so the
+treat that as invalid and silently drop the encryption subkey on import. The
 certificate imports, looks fine, and nobody can encrypt to it. It is refused
 here instead, because a certificate that fails at every correspondent is worse
 than one that fails at you.
@@ -143,8 +144,8 @@ published certificate that a web server cannot read is a certificate nobody can
 encrypt to, so the mode is set explicitly rather than left to whatever `umask`
 happens to be in force.
 
-On a filesystem that cannot change file modes — vfat or exfat, which is what a
-USB stick is usually formatted as — the file is written at whatever the
+On a filesystem that cannot change file modes (vfat or exfat, which is what a
+USB stick is usually formatted as), the file is written at whatever the
 filesystem allows and the difference is reported. It is never *broader* than
 requested.
 
@@ -164,6 +165,7 @@ Expect `pref-sym-algos: 9 8 7` and `features: 01`.
 
 ```bash
 sigillum certificate \
+  --backend aws-kms \
   --user-id 'Security <security@phpboyscout.uk>' \
   --certify-key alias/security-contact-v1-certify \
   --encrypt-key alias/security-contact-v1-encrypt \
@@ -173,4 +175,6 @@ sigillum certificate \
 
 ## See also
 
-- [`decrypt`](decrypt.md) — read messages addressed to this certificate.
+- [`decrypt`](decrypt.md): read messages addressed to this certificate.
+- [Receive an encrypted report](../../how-to/receive-an-encrypted-report.md):
+  provisioning, publishing and reading, end to end.

@@ -6,10 +6,11 @@ tags: [reference, configuration, config, layers, environment]
 
 # Configuration reference
 
-## Signing is not configurable — it is all flags
+## Signing is not configurable: it is all flags
 
-Every signing decision — backend, key identifier, public-key path, output path,
-format, timestamp — is a command-line flag on `sign` or `keys`. There are no
+Every signing decision is a command-line flag on `sign` or `keys`: backend, key
+identifier, public-key path, output path, format and timestamp. The same holds
+for `decrypt` and `certificate`. There are no
 `sign.*` or `keys.*` configuration keys. Putting them in a config file has no
 effect and produces no warning: the file is accepted, and the keys are never
 read.
@@ -18,15 +19,15 @@ The only AWS-related configuration sigillum honours is whatever the AWS SDK's
 own default chain picks up (`AWS_PROFILE`, `AWS_REGION`, `~/.aws/credentials`,
 OIDC web identity), plus the `--kms-region` flag.
 
-What is configurable is the surrounding framework: logging, self-update, and
-telemetry. That is the whole of it.
+What is configurable is the surrounding framework: logging, self-update,
+telemetry, and the GitLab connection that self-update uses.
 
 ## Where configuration files are looked for
 
 | Path | Role |
 |---|---|
 | `/etc/sigillum/config.yaml` | System-wide. |
-| `~/.sigillum/config.yaml` | Per-user, and the **writable** target — this is where `config set` lands. |
+| `~/.sigillum/config.yaml` | Per-user, and the **writable** target: this is where `config set` lands. |
 | `.sigillum.yaml` in the working directory or above | Project-local, discovered automatically. Sits above the user's files. |
 | Anything passed to `--config` | Explicit. Repeatable. |
 
@@ -42,16 +43,16 @@ sigillum config list   # the effective values
 ```
 
 With no config file anywhere, `config path` reports where a future write would
-land and says `no config file is currently loaded`. That is a normal state —
+land and says `no config file is currently loaded`. That is a normal state, because
 sigillum needs no configuration to sign anything.
 
 ## How layers resolve
 
 Highest precedence first:
 
-1. **Command-line flags** — only flags you actually changed. A flag sitting at
-   its default never clobbers a configured value.
-2. **Project-local `.sigillum.yaml`** — above the user's files, below flags.
+1. **Command-line flags**, but only flags you actually changed. A flag sitting
+   at its default never clobbers a configured value.
+2. **Project-local `.sigillum.yaml`**, above the user's files and below flags.
 3. **`--config` files and the default file paths**, in the order declared.
 4. **Embedded defaults** shipped in the binary's assets.
 
@@ -104,17 +105,30 @@ downloads against the signing key embedded in the binary.
 The last check time is recorded in `~/.sigillum/last_checked`; deleting that
 file forces the next run to check.
 
+## GitLab keys
+
+The GitLab forge integration is switched on, because sigillum's releases live
+on GitLab. `sigillum config list` shows these keys with no config file loaded:
+
+| Key | Default | What it does |
+|---|---|---|
+| `gitlab.url.api` | `https://gitlab.com/api/v4` | The API base that self-update reaches the release source through. |
+| `gitlab.auth.env` | `GITLAB_TOKEN` | The name of the environment variable holding a GitLab token, not the token itself. |
+| `gitlab.ssh.key.env` | `GITLAB_KEY` | The name of the environment variable holding the path to an SSH key, for the framework's git operations. No sigillum command runs one. |
+
+None of them affects signing or decryption.
+
 ## Telemetry keys
 
 | Key | Default | What it does |
 |---|---|---|
-| `telemetry.enabled` | *(unset — off)* | Whether telemetry is collected. |
+| `telemetry.enabled` | *(unset, so off)* | Whether telemetry is collected. |
 | `telemetry.consent` | *(unset)* | Records the consent decision. |
 
 ## Which keys a cloned repository cannot set
 
-A project-local `.sigillum.yaml` is honoured for workflow-tuning keys — logging,
-output, feature toggles — as soon as it is discovered. Security-sensitive keys
+A project-local `.sigillum.yaml` is honoured for workflow-tuning keys (logging,
+output, feature toggles) as soon as it is discovered. Security-sensitive keys
 are **stripped from that layer** until the file is explicitly trusted:
 
 ```bash
@@ -132,9 +146,8 @@ The protected set is:
 - any key with an `auth` segment, plus `anthropic.api`, `openai.api`,
   `gemini.api`, `bitbucket.app_password`
 
-The reason is straightforward: a repository you clone must not be able to
-silently weaken self-update verification or flip telemetry consent just by
-shipping a dotfile.
+A repository you clone must not be able to silently weaken self-update
+verification, or flip telemetry consent, by shipping a dotfile.
 
 Trust is bound to the file's exact content. Editing a trusted file revokes
 trust until you run `config trust` again.
@@ -156,7 +169,7 @@ trust until you run `config trust` again.
 ### `config set` does not check that a key exists
 
 The store is schemaless. `sigillum config set nonsense.key 1` succeeds and
-writes the key; nothing reads it. A misspelled key is therefore silent — it
+writes the key; nothing reads it. A misspelled key is therefore silent. It
 will not error, and it will not take effect. `config list` after a `set` is the
 way to catch a typo.
 
@@ -166,6 +179,6 @@ the framework.
 
 ## Related
 
-- [CLI reference](../cli/index.md) — global flags, including `--config` and
+- [CLI reference](../cli/index.md): global flags, including `--config` and
   `--debug`
 - [What sigillum does not do](../../explanation/what-sigillum-does-not-do.md)

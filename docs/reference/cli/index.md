@@ -7,14 +7,14 @@ tags: [reference, cli, commands, backends, flags]
 # CLI reference
 
 Command reference for sigillum. Run `sigillum <command> --help` for the
-authoritative, always-current flag set — the pages here mirror it and add the
+authoritative, always-current flag set. The pages here mirror it and add the
 defaults, failure modes and flag combinations that `--help` has no room for.
 
 ## The commands sigillum exists for
 
 | Command | Purpose |
 |---------|---------|
-| [`sign`](sign.md) | Produce a detached signature over one file — armored OpenPGP for checksum manifests, or minisign for release artefacts. |
+| [`sign`](sign.md) | Produce a detached signature over one file: armored OpenPGP for checksum manifests, or minisign for release artefacts. |
 | [`keys`](keys.md) | Manage signing keys: `generate`, `mint`, `wkd`, `minisign`, `publish`. |
 | [`decrypt`](decrypt.md) | Read an OpenPGP message addressed to a KMS-backed certificate. |
 | [`certificate`](certificate.md) | Assemble a publishable certificate whose keys both live in a key service. |
@@ -37,7 +37,7 @@ framework's command set. What is actually there, as `sigillum --help` reports:
 |---------|--------------|
 | `changelog` | Show version history. |
 | `completion` | Generate a shell completion script. |
-| `config` | View, set and validate configuration — see the [configuration reference](../config/index.md). |
+| `config` | View, set and validate configuration. See the [configuration reference](../config/index.md). |
 | `docs` | Browse the embedded documentation. |
 | `doctor` | Check environment and configuration health. |
 | `update` | Update to the latest available release, verifying its signature against the embedded key. |
@@ -45,9 +45,9 @@ framework's command set. What is actually there, as `sigillum --help` reports:
 
 **`init` and `mcp` are disabled** in this tool and do not appear. They are
 switched off in the root command's feature set, so no flag or configuration key
-brings them back. Some framework help text still mentions `init` — `sigillum
-config --help` suggests running `init <subsystem>` for guided reconfiguration —
-and that suggestion does not apply here.
+brings them back. Some framework help text still mentions `init`:
+`sigillum config --help` suggests running `init <subsystem>` for guided
+reconfiguration, and that suggestion does not apply here.
 
 ## Global flags
 
@@ -55,17 +55,18 @@ Registered on the root command; available to every subcommand.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--ci` | `false` | Declare that the tool is running in a CI environment. |
+| `--accessible` | `false` | Run wizards as line prompts rather than a full-screen form. `GTB_ACCESSIBLE=true` does the same. |
+| `--ci` | `false` | Declare that the tool is running in a CI environment: no prompts, no update check, no telemetry consent. |
 | `--config` | `/etc/sigillum/config.yaml`, `~/.sigillum/config.yaml` | Config file(s) to use. Repeatable; only files that exist become layers. |
 | `--debug` | `false` | Force debug-level log output regardless of `log.level`. |
 | `--output` | `text` | Output format for commands that render structured results: `text` or `json`. |
-| `-h`, `--help` | — | Help for the command. |
+| `-h`, `--help` | | Help for the command. |
 
 ### Why `--output` means two different things
 
 The global `--output` selects an output *format*. But `sign`, every `keys`
 subcommand, `decrypt` and `certificate` all define their own local `--output`,
-which is a *file path*, and a local flag shadows the global one — those commands
+which is a *file path*, and a local flag shadows the global one. Those commands
 do not even list the global `--output` in their help.
 
 `decrypt` is the one where this bites hardest. `sigillum decrypt --output json
@@ -90,13 +91,13 @@ the same flag name selects from whichever the command needs:
 
 They are separate registries because the operations are: signing needs a key
 that signs, and `decrypt` and `certificate` need one that performs ECDH key
-agreement. A name present in one is not automatically present in the other —
-they happen to ship the same two today, but that is a fact about this build
+agreement. A name present in one is not automatically present in the other.
+They happen to ship the same two today, but that is a fact about this build
 rather than a rule.
 
 `--backend` is **required** for every one of these commands. It defaults only
 when exactly one backend is compiled in, which is no longer the case for either
-registry — and a default whose meaning changes as backends are linked into the
+registry. A default whose meaning changes as backends are linked into the
 binary is a worse thing to rely on than an explicit flag.
 
 ### Signing backends
@@ -112,13 +113,13 @@ An unrecognised name fails immediately and names the alternatives:
 "vault" (available: aws-kms, local): unknown signing backend
 ```
 
-`aws-kms` resolves credentials from the AWS SDK default chain — environment
+`aws-kms` resolves credentials from the AWS SDK default chain: environment
 variables, `~/.aws/credentials`, IAM Roles Anywhere, OIDC web identity. sigillum
 adds nothing of its own: no `--profile` and no assume-role step. Set
 `AWS_PROFILE`, or export session credentials, before invoking it.
 
 `local` reads unencrypted PEMs only. Encrypted PKCS#8 is refused, and so is
-ECDSA — see
+ECDSA. See
 [What sigillum does not do](../../explanation/what-sigillum-does-not-do.md).
 
 A regulated build can drop the AWS KMS blank import and rebuild; linker
@@ -142,7 +143,7 @@ publishing both signature kinds runs two keys.
 | Code | Meaning |
 |------|---------|
 | `0` | Success. |
-| `1` | Any command error — bad flags, a missing file, an unknown backend, a signing failure. There are no per-failure codes; the message on stderr is what distinguishes them. |
+| `1` | Any command error: bad flags, a missing file, an unknown backend, a signing failure. There are no per-failure codes; the message on stderr is what distinguishes them. |
 | `130` | Terminated by SIGINT (128 + 2). |
 | `143` | Terminated by SIGTERM (128 + 15). |
 
@@ -151,8 +152,8 @@ signal force-exits immediately.
 
 ## Which stream does output go to?
 
-Diagnostics — every error, and the INFO lines that report fingerprints and
-output paths — go to **stderr**. Only command output proper goes to stdout, such
+Diagnostics go to **stderr**: every error, and the INFO lines that report
+fingerprints and output paths. Only command output proper goes to stdout, such
 as the bare public key from `keys minisign`. That split is what makes
 `sigillum keys minisign … > key.b64` produce a usable file rather than an empty
 one.

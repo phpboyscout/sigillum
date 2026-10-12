@@ -1,6 +1,6 @@
 ---
 title: sign command
-description: Reference for `sigillum sign` — every flag, its default, which signature format it belongs to, and the exact error each wrong combination produces.
+description: Reference for `sigillum sign`, with every flag, its default, which signature format it belongs to, and the exact error each wrong combination produces.
 date: 2026-08-02
 tags: [reference, commands, sign, signing, openpgp, minisign]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -52,7 +52,7 @@ read from disk.
 
 `--public-key` is checked in the command body rather than marked required by
 cobra, because the minisign path has to reject it. Omitting it fails with
-`--public-key is required for --format openpgp` — and that check runs before the
+`--public-key is required for --format openpgp`, and that check runs before the
 backend is resolved, so a typo in `--backend` will not be the error you see
 first.
 
@@ -66,7 +66,7 @@ first.
 
 A backend that needs its own flags registers them onto the same flag set, so
 they appear in `--help` alongside the generic ones. With the AWS KMS backend
-compiled in — as it is in sigillum — that adds:
+compiled in, as it is in sigillum, that adds:
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -97,7 +97,7 @@ so a symlink, a hard link, or an absolute-versus-relative form is caught too.
 
 ## How the signature timestamp is chosen
 
-`--created` takes an RFC3339 instant and truncates it to whole seconds — an
+`--created` takes an RFC3339 instant and truncates it to whole seconds. An
 OpenPGP v4 signature packet stores creation time as a `uint32` of seconds, so a
 sub-second value could not survive. An unparseable value fails with
 `parsing --created "nope" as RFC3339`.
@@ -141,12 +141,12 @@ not a signature block it fails with
 `armored input 0 is "PGP PUBLIC KEY BLOCK", not "PGP SIGNATURE"`.
 
 There is no minisign equivalent. Rotate minisign keys with `keys publish
---generation` instead — see the [`keys` reference](keys.md).
+--generation` instead. See the [`keys` reference](keys.md).
 
 ## What gets written, and with what permissions
 
-Signature files are written mode `0644`. A signature is public by design — it is
-distributed alongside the thing it signs — so world-readable is correct rather
+Signature files are written mode `0644`. A signature is public by design (it is
+distributed alongside the thing it signs), so world-readable is correct rather
 than an oversight.
 
 ## What the log line tells you
@@ -177,9 +177,9 @@ trusted comment: timestamp:1785704190	file:tool.tar.gz	hashed	project:mytool	key
 
 ## Related
 
-- [Sign a release artefact](../../how-to/sign-a-release-artefact.md) — the
+- [Sign a release artefact](../../how-to/sign-a-release-artefact.md): the
   OpenPGP procedure, including AWS KMS and CI
-- [Sign an artefact for Rust consumers](../../how-to/sign-an-artefact-for-rust-consumers.md)
-  — the minisign procedure
+- [Sign an artefact for Rust consumers](../../how-to/sign-an-artefact-for-rust-consumers.md):
+  the minisign procedure
 - [`keys` command reference](keys.md)
 - [What sigillum does not do](../../explanation/what-sigillum-does-not-do.md)
