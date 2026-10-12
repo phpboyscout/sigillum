@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.4](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.4)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.3...v0.5.4)
+
+### Bug Fixes
+
+- **sign**: defer the armored OpenPGP key refusal to go/signing ([2e63fbe](https://gitlab.com/phpboyscout/sigillum/-/commit/2e63fbed19b34fc99139d3c5a3d37f8b9ff3a1c4))
+
 ## [v0.5.3](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.3)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.2...v0.5.3)
