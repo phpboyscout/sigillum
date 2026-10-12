@@ -1,6 +1,6 @@
 ---
 title: Sign and verify your first release
-description: Install sigillum, generate an RSA keypair, sign a checksum file with the local backend, and verify the detached OpenPGP signature with gpg — no cloud account needed.
+description: Install sigillum, generate an RSA keypair, sign a checksum file with the local backend, and verify the detached OpenPGP signature with gpg, with no cloud account needed.
 tags: [tutorial, getting-started, openpgp, local, signing]
 ---
 
@@ -12,14 +12,14 @@ OpenPGP detached signature over a file, and a `gpg --verify` run that says
 
 Everything here uses the `local` backend, which signs with a private key file on
 your own disk. That keeps the tutorial free of cloud accounts. It is also the
-wrong choice for a real release — a key on disk is a key that can be copied — so
-when you move to production, swap it for AWS KMS as described in
+wrong choice for a real release, because a key on disk is a key that can be
+copied. When you move to production, swap it for AWS KMS as described in
 [Sign a release artefact](../how-to/sign-a-release-artefact.md).
 
 ## What you need before you start
 
-- **Go 1.26.5 or newer**, if you install from source. That version is pinned in
-  the module's `go` directive, and an older toolchain will refuse to build.
+- **Go 1.27.2 or newer**, if you install from source. That version is the
+  module's `go` directive, and an older toolchain will refuse to build.
 - **`gpg`**, to verify the signature with an implementation that is not
   sigillum. Any GnuPG 2.2 or later will do.
 - A scratch directory you do not mind filling with key material.
@@ -49,15 +49,15 @@ Check it runs:
 sigillum --help
 ```
 
-You should see `sign` and `keys` in the command list, alongside framework
-built-ins like `config`, `doctor`, `update` and `version`. If the shell cannot
+You should see `sign`, `keys`, `certificate` and `decrypt` in the command list,
+alongside framework built-ins like `config`, `doctor`, `update` and `version`. If the shell cannot
 find `sigillum`, `$(go env GOPATH)/bin` is probably not on your `PATH`.
 
 ## Generate a keypair
 
 `keys generate` creates a fresh OpenPGP keypair in-process and writes both
-halves. The algorithm is a required choice — a signing tool should not pick one
-for you quietly:
+halves. The algorithm is a required choice, because a signing tool should not pick
+one for you quietly:
 
 ```bash
 sigillum keys generate \
@@ -113,7 +113,7 @@ sigillum sign \
 INFO Signed file backend=local key_id=./release.pem public_key=./release.asc input=checksums.txt output=checksums.txt.sig sig_creation_time=… fingerprint=9458EAFE…
 ```
 
-sigillum wrote `checksums.txt.sig` — the default output is `<input>.sig` — as an
+sigillum wrote `checksums.txt.sig` (the default output is `<input>.sig`) as an
 ASCII-armored OpenPGP detached signature. The fingerprint on that log line is
 read back out of `release.asc`, so it is the cheapest possible check that you
 signed with the identity you meant to.
@@ -138,7 +138,7 @@ gpg: Good signature from "Test Signer <test@example.org>"
 ```
 
 gpg also prints a "This key is not certified with a trusted signature" warning.
-That is expected and is not a failure — you imported a key without certifying
+That is expected and is not a failure. You imported a key without certifying
 it, so gpg has no basis for trusting the binding between the key and the name.
 The signature itself is good.
 
@@ -165,13 +165,13 @@ repository.
 
 ## Where to go next
 
-- [Sign a release artefact](../how-to/sign-a-release-artefact.md) — the same
+- [Sign a release artefact](../how-to/sign-a-release-artefact.md): the same
   command against an AWS KMS key, plus reproducible signatures and CI wiring.
 - [Sign an artefact for Rust consumers](../how-to/sign-an-artefact-for-rust-consumers.md)
-  — the minisign lane, for cargo-binstall and rtb-update.
-- [Publish a WKD tree](../how-to/publish-a-wkd-tree.md) — serve `release.asc`
+  covers the minisign lane, for cargo-binstall and rtb-update.
+- [Publish a WKD tree](../how-to/publish-a-wkd-tree.md): serve `release.asc`
   from your own domain as an external trust anchor.
-- [CLI reference](../reference/cli/index.md) — every command, flag, default and
+- [CLI reference](../reference/cli/index.md): every command, flag, default and
   failure mode.
-- [What sigillum does not do](../explanation/what-sigillum-does-not-do.md) — the
+- [What sigillum does not do](../explanation/what-sigillum-does-not-do.md): the
   limits, including why there is no `sigillum verify`.

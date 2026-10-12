@@ -15,8 +15,7 @@ written next to it as `<artefact>.minisig`.
 
 This is a separate lane from the OpenPGP one, not an option on it. The two use
 different key algorithms, different output files and different publication
-paths, and a key from one lane cannot be used in the other. Work through the
-whole guide once and the shape becomes obvious.
+paths, and a key from one lane cannot be used in the other.
 
 ## What differs from the OpenPGP path
 
@@ -35,7 +34,7 @@ so a wrong combination stops rather than silently doing something else.
 
 ## Prerequisites
 
-- sigillum installed — see
+- sigillum installed. See
   [Sign and verify your first release](../tutorials/sign-and-verify-your-first-release.md).
 - An **Ed25519** signing key reachable through a backend. For production that is
   an AWS KMS `ECC_NIST_EDWARDS25519` key; for development it is a local PEM,
@@ -46,8 +45,8 @@ so a wrong combination stops rather than silently doing something else.
 ## Get an Ed25519 key the local backend can read
 
 `keys generate --algorithm ed25519` writes its private half as an armored
-OpenPGP secret-key block by default, and the `local` backend cannot read that —
-it reads PEM. Pointing `--key-id` at the default `.priv.asc` fails with
+OpenPGP secret-key block by default, and the `local` backend cannot read that.
+It reads PEM. Pointing `--key-id` at the default `.priv.asc` fails with
 *unsupported key type: an armored OpenPGP secret key*, and a hint names
 `--private-format pem` as the fix.
 
@@ -60,7 +59,7 @@ sigillum keys generate \
     --output artefact.asc --private-output artefact.pem
 ```
 
-That single flag is what makes minisign signing possible without an HSM — for a
+That single flag is what makes minisign signing possible without an HSM: for a
 tutorial, a test, or a project with no cloud KMS.
 
 For production, skip generation entirely: point `--backend aws-kms --key-id
@@ -68,7 +67,7 @@ alias/artefact-signing-v1` at a KMS Ed25519 key and the private half never
 exists outside AWS.
 
 The `artefact.asc` public half that `keys generate` also writes is an OpenPGP
-key file. It has no role on this path — minisign identity comes from the signer.
+key file. It has no role on this path, because minisign identity comes from the signer.
 You can delete it.
 
 ## Sign the artefact
@@ -86,13 +85,13 @@ sigillum sign \
 INFO Signed artefact format=minisign backend=local key_id=./artefact.pem minisign_key_id=846E063241A4289F input=tool_1.2.3_linux_amd64.tar.gz output=tool_1.2.3_linux_amd64.tar.gz.minisig project=mytool trusted_comment_time=…
 ```
 
-The `.minisig` extension is load-bearing: rtb-update selects its parser by
+Keep the `.minisig` extension: rtb-update selects its parser by
 extension. cargo-binstall's signature URL is configurable and can point at the
 same file. Override the path with `--output` only if you know both consumers
 will still find it.
 
 `--project` is recorded in the signature's **signed** trusted comment, so it is
-evidence rather than decoration — tampering with it breaks verification. The
+evidence rather than decoration: tampering with it breaks verification. The
 resulting comment line looks like this:
 
 ```
@@ -118,7 +117,7 @@ SOURCE_DATE_EPOCH=1785700000 sigillum sign --format minisign \
 
 `--created` wins over `SOURCE_DATE_EPOCH`; with neither set the signature
 carries the current time truncated to whole seconds. `SOURCE_DATE_EPOCH` is
-honoured on the minisign path only — the OpenPGP path reads `--created` and
+honoured on the minisign path only. The OpenPGP path reads `--created` and
 nothing else.
 
 ## Emit the public key consumers pin
@@ -132,15 +131,15 @@ sigillum keys minisign --backend local --key-id ./artefact.pem
 # RWSEbgYyQaQon9lZeNlDxKWq/UhdFdkIQgMCV9nVIJ8544IOLgx7Dtku
 ```
 
-The key goes on **stdout**, deliberately — `sigillum keys minisign … > key.b64`
-works, and the log lines go to stderr where they belong.
+The key goes on **stdout**, deliberately, so `sigillum keys minisign … > key.b64`
+works. The log lines go to stderr.
 
 Where the value lands:
 
-- **cargo-binstall** — the `pubkey` field of the crate's
+- **cargo-binstall**: the `pubkey` field of the crate's
   `[package.metadata.binstall.signing]` table. Paste the base64 string as
   printed.
-- **rtb-update** — `ToolMetadata::update_public_keys`, which wants the **raw
+- **rtb-update**: `ToolMetadata::update_public_keys`, which wants the **raw
   32-byte Ed25519 key**: the last 32 bytes of the decoded body, not the base64
   string itself.
 
@@ -222,7 +221,7 @@ not survive publication. Only the key material is compared.
 
 ## Rotate without breaking anyone
 
-Publish the new generation, then mark the old one retired. Never remove it — a
+Publish the new generation, then mark the old one retired. Never remove it. A
 signature made under a key must stay checkable long after its private half is
 destroyed.
 
@@ -235,7 +234,7 @@ sigillum keys publish --output ./keys-staging --project mytool \
 
 `--status` accepts `active`, `retired` or `revoked` and nothing else. Re-running
 `publish` for an existing project and generation replaces the manifest entry so
-the status can move — but its `pubkey` may not change, for the same reason the
+the status can move, but its `pubkey` may not change, for the same reason the
 on-disk guard exists.
 
 There is no `--append` equivalent here. A minisign signature file carries one
@@ -251,7 +250,7 @@ minisign -Vm tool_1.2.3_linux_amd64.tar.gz -P "$(sigillum keys minisign --backen
 ```
 
 A tampered artefact, or a tampered `project:` field in the trusted comment,
-fails this check — the global signature covers the trusted comment, which is why
+fails this check. The global signature covers the trusted comment, which is why
 recording the project there is evidence rather than a label.
 
 ## What this path will not do
@@ -271,7 +270,7 @@ More at [What sigillum does not do](../explanation/what-sigillum-does-not-do.md)
 ## Related
 
 - [`sign` command reference](../reference/cli/sign.md)
-- [`keys` command reference](../reference/cli/keys.md) — full flags for
+- [`keys` command reference](../reference/cli/keys.md): full flags for
   `keys minisign` and `keys publish`
-- [Sign a release artefact](sign-a-release-artefact.md) — the OpenPGP lane
-- [Publish a WKD tree](publish-a-wkd-tree.md) — the OpenPGP trust anchor
+- [Sign a release artefact](sign-a-release-artefact.md): the OpenPGP lane
+- [Publish a WKD tree](publish-a-wkd-tree.md): the OpenPGP trust anchor

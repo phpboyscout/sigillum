@@ -1,6 +1,6 @@
 ---
 title: Sign a release artefact
-description: Produce an ASCII-armored OpenPGP detached signature over a release file with sigillum — using an AWS KMS key (production) or a local PEM key (development) — then verify it with gpg.
+description: "Sign a release file with sigillum: an ASCII-armored OpenPGP detached signature from an AWS KMS key (production) or a local PEM key (development), verified with gpg."
 date: 2026-07-28
 tags: [how-to, signing, kms, openpgp, release]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -8,10 +8,22 @@ authors: [Matt Cockayne <matt@phpboyscout.uk>]
 
 # Sign a release artefact
 
-`sigillum sign <input-file>` produces an ASCII-armored OpenPGP **detached**
-signature over a single file using a configured signing backend. The private key
-never leaves the backend — signing is one round-trip to the HSM/KMS (or a read
-of the local PEM) via the `crypto.Signer` interface.
+Sign a checksum manifest with an RSA key held in AWS KMS:
+
+```bash
+sigillum sign \
+    --backend aws-kms \
+    --kms-region eu-west-2 \
+    --key-id alias/release-signing-v1 \
+    --public-key release.asc \
+    --output checksums.txt.sig \
+    checksums.txt
+```
+
+That writes `checksums.txt.sig`, an ASCII-armored OpenPGP **detached** signature
+that `gpg --verify` accepts. The private key never leaves the backend: signing
+is one round-trip to the KMS (or a read of the local PEM) through the
+`crypto.Signer` interface.
 
 sigillum ships two backends: **`aws-kms`** (production, the key stays in KMS) and
 **`local`** (development / air-gapped, an on-disk PEM key). This guide covers
@@ -31,29 +43,23 @@ lane that cargo-binstall and rtb-update verify, see
   UID, fingerprint) from this file and refuses to proceed if the backend's
   public half does not match it.
 - For the `aws-kms` backend: AWS credentials in the standard SDK chain. In a
-  local terminal that means `aws configure export-credentials --format env`; in
-  CI it means an OIDC assume-role step (see below).
+  local terminal, a configured profile (`AWS_PROFILE`) or
+  `eval "$(aws configure export-credentials --format env)"` does it. In CI it
+  means OIDC web identity (see below).
 
 ## Sign with AWS KMS (production)
 
-```bash
-sigillum sign \
-    --backend aws-kms \
-    --kms-region eu-west-2 \
-    --key-id alias/release-signing-v1 \
-    --public-key release.asc \
-    --output checksums.txt.sig \
-    checksums.txt
-```
+The command at the top of this page is the production form. Its flags:
 
-- `--key-id` is the KMS key ID, ARN, or **alias** (aliases survive rotation —
-  prefer them).
-- `--kms-region` is contributed by the AWS KMS backend and is available on
-  `sign` (and `mint`) because sigillum compiles that backend in.
+- `--key-id` is the KMS key ID, ARN, or **alias**. Prefer an alias: it can be
+  repointed at a new key without changing the pipeline.
+- `--kms-region` is contributed by the AWS KMS backend, and is available on
+  `sign`, `keys mint` and `keys minisign` because sigillum compiles that
+  backend in.
 - `--output` defaults to `<input>.sig` if omitted. `sign` refuses to write the
-  signature over its own input — the guard compares cleaned paths and falls back
+  signature over its own input. The guard compares cleaned paths and falls back
   to `os.SameFile`, so a different spelling of the same file (a symlink, an
-  absolute vs relative form) is still refused.
+  absolute or relative form) is still refused.
 
 The INFO log line includes the public-key fingerprint so you can confirm it
 matches your trust anchor before the `.sig` ships.
@@ -62,8 +68,8 @@ matches your trust anchor before the `.sig` ships.
 
 Pass `--created <rfc3339>` to pin the signature's creation timestamp. Two runs
 over the same content with the same key and the same `--created` produce
-**byte-identical** `.sig` files — useful for a reproduce-from-scratch (SLSA)
-chain:
+**byte-identical** `.sig` files, which a reproduce-from-scratch (SLSA) chain
+needs:
 
 ```bash
 sigillum sign \
@@ -92,7 +98,7 @@ sigillum sign \
 ```
 
 The `local` backend accepts unencrypted PKCS#1 and PKCS#8 PEM private keys
-holding either an **RSA** or an **Ed25519** key — but only the RSA ones are
+holding either an **RSA** or an **Ed25519** key, but only the RSA ones are
 usable here, because OpenPGP signing is RSA-only. An Ed25519 PEM fails with
 `computing signature: DetachSign: ed25519.PublicKey: unsupported key type: only
 RSA is supported`; that key belongs to the
@@ -140,9 +146,9 @@ downstream tools use during self-update.
 
 ## CI integration: GitLab + AWS OIDC
 
-sigillum knows nothing about OIDC — it reads whatever the AWS SDK default
-credential chain provides. In CI, an assume-role step populates that chain
-before `sigillum sign` runs:
+sigillum has no OIDC code of its own. It reads whatever the AWS SDK default
+credential chain provides. One way to fill that chain in CI is an assume-role
+step that exports session credentials before `sigillum sign` runs:
 
 ```yaml
 sign:
@@ -168,15 +174,18 @@ sign:
         --public-key release.asc checksums.txt
 ```
 
-This is what makes sigillum useful to **non-Go / non-gtb pipelines**: they
-install one small binary and sign, with no framework build required.
+The default chain also understands web identity on its own: with `AWS_ROLE_ARN`
+and `AWS_WEB_IDENTITY_TOKEN_FILE` (a path to the token, not the token) set, it
+assumes the role without the `before_script`.
+
+Neither form needs Go or gtb in the pipeline: install the binary and sign.
 
 ## Related
 
 - [Generate or mint a signing key](generate-or-mint-a-signing-key.md)
 - [Publish a WKD tree](publish-a-wkd-tree.md)
 - [Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md)
-- [`sign` command reference](../reference/cli/sign.md) — every flag, default and
+- [`sign` command reference](../reference/cli/sign.md): every flag, default and
   refused combination
 - [Architecture](../explanation/components/index.md)
 - [What sigillum does not do](../explanation/what-sigillum-does-not-do.md)

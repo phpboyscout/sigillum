@@ -9,8 +9,8 @@ authors: [Matt Cockayne <matt@phpboyscout.uk>]
 # Publish a WKD tree
 
 Web Key Directory (WKD) lets a client fetch your public key from a well-known
-URL derived from an email address. It serves as a **second, externally-served
-trust anchor**: a verifier can fetch the WKD copy and refuse to trust a release
+URL derived from an email address. It is a **second trust anchor, served from
+somewhere other than your code host**: a verifier can fetch the WKD copy and refuse to trust a release
 unless the embedded key and the WKD copy agree on the fingerprint. Compromising
 just your code host, or just your WKD host, cannot poison verification.
 
@@ -31,7 +31,7 @@ sigillum keys wkd \
     rotation-authority.asc signing-key-v1.asc
 ```
 
-Result (advanced layout — the default):
+Result (the advanced layout, which is the default):
 
 ```
 wkd-staging/
@@ -47,31 +47,31 @@ A successful run logs each `hu/` bucket's hash and every file written.
 
 ### Flags
 
-- `--domain` (required) — the DNS domain serving the WKD endpoint. It is the
+- `--domain` (required): the DNS domain serving the WKD endpoint. It is the
   **only** required flag.
-- `--email` (optional, repeatable) — the address(es) to publish. Each `--email`
+- `--email` (optional, repeatable): the address(es) to publish. Each `--email`
   gets its own `hu/<hash>` bucket; keys are written in lexicographic fingerprint
   order so the output is reproducible across deploys. **Leave it off** and every
   distinct email found across the input keys is published, which is usually what
   you want. A `--email` that matches no input key is an error:
   `no input key matched --email security@example.org`.
-- `--output` (default `./wkd-staging`) — the staging directory.
-- `--method` (default `advanced`) — the URL layout: `advanced` (served from
+- `--output` (default `./wkd-staging`): the staging directory.
+- `--method` (default `advanced`): the URL layout: `advanced` (served from
   `openpgpkey.<domain>`) or `direct` (served from `<domain>`).
-- `--submission-address` (default: omitted) — controls the optional
+- `--submission-address` (default: omitted) controls the optional
   submission-address file. Leave unset to omit it, pass `auto` to use the first
   `--email`, or pass an explicit address to override.
 
 ### The `openpgpkey.` subdomain
 
-The `openpgpkey.<domain>` host in the advanced layout is fixed by the WKD spec —
-every WKD client hardcodes that prefix when building the lookup URL, so you do
+The `openpgpkey.<domain>` host in the advanced layout is fixed by the WKD spec.
+Every WKD client hardcodes that prefix when building the lookup URL, so you do
 not choose it. Verifier configuration on the consumer side only ever takes the
 **email**; the hostname falls out mechanically.
 
 ## Deploy
 
-The staging directory is a plain static tree — deploy it to any static host that
+The staging directory is a plain static tree. Deploy it to any static host that
 serves the `.well-known/openpgpkey/...` paths over HTTPS. For a Cloudflare Pages
 Direct Upload, for example:
 
@@ -105,7 +105,7 @@ from the `.asc` files, so there is no manual surgery on the host.
 ## What WKD does not cover
 
 WKD publishes **OpenPGP** keys. The minisign public keys that cargo-binstall and
-rtb-update pin are not OpenPGP and have no WKD representation — they are
+rtb-update pin are not OpenPGP and have no WKD representation. They are
 published as plain files by
 [`keys publish`](sign-an-artefact-for-rust-consumers.md#publish-the-public-key),
 which writes into the same staging directory so one deploy covers both.

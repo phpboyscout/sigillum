@@ -7,8 +7,8 @@ tags: [how-to, encryption, security-txt, kms, vulnerability-reports]
 # Receive an encrypted report
 
 Give security researchers a way to send you a vulnerability report that nobody
-else can read — including your ticket system, and including anyone with
-repository access who is not on the rota.
+else can read. That includes your ticket system, and anyone with repository
+access who is not on the rota.
 
 The private key lives in AWS KMS and is never readable by this tool.
 
@@ -30,6 +30,7 @@ the provider's [Provision the keys][prov] guide.
 
 ```bash
 sigillum certificate \
+    --backend aws-kms \
     --user-id 'Security <security@example.com>' \
     --certify-key alias/security-contact-v1-certify \
     --encrypt-key alias/security-contact-v1-encrypt \
@@ -41,7 +42,7 @@ Two `kms:Sign` calls happen inside that, and no private key material exists in
 the process at any point.
 
 **Record the `--created` value.** It is hashed into both fingerprints, and the
-key derivation binds the subkey's — so the same keys with a different creation
+key derivation binds the subkey's, so the same keys with a different creation
 time are a *different* certificate, and nothing encrypted to the old one will
 open. It has no default for exactly that reason.
 
@@ -72,7 +73,7 @@ Encryption: https://example.com/.well-known/security-contact.asc
 Expires: 2027-01-01T00:00:00Z
 ```
 
-`Encryption` must be a URI — [RFC 9116][rfc] forbids inlining the key itself.
+`Encryption` must be a URI: [RFC 9116][rfc] forbids inlining the key itself.
 
 [rfc]: https://www.rfc-editor.org/rfc/rfc9116.html
 
@@ -83,6 +84,7 @@ and open it:
 
 ```bash
 sigillum decrypt \
+    --backend aws-kms \
     --certificate security-contact.asc \
     --key alias/security-contact-v1-encrypt \
     --output report.txt \
@@ -90,8 +92,8 @@ sigillum decrypt \
 ```
 
 You need the **reader** role for this, and only that: it can derive a shared
-secret and cannot sign. Assume it the way your estate expects — an SSO session
-with MFA, not a CI credential.
+secret and cannot sign. Assume it the way your organisation expects: an SSO
+session with MFA, not a CI credential.
 
 `--output` writes mode `0600`. Without it the plaintext goes to stdout, which is
 fine for reading and less fine for shell history and scrollback.
@@ -111,9 +113,10 @@ quoting it.
 
 | Message | Means |
 |---|---|
-| `addressed to ...` | Encrypted to a different certificate. No key-service call was made, unless the message also carried hidden recipients |
+| `not addressed to this certificate` | Encrypted to a different certificate. No key-service call was made, unless the message also carried hidden recipients |
 | `stopped before trying every recipient` | The message carried session-key packets on more than 16 distinct ephemeral points, so some were never tried. Not only hidden recipients: the ceiling applies to every packet however it is addressed, and anyone can compose packets naming your key id because it is the tail of your published fingerprint |
 | `certificate has no ECDH encryption subkey` | A signing-only certificate |
+| `required flag not set: --backend` | `--backend` was omitted; the distributed binary carries two key services, so it must be named |
 | `malformed message` | Truncated paste, or not OpenPGP at all |
-| `AccessDenied` | The role is missing a grant — check the reader policy |
+| `AccessDenied` | The role is missing a grant. Check the reader policy |
 | `integrity check failed` | The message was altered, or the wrong certificate was supplied |
