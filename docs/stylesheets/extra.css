@@ -1,4 +1,4 @@
-/* sigillum — home hero.
+/* sigillum: home hero.
  *
  * Deliberately built on the publication palette (deep petrol-teal, warm amber,
  * brass-gold, soft cream, dark charcoal) rather than copied from go-tool-base,
@@ -166,7 +166,7 @@
 
 @media screen and (max-width: 60em) {
   /* align-items: center on a column flex container sizes children to
-     max-content, which the nowrap install line then blows past — the page
+     max-content, which the nowrap install line then blows past, and the page
      scrolls sideways. Stretch them to the container instead. */
   .hero {
     flex-direction: column;

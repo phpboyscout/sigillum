@@ -23,7 +23,7 @@ A seal press poised over a disc of amber wax: the handle you push, not the impre
 
 ### Vector (recommended)
 
-Scales indefinitely without quality loss — use it for the web, print and
+Scales without quality loss. Use it for the web, print and
 high-resolution displays.
 
 - [Transparent (logo_transparent.svg)](../images/branding/logo_transparent.svg)
