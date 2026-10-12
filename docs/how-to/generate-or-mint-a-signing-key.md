@@ -58,7 +58,8 @@ Notes:
 secret-key block** (`.priv.asc`) — the same wire format `gpg
 --export-secret-keys` produces. The `local` signing backend cannot read that; it
 reads PEM, and pointing `--key-id` at a `.priv.asc` is refused with
-`unsupported key type`, followed by the flag that produces a key it can use.
+`unsupported key type`, with a hint naming the flag that produces a key it can
+use.
 
 Add `--private-format pem` when the key needs to sign locally:
 

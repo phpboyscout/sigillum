@@ -14,7 +14,7 @@ import (
 	"gitlab.com/phpboyscout/sigillum/internal/signguard"
 )
 
-// The sign command is attached by generated wiring, so the key-file check
+// The sign command is attached by generated wiring, so its OpenPGP-lane hint
 // rides in as middleware rather than as an edit the generator would undo.
 func init() {
 	setup.RegisterGlobalMiddleware(signguard.Middleware)

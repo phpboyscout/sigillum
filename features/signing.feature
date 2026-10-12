@@ -102,8 +102,8 @@ Feature: Signing release artefacts
     And stderr mentions "--public-key is not accepted"
 
   Scenario: OpenPGP signing refuses an Ed25519 key by its type
-    # keys generate writes this file itself, so "no PEM block found" would
-    # read as a broken key rather than the wrong lane.
+    # go/signing refuses the key by its type; only sigillum knows the format,
+    # so it adds the hint naming the lane that takes the key.
     Given an ed25519 key with its default openpgp private half
     And a release artefact "checksums.txt"
     When I sign that artefact as openpgp with the openpgp private half

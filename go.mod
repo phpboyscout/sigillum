@@ -16,6 +16,7 @@ require (
 	gitlab.com/phpboyscout/go/encryption v0.2.1
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.1
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1
+	gitlab.com/phpboyscout/go/errors v0.3.0
 	gitlab.com/phpboyscout/go/forge-gitlab v0.24.0
 	gitlab.com/phpboyscout/go/signing v0.10.0
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.6.1
@@ -141,7 +142,6 @@ require (
 	gitlab.com/phpboyscout/go/config-afero v0.1.11 // indirect
 	gitlab.com/phpboyscout/go/controls v0.7.1 // indirect
 	gitlab.com/phpboyscout/go/credentials v0.3.2 // indirect
-	gitlab.com/phpboyscout/go/errors v0.3.0 // indirect
 	gitlab.com/phpboyscout/go/features v0.1.0 // indirect
 	gitlab.com/phpboyscout/go/forge v0.31.0 // indirect
 	gitlab.com/phpboyscout/go/httpclient v0.2.3 // indirect
