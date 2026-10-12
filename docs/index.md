@@ -35,7 +35,7 @@ hide:
 <div class="cap-grid">
   <div class="cap">
     <h3>Sign</h3>
-    <p>Turn any file into a detached signature — armored OpenPGP for checksum manifests, minisign for release artefacts. The key stays in the backend; only a digest is ever sent to it.</p>
+    <p>Turn any file into a detached signature: armored OpenPGP for checksum manifests, minisign for release artefacts. The key stays in the backend; only a digest is ever sent to it.</p>
   </div>
   <div class="cap">
     <h3>Mint</h3>
@@ -67,11 +67,13 @@ until something wants the *commands* without the framework: it ends up depending
 on the whole of gtb, which depends on the signing module, and the dependency
 graph stops being a graph.
 
-sigillum is the leaf that resolves it — a pure CLI over
-[`go/signing`](https://signing.go.phpboyscout.uk), depending on the framework and
-depended on by nothing. The command surface is identical to `gtb sign` and
-`gtb keys`; sigillum simply makes those commands the *whole* tool, so a release
-pipeline that is not Go, and was never built with gtb, can still use them.
+sigillum is the leaf that resolves it. It is a CLI over
+[`go/signing`](https://signing.go.phpboyscout.uk) that depends on the framework
+and is depended on by nothing. Its `sign` and `keys` are the same commands as
+`gtb sign` and `gtb keys`, mounted at the top level, so a release pipeline that
+is not Go, and was never built with gtb, can still use them. The two commands
+sigillum adds of its own, `decrypt` and `certificate`, cover the other job a
+project's keys do: receiving encrypted vulnerability reports.
 
 ## Sign a file in one command
 
@@ -92,6 +94,7 @@ for `--backend local --key-id ./release.pem` to sign with an on-disk key instead
 
 ```bash
 sigillum decrypt \
+    --backend aws-kms \
     --certificate security-contact.asc \
     --key alias/security-contact-v1-encrypt \
     report.asc
@@ -99,13 +102,13 @@ sigillum decrypt \
 
 A researcher fetched that certificate from your `security.txt`, encrypted their
 report to it, and opened a confidential ticket. Opening it needs exactly one
-call to your key service; the derivation, the key unwrap and the body decryption
-all happen locally. See
+call to your key service. The derivation, the key unwrap and the body
+decryption all happen locally. See
 [Receive an encrypted report](how-to/receive-an-encrypted-report.md).
 
 ## How do I verify a signature?
 
-Not with sigillum — it signs, and there is no `sigillum verify`. Use
+Not with sigillum. It signs, and there is no `sigillum verify`. Use
 `gpg --verify` for OpenPGP signatures and `minisign -Vm` for `.minisig` artefact
 signatures, or let the consumers do it: cargo-binstall and rtb-update both
 verify before installing. The reasoning, and the rest of the limits, are in
@@ -113,27 +116,34 @@ verify before installing. The reasoning, and the rest of the limits, are in
 
 ## Architecture at a glance
 
-sigillum is deliberately thin. All real work lives upstream; sigillum wires the
-pieces together and ships the backends:
+All signing logic lives upstream. sigillum wires the pieces together, ships the
+backends, and owns one piece of real work: reading an OpenPGP message for
+`decrypt`, which nothing upstream does.
 
 ```
-sigillum  (this CLI — attaches the commands, ships the backends)
+sigillum  (this CLI: attaches the commands, ships the backends)
    │
-   ├─ go/signing-cli   the sign / keys cobra command builders
-   │       │
-   │       └─ go/signing            the actual signing & verification logic
-   │              └─ go/signing/openpgpkey, .../verify   OpenPGP + WKD helpers
+   ├─ sign, keys   →  go/signing-cli   the cobra command builders
+   │                     └─ go/signing   signing & verification logic
+   │                           └─ go/signing/openpgpkey, .../verify   OpenPGP + WKD helpers
+   │       ├─ go/signing-aws-kms   AWS KMS backend   (blank-imported)
+   │       └─ go/signing/local     local PEM backend (blank-imported)
    │
-   ├─ go/signing-aws-kms   AWS KMS backend   (blank-imported)
-   └─ go/signing/local     local PEM backend (blank-imported)
+   ├─ decrypt      →  internal/openpgp (message reading)  →  go/encryption
+   └─ certificate  →  go/encryption   certificate assembly, key derivation, key unwrap
+           ├─ go/encryption-aws-kms   AWS KMS backend   (blank-imported)
+           └─ go/encryption/local     local PEM backend (blank-imported)
 ```
 
 - **`go/signing`** holds all signing and verification logic.
-- **`go/signing-cli`** holds only the cobra command builders (`sign`, `keys`);
-  it depends on `go/signing` + cobra and nothing else.
-- **sigillum** attaches those commands to its root and blank-imports the
-  backends it ships (AWS KMS + local PEM). Which backends are compiled in is a
-  build-time decision — a regulated build can drop a blank import and rebuild.
+- **`go/signing-cli`** holds only the cobra command builders (`sign`, `keys`).
+  It depends on neither gtb nor sigillum.
+- **`go/encryption`** holds the certificate assembler and parser and the
+  cryptographic steps of decryption.
+- **sigillum** attaches the commands to its root and blank-imports the backends
+  it ships (AWS KMS and local PEM, on each side). Which backends are compiled in
+  is a build-time decision: a regulated build can drop a blank import and
+  rebuild.
 
 See [Explanation](explanation/index.md) for why this is a separate tool and how
 the backend model works.
@@ -142,14 +152,14 @@ the backend model works.
 
 The documentation follows the [Diátaxis](https://diataxis.fr/) framework:
 
-- **[Tutorials](tutorials/index.md)** — install, generate a key, sign a file and
+- **[Tutorials](tutorials/index.md)**: install, generate a key, sign a file and
   verify it, start to finish.
-- **[How-to guides](how-to/index.md)** — sign a release artefact, sign an
+- **[How-to guides](how-to/index.md)**: sign a release artefact, sign an
   artefact for Rust consumers, generate or mint a signing key, publish a WKD
-  tree.
-- **[Reference](reference/index.md)** — every command, flag, default,
+  tree, receive an encrypted report.
+- **[Reference](reference/index.md)**: every command, flag, default,
   configuration key and failure mode.
-- **[Explanation](explanation/index.md)** — the architecture, the reasoning
+- **[Explanation](explanation/index.md)**: the architecture, the reasoning
   behind it, and [what sigillum does not
   do](explanation/what-sigillum-does-not-do.md).
 

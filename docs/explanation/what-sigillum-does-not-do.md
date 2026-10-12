@@ -1,6 +1,6 @@
 ---
 title: What sigillum does not do
-description: The deliberate limits of sigillum — no verify command, no key-algorithm crossover between the OpenPGP and minisign paths, no encrypted private keys, no runtime backend selection, and no configuration file for signing options.
+description: The deliberate limits of sigillum. No verify command, no key-algorithm crossover between the OpenPGP and minisign paths, no encrypted private keys, no runtime backend selection, and no configuration file for signing options.
 date: 2026-08-02
 tags: [explanation, limitations, constraints, signing]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -26,7 +26,7 @@ surface does. Verification happens in three other places:
 - **`gpg --verify <sig> <file>`** for OpenPGP detached signatures. sigillum's
   output is an ordinary armored OpenPGP signature, so any implementation works.
 - **`minisign -Vm <artefact> -P <pubkey>`** for `.minisig` artefact signatures,
-  or the consumers themselves — cargo-binstall and rtb-update both verify before
+  or the consumers themselves: cargo-binstall and rtb-update both verify before
   installing.
 - **[`gitlab.com/phpboyscout/go/signing/verify`](https://signing.go.phpboyscout.uk)**,
   a Go library, for tools that check their own downloads during self-update.
@@ -64,9 +64,9 @@ therefore runs **two keys**: one RSA for OpenPGP, one Ed25519 for minisign.
 
 Both backends reject ECDSA:
 
-- `local` — *PKCS#8 holds \*ecdsa.PrivateKey: PEM key is neither RSA nor
+- `local` fails with *PKCS#8 holds \*ecdsa.PrivateKey: PEM key is neither RSA nor
   Ed25519; only those are supported*.
-- `aws-kms` — *KMS key is neither RSA nor Ed25519; only RSA SIGN_VERIFY and
+- `aws-kms` fails with *KMS key is neither RSA nor Ed25519; only RSA SIGN_VERIFY and
   ECC_NIST_EDWARDS25519 keys are supported*.
 
 Nothing in the phpboyscout estate verifies ECDSA signatures, so accepting the
@@ -75,8 +75,8 @@ key type would produce signatures no consumer could check.
 ## Private keys on disk are never encrypted
 
 `keys generate` writes unencrypted private halves, and the `local` backend reads
-only unencrypted PEMs. An encrypted PEM — a file whose block header reads
-`-----BEGIN ENCRYPTED PRIVATE KEY-----` — gets *encrypted PEM private keys are
+only unencrypted PEMs. An encrypted PEM (a file whose block header reads
+`-----BEGIN ENCRYPTED PRIVATE KEY-----`) gets *encrypted PEM private keys are
 not supported in v0.1; decrypt out-of-band first or use the aws-kms backend*.
 
 The Go standard library exposes no PKCS#8 encryption or decryption, and a clean
@@ -94,7 +94,7 @@ Private-half files are written mode `0600`; public halves and signatures are
 plugin directory, no `--backend-path`, and no configuration key that adds one.
 
 There are two independent registries, and the same flag name selects from
-whichever the command needs — signing for `sign` and `keys`, encryption for
+whichever the command needs: signing for `sign` and `keys`, encryption for
 `decrypt` and `certificate`. The distributed sigillum ships `aws-kms` and
 `local` in both, and `--backend` is required rather than defaulting, because
 more than one is present.
@@ -113,11 +113,12 @@ binary entirely. See [Concepts](concepts/index.md) for the model.
 
 ## Signing options cannot be set in a configuration file
 
-Every signing decision — backend, key identifier, public key, output path,
-format, timestamp — is a command-line flag. There are no `sign.*` or `keys.*`
+Every signing decision is a command-line flag: backend, key identifier, public
+key, output path, format and timestamp. There are no `sign.*` or `keys.*`
 configuration keys, and adding them to `~/.sigillum/config.yaml` does nothing.
 
-Only the framework's own settings (`log.level`, `update.*`) are configurable.
+Only the framework's own settings (`log.*`, `update.*`, `telemetry.*` and the
+`gitlab.*` keys) are configurable.
 The [configuration reference](../reference/config/index.md) lists what actually
 exists, including the environment-variable behaviour, which is not what you
 would expect.
@@ -128,7 +129,7 @@ would expect.
 `--recursive`, and no manifest mode. Two artefacts means two invocations.
 
 For a release with many artefacts the usual shape is to sign a single checksum
-manifest with OpenPGP — one signature covering everything — and to sign each
+manifest with OpenPGP, one signature covering everything, and to sign each
 downloadable artefact with minisign in a loop, because the consumers fetch one
 artefact and want a signature beside it.
 
@@ -174,15 +175,16 @@ are present. See the [CLI reference](../reference/cli/index.md).
 Three things people reasonably expect to find here live outside it:
 
 - **AWS credentials.** The `aws-kms` backend reads the AWS SDK default
-  credential chain and nothing else. There is no `--profile`, no
-  `--role-arn`, and no OIDC support in sigillum — a CI job populates the chain
-  before sigillum runs. `--kms-region` (default `eu-west-2`) is the only
-  AWS-specific flag.
+  credential chain and nothing else. There is no `--profile` and no
+  `--role-arn`, and sigillum has no OIDC code of its own. The SDK chain does:
+  with `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` set, it assumes the
+  role itself. Otherwise a CI job populates the chain before sigillum runs.
+  `--kms-region` (default `eu-west-2`) is the only AWS-specific flag.
 - **Deploying a keys site.** `keys wkd` and `keys publish` write a staging
   directory. Getting it onto a host is your deploy tool's job.
 - **Timestamping and notarisation.** No RFC 3161 timestamps, no transparency-log
   submission, no Apple notarisation, no Windows Authenticode. sigillum produces
-  detached signatures, and that is the whole surface.
+  detached signatures and nothing more.
 
 ## Where the reasoning lives
 

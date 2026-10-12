@@ -1,44 +1,44 @@
 ---
 title: How-to guides
-description: Task-oriented guides for signing, publishing and decryption with sigillum — OpenPGP manifests, minisign artefacts, key generation, trust-anchor publication and encrypted vulnerability reports.
+description: Task-oriented guides for signing, publishing and decryption with sigillum, covering OpenPGP manifests, minisign artefacts, key generation, trust-anchor publication and encrypted vulnerability reports.
 tags: [how-to, signing, keys, publishing]
 ---
 
 # How-to guides
 
 Task-oriented guides. Each one walks through a single concrete task and assumes
-you already know the basics — start with
+you already know the basics. Start with
 [Sign and verify your first release](../tutorials/sign-and-verify-your-first-release.md)
 if you do not.
 
 ## Receiving encrypted reports
 
-- **[Receive an encrypted report](receive-an-encrypted-report.md)** — publish a
+- **[Receive an encrypted report](receive-an-encrypted-report.md)**: publish a
   KMS-backed certificate, advertise it in `security.txt`, and read what
   researchers send you.
 
-## The OpenPGP lane — signing checksum manifests
+## The OpenPGP lane: signing checksum manifests
 
-- **[Sign a release artefact](sign-a-release-artefact.md)** — produce a detached
+- **[Sign a release artefact](sign-a-release-artefact.md)**: produce a detached
   OpenPGP signature with the AWS KMS or local PEM backend, dual-sign during a
   key rotation, and wire it into GitLab CI with AWS OIDC.
-- **[Generate or mint a signing key](generate-or-mint-a-signing-key.md)** —
+- **[Generate or mint a signing key](generate-or-mint-a-signing-key.md)**:
   generate a fresh keypair locally, or mint an OpenPGP public key from a signer
   that already exists in KMS.
-- **[Publish a WKD tree](publish-a-wkd-tree.md)** — serve your public keys from
-  your own domain so verifiers can cross-check them against an
-  externally-administered copy.
+- **[Publish a WKD tree](publish-a-wkd-tree.md)**: serve your public keys from
+  your own domain, so verifiers can check the copy embedded in a tool against
+  one served from somewhere else.
 
-## The minisign lane — signing release artefacts
+## The minisign lane: signing release artefacts
 
-- **[Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md)**
-  — produce a `.minisig` artefact signature, emit the public key cargo-binstall
+- **[Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md)**:
+  produce a `.minisig` artefact signature, emit the public key cargo-binstall
   and rtb-update pin, and publish it into a keys site with a manifest.
 
 ## Which lane do I need?
 
 Both, if you publish a checksum manifest *and* downloadable artefacts. They use
-different key algorithms — RSA for OpenPGP, Ed25519 for minisign — and one key
+different key algorithms (RSA for OpenPGP, Ed25519 for minisign), and one key
 cannot serve both, so a project doing both runs two keys.
 
 The [CLI reference](../reference/cli/index.md#which-key-algorithm-do-i-need)

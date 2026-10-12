@@ -1,6 +1,6 @@
 ---
 title: Components & architecture
-description: How sigillum is assembled — the module stack from the sigillum CLI down through go/signing-cli to go/signing and its backends, and where each responsibility lives.
+description: How sigillum is assembled, from the module stack from the sigillum CLI down through go/signing-cli to go/signing and its backends, and where each responsibility lives.
 date: 2026-07-28
 tags: [explanation, architecture, signing, cli]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -8,22 +8,23 @@ authors: [Matt Cockayne <matt@phpboyscout.uk>]
 
 # Components & architecture
 
-sigillum is a thin composition layer on the signing side. Its job there is to
-*assemble* the command surface and *ship* the backends — not to implement
-signing. On the decryption side it is thinner but not empty: `internal/openpgp`
-holds the message-reading logic, which exists nowhere upstream. Everything
-else substantive lives in upstream modules.
+On the signing side sigillum is a composition layer. Its job there is to
+assemble the command surface and ship the backends, not to implement signing.
+The decryption side is not empty: `internal/openpgp` holds the code that reads
+an OpenPGP message, which exists nowhere upstream. Everything else of substance
+lives in upstream modules.
 
 ## The module stack
 
 ```
-sigillum  (this repo — a gtb-generated pure CLI)
+sigillum  (this repo: a gtb-generated CLI)
    │  attaches the commands to its root; blank-imports the backends
    │
    ├─ gitlab.com/phpboyscout/go/signing-cli
    │     the cobra command builders: sign,
    │     keys {generate, mint, wkd, minisign, publish}
-   │     depends only on go/signing + cobra/pflag — no gtb, no sigillum
+   │     depends on go/signing, cobra/pflag and small toolkit
+   │     modules; never on gtb or sigillum
    │        │
    │        └─ gitlab.com/phpboyscout/go/signing
    │              all signing & verification logic; the crypto.Signer
@@ -34,52 +35,55 @@ sigillum  (this repo — a gtb-generated pure CLI)
    └─ gitlab.com/phpboyscout/go/signing/local     local PEM backend
 ```
 
+The encryption side sits beside it and is covered under
+[Who owns what](#who-owns-what) below.
+
 Read that top to bottom: **sigillum → go/signing-cli → go/signing (+ backends)**.
 
 ## Who owns what
 
-**`go/signing`** — the logic. Signing, verification, the OpenPGP packet
+**`go/signing`** holds the logic. Signing, verification, the OpenPGP packet
 assembly (`openpgpkey`), the WKD tree writer, and the `crypto.Signer` backend
 registry. A backend registers itself here; the command layer never hard-codes
 one.
 
-**`go/signing-cli`** — the command surface, and *only* that. It holds the cobra
-constructors (`NewCmdSign`, `NewCmdKeys`) and their flag wiring, and delegates
-every real operation to `go/signing`. It depends on `go/signing`, cobra, and
-pflag — deliberately nothing else. It defines its own minimal `Logger`
+**`go/signing-cli`** holds the command surface, and only that. It holds the
+cobra constructors (`NewCmdSign`, `NewCmdKeys`) and their flag wiring, and
+delegates every real operation to `go/signing`. Its dependencies are
+`go/signing`, cobra and pflag, plus go-crypto and the small `go/errors` and
+`go/errorhandling` modules; none of them is gtb or sigillum. It defines its own minimal `Logger`
 interface (`Debug`/`Info`/`Warn`/`Error(msg string, args ...any)`) that both a
 `*slog.Logger` and gtb's logger satisfy structurally, so it needs no adapter and
 never imports gtb's `props` container. The constructors return plain
 `*cobra.Command` values, leaving any framework-specific wrapping to the caller.
 
-**sigillum** — the composition. It is a gtb-generated application whose root
-command attaches four top-level commands: `sign` and `keys` from
-`go/signing-cli`, and `decrypt` and `certificate` from its own `pkg/cmd`:
+**sigillum** is the composition. It is a gtb-generated application whose root
+command attaches four top-level commands: `decrypt` and `certificate` from its
+own `pkg/cmd`, and `sign` and `keys` from `go/signing-cli`. From
+`pkg/cmd/root/cmd.go`:
 
 ```go
-rootCmd := gtbRoot.NewCmdRoot(p,
-    setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())),
-    setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())),
-    decrypt.NewCmdDecrypt(p),
-    certificate.NewCmdCertificate(p),
-)
+rootCmd := gtbRoot.NewCmdRoot(p, decrypt.NewCmdDecrypt(p), certificate.NewCmdCertificate(p), setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())), setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())))
 ```
+
+That file is generated. The generator writes the `signing-cli` lines because
+`.gtb/manifest.yaml` lists the module under `external_commands`.
 
 The split is deliberate and it is not symmetric. Signing logic is entirely
 upstream, so sigillum attaches builders and adds nothing. Decryption is not:
-`internal/openpgp` — message framing, the candidate walk, the size and
-compression bounds — lives here, because it exists nowhere upstream and
+`internal/openpgp` (message framing, the walk over candidate recipients, the
+size and compression bounds) lives here, because it exists nowhere upstream and
 `go/encryption` deliberately stops at the packet and certificate layer.
 
 It also blank-imports the backends it ships (see
 [Concepts](../concepts/index.md)), so those backends register themselves at
 startup and appear as valid `--backend` values.
 
-There are **two registries, not one** — `go/signing`'s and `go/encryption`'s —
+There are **two registries, not one** (`go/signing`'s and `go/encryption`'s),
 and sigillum keeps a blank-import file per side (`cmd/sigillum/signing.go` and
 `cmd/sigillum/encryption.go`). They are deliberately separate: the two sides ask
 different things of a backend. Signing needs a key that signs; encryption needs
-one that derives a shared secret *and* can hand back its own public half, which
+one that derives a shared secret and can hand back its own public half, which
 a signing backend has no reason to offer. A single registry would make every
 backend claim both, and `--backend` would list names that cannot serve the
 command they were given to.
@@ -94,15 +98,15 @@ The command builders could have lived inside gtb (where they originated as
   job is signing, and risk a **module cycle** if gtb ever needed something from
   sigillum.
 
-Extracting the builders into a tiny, props-decoupled `go/signing-cli` module
-solves both: gtb and sigillum both attach the *same* commands, and because
-`go/signing-cli` depends only on `go/signing` there is no path back to gtb or
-sigillum — no cycle is possible. `go mod graph` shows `go/signing-cli`
-depending on `go/signing` only.
+Extracting the builders into a small `go/signing-cli` module, with no
+dependency on gtb's `props`, solves both. gtb and sigillum attach the same
+commands. Nothing `go/signing-cli` depends on leads back to gtb or sigillum, so
+no cycle is possible. `go mod graph` shows no edge from
+`go/signing-cli` to either.
 
 ## No cycle, by construction
 
-The dependency arrows only ever point *down* the stack. sigillum and gtb both
+The dependency arrows only ever point down the stack. sigillum and gtb both
 sit at the top and depend on `go/signing-cli`; neither is depended on by
 anything below. That is what lets the same command code serve a full framework
 CLI (gtb) and a single-purpose CLI (sigillum) without either constraining the
