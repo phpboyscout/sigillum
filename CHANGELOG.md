@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.5.5](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.5)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.4...v0.5.5)
+
+### Bug Fixes
+
+- **deps**: take config@v0.21.1, forge-gitlab@v0.24.2, transport@v0.6.4 ([da82b0a](https://gitlab.com/phpboyscout/sigillum/-/commit/da82b0aa0bf3a6ea06235f032fe84c031a115a0b))
+- **deps**: update go modules ([b864ea1](https://gitlab.com/phpboyscout/sigillum/-/commit/b864ea1fff91f1f7ae77f00f1affd7ecc58f496c))
+
 ## [v0.5.4](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.4)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.3...v0.5.4)
