@@ -17,7 +17,7 @@ require (
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.2
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1
 	gitlab.com/phpboyscout/go/errors v0.3.0
-	gitlab.com/phpboyscout/go/forge-gitlab v0.24.0
+	gitlab.com/phpboyscout/go/forge-gitlab v0.24.2
 	gitlab.com/phpboyscout/go/signing v0.10.1
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.6.2
 	gitlab.com/phpboyscout/go/signing-cli v0.6.2
@@ -131,31 +131,31 @@ require (
 	github.com/yuin/goldmark v1.8.6 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
-	gitlab.com/gitlab-org/api/client-go/v2 v2.64.0 // indirect
+	gitlab.com/gitlab-org/api/client-go/v3 v3.18.0 // indirect
 	gitlab.com/phpboyscout/go/authn v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/browser v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/changelog v0.4.0 // indirect
 	gitlab.com/phpboyscout/go/chat v0.32.0 // indirect
 	gitlab.com/phpboyscout/go/clientlifecycle v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/config v0.20.1 // indirect
+	gitlab.com/phpboyscout/go/config v0.21.1 // indirect
 	gitlab.com/phpboyscout/go/config-afero v0.1.11 // indirect
-	gitlab.com/phpboyscout/go/controls v0.7.1 // indirect
+	gitlab.com/phpboyscout/go/controls v0.8.4 // indirect
 	gitlab.com/phpboyscout/go/credentials v0.3.2 // indirect
 	gitlab.com/phpboyscout/go/features v0.1.0 // indirect
-	gitlab.com/phpboyscout/go/forge v0.31.0 // indirect
-	gitlab.com/phpboyscout/go/httpclient v0.2.3 // indirect
+	gitlab.com/phpboyscout/go/forge v0.31.1 // indirect
+	gitlab.com/phpboyscout/go/httpclient v0.2.4 // indirect
 	gitlab.com/phpboyscout/go/observability v0.3.3 // indirect
 	gitlab.com/phpboyscout/go/output v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/redact v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/tls v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/transit v0.2.3 // indirect
-	gitlab.com/phpboyscout/go/transport v0.6.2 // indirect
-	gitlab.com/phpboyscout/go/yamldoc v0.6.1 // indirect
+	gitlab.com/phpboyscout/go/transit v0.2.4 // indirect
+	gitlab.com/phpboyscout/go/transport v0.6.4 // indirect
+	gitlab.com/phpboyscout/go/yamldoc v0.8.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.23.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.47.0 // indirect
