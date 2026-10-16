@@ -12,7 +12,7 @@ require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
-	gitlab.com/phpboyscout/go-tool-base v0.46.1
+	gitlab.com/phpboyscout/go-tool-base v0.47.0
 	gitlab.com/phpboyscout/go/encryption v0.2.2
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.2
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1
@@ -25,7 +25,7 @@ require (
 
 require (
 	charm.land/bubbles/v2 v2.2.1 // indirect
-	charm.land/bubbletea/v2 v2.0.10 // indirect
+	charm.land/bubbletea/v2 v2.1.0 // indirect
 	charm.land/glamour/v2 v2.0.1 // indirect
 	charm.land/huh/v2 v2.0.3 // indirect
 	charm.land/lipgloss/v2 v2.0.6 // indirect
@@ -57,8 +57,8 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/keygen v0.5.4 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260910203606-6c9e17dc7a16 // indirect
-	github.com/charmbracelet/x/ansi v0.11.8 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect
+	github.com/charmbracelet/x/ansi v0.11.9 // indirect
 	github.com/charmbracelet/x/exp/ordered v0.1.0 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20260913004009-c615ff2f7805 // indirect
 	github.com/charmbracelet/x/exp/strings v0.1.0 // indirect
@@ -82,8 +82,8 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.9.1 // indirect
-	github.com/go-git/go-git/v5 v5.19.2 // indirect
+	github.com/go-git/go-billy/v5 v5.9.2 // indirect
+	github.com/go-git/go-git/v5 v5.19.3 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -106,7 +106,6 @@ require (
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/leodido/go-conventionalcommits v0.13.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
@@ -116,7 +115,7 @@ require (
 	github.com/onsi/gomega v1.42.1 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
-	github.com/pjbgf/sha1cd v0.6.0 // indirect
+	github.com/pjbgf/sha1cd v0.7.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -135,18 +134,18 @@ require (
 	gitlab.com/phpboyscout/go/authn v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/browser v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/changelog v0.4.0 // indirect
+	gitlab.com/phpboyscout/go/changelog v0.4.1 // indirect
 	gitlab.com/phpboyscout/go/chat v0.32.0 // indirect
 	gitlab.com/phpboyscout/go/clientlifecycle v0.2.0 // indirect
 	gitlab.com/phpboyscout/go/config v0.21.1 // indirect
-	gitlab.com/phpboyscout/go/config-afero v0.1.11 // indirect
+	gitlab.com/phpboyscout/go/config-afero v0.1.13 // indirect
 	gitlab.com/phpboyscout/go/controls v0.8.4 // indirect
-	gitlab.com/phpboyscout/go/credentials v0.3.2 // indirect
+	gitlab.com/phpboyscout/go/credentials v0.3.3 // indirect
 	gitlab.com/phpboyscout/go/features v0.1.0 // indirect
 	gitlab.com/phpboyscout/go/forge v0.31.1 // indirect
 	gitlab.com/phpboyscout/go/httpclient v0.2.4 // indirect
 	gitlab.com/phpboyscout/go/observability v0.3.3 // indirect
-	gitlab.com/phpboyscout/go/output v0.2.2 // indirect
+	gitlab.com/phpboyscout/go/output v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/redact v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/tls v0.2.2 // indirect
@@ -172,7 +171,7 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
-	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
