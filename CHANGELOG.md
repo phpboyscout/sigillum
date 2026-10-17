@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.6](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.6)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.5...v0.5.6)
+
+### Bug Fixes
+
+- **deps**: update module gitlab.com/phpboyscout/go-tool-base to v0.47.0 ([059a61b](https://gitlab.com/phpboyscout/sigillum/-/commit/059a61b33431b8d4c31634ab7577e801ba4d8e8f))
+
 ## [v0.5.5](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.5)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.4...v0.5.5)
