@@ -27,7 +27,14 @@ go.work
 tmp/
 
 bin/*
+# goreleaser's output; untracked, it stamps every release build -dirty
+dist/
 config/local.yaml
 site/*
 CHANGELOG.md
 .wrangler/
+
+# Embedded documentation, filled by go generate (see pkg/cmd/root/generate.go):
+# the raw docs the TUI reads and the site `docs serve` serves.
+pkg/cmd/root/assets/docs
+pkg/cmd/root/assets/site

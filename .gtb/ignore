@@ -19,3 +19,13 @@ CHANGELOG.md
 go.mod
 docs/**
 renovate.json5
+
+# Kept by hand, each for a reason the generator's template does not share:
+# .gitignore also ignores .wrangler/ (the keys site is deployed with wrangler);
+# .golangci.yaml lints test code, with scoped exclusions documented inline;
+# .colophon.yaml announces releases to Discord and the release feed;
+# .pre-commit-config.yaml is kept current by Renovate, ahead of the template's pins.
+.gitignore
+.golangci.yaml
+.colophon.yaml
+.pre-commit-config.yaml
