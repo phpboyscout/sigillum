@@ -389,8 +389,8 @@ github.com/zclconf/go-cty v1.19.0 h1:IV8WdqYZc2c5rLX9bEoLNXKojBAp0MZPBHMIrCoa/s4
 github.com/zclconf/go-cty v1.19.0/go.mod h1:12W89jGn3JCOIQi7infWr9m80rOkb5RNYJqXMZcN4c8=
 gitlab.com/gitlab-org/api/client-go/v3 v3.18.0 h1:P89gqz5MAuj/+VQi+l47O8QXyHsvNPZGq2oIl2o0LIU=
 gitlab.com/gitlab-org/api/client-go/v3 v3.18.0/go.mod h1:UQl7jIdE6nbYNDtc4XWXeiam0V4MJx459e637POlpnQ=
-gitlab.com/phpboyscout/go-tool-base v0.47.0 h1:GlU3Eh0KuNG8giOJS8lUkp9vo0fOAgLZzR415wGjdLc=
-gitlab.com/phpboyscout/go-tool-base v0.47.0/go.mod h1:2aRzQ3UbADI3JmLS12vw+ZJjyiAZpqPrJk/0uW9R5sw=
+gitlab.com/phpboyscout/go-tool-base v0.48.0 h1:Hv12fYZM5dp1yInkgh1UlTmWBlDEZGKufPfvLFJQV48=
+gitlab.com/phpboyscout/go-tool-base v0.48.0/go.mod h1:MLmqHMJ1inoRKEdtUYKMqmRpXcaU9i14EOr87Eqwjbg=
 gitlab.com/phpboyscout/go/authn v0.2.3 h1:b938V083Z4XZgcsL10PL0VmLwUBuFydz8CCN8C+gRGs=
 gitlab.com/phpboyscout/go/authn v0.2.3/go.mod h1:slBcN4EawwcR0D4oKKF66qWOeHntZ2mCKB5nIc+XnE8=
 gitlab.com/phpboyscout/go/awsclient v0.1.2 h1:V+Rs2ApVPAlyegJdx/POi6i3D24IHA2k8tO98+3rDxE=

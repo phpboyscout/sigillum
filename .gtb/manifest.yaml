@@ -40,7 +40,7 @@ release_source:
   owner: phpboyscout
   repo: sigillum
 version:
-  gtb: v0.47.0
+  gtb: v0.48.0
   go: 1.27.1
 hashes:
   .gitignore: 660975e0ad0d5136feb10221a14835d0d6a0bf86788a08f8c97d4f9cbd06c453
