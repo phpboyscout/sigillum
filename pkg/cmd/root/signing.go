@@ -8,5 +8,6 @@ package root
 import verify "gitlab.com/phpboyscout/go/signing/verify"
 
 func init() {
+	verify.DefaultRequireSignature = true
 	verify.DefaultKeySource = "embedded"
 }

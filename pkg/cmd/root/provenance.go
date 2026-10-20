@@ -3,7 +3,7 @@
 // Generation provenance not present elsewhere in the generated source, so
 // `gtb regenerate manifest` can reconstruct it from scratch. No runtime effect.
 //
-// gtb:signing enabled=true key_source=embedded backend=aws-kms key_id=alias%2Fgtb-release-signing-v2 kms_region=eu-west-2 public_key=internal%2Ftrustkeys%2Fkeys%2Fsigning-key-v2.asc
+// gtb:signing enabled=true require_signature=true key_source=embedded backend=aws-kms key_id=alias%2Fgtb-release-signing-v2 kms_region=eu-west-2 public_key=internal%2Ftrustkeys%2Fkeys%2Fsigning-key-v2.asc
 // gtb:external module=gitlab.com%2Fphpboyscout%2Fgo%2Fsigning-cli version=v0.6.2 attach=NewCmdSign%7Clogger%7C1%7C%3BNewCmdKeys%7Clogger%7C1%7C
 
 package root

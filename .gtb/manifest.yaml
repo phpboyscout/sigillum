@@ -14,6 +14,7 @@ properties:
       enabled: false
   signing:
     enabled: true
+    require_signature: true
     key_source: embedded
     backend: aws-kms
     key_id: alias/gtb-release-signing-v2
