@@ -437,10 +437,10 @@ gitlab.com/phpboyscout/go/errors v0.3.0 h1:MNCCEGdWGj8rpaDFfcufBQZPPMqGY9HbHg8L1
 gitlab.com/phpboyscout/go/errors v0.3.0/go.mod h1:Nzx3wIKEwQd5DlKGFgcFlaUptL9XTqWEFtBN1pAgi78=
 gitlab.com/phpboyscout/go/features v0.1.0 h1:yRu7XU5WnbFGZDFUdbauq9jHLig06QiofX1b9EwDvn0=
 gitlab.com/phpboyscout/go/features v0.1.0/go.mod h1:RRSyDQAFSj5qATB5vcStPYk53L6dKfCFRXPEp7zhPls=
-gitlab.com/phpboyscout/go/forge v0.33.0 h1:CWNo/nfdALP663mDvg51cdDQvDk1im/r73O4lzRoHfE=
-gitlab.com/phpboyscout/go/forge v0.33.0/go.mod h1:1S8TkO4YdlDGgUt0j6JBLQtcc86ssh1AB/VRrDtqajE=
-gitlab.com/phpboyscout/go/forge-gitlab v0.26.0 h1:FUJ9+gYyVv5E7hn+7VJZBCGCnJE/TceHaYN4tHAyRRQ=
-gitlab.com/phpboyscout/go/forge-gitlab v0.26.0/go.mod h1:sJouvuUOmhyJTRJvAK4F2uuAgrMO7+sPnAhjBKyspA8=
+gitlab.com/phpboyscout/go/forge v0.35.0 h1:AP2H7daLZTDQ4/pPlp1iecShbZAx/KaRjWabfRZ4nf4=
+gitlab.com/phpboyscout/go/forge v0.35.0/go.mod h1:A5YK2ZDEifLnrsGbI4/MGykf+k8+XFaRRXp4K4VyDIE=
+gitlab.com/phpboyscout/go/forge-gitlab v0.28.0 h1:foLZMODk0SeWXpedTYijcze3O9OK97frzYZknemtC48=
+gitlab.com/phpboyscout/go/forge-gitlab v0.28.0/go.mod h1:J9mgF5voruMRtSZOtxBL54yUVuOXO/nRiFpE7DCIBCs=
 gitlab.com/phpboyscout/go/httpclient v0.2.4 h1:AF1LfG3R/Yuo3yKjxooDj4C4FdBmOnBZvjqzCeIGjmo=
 gitlab.com/phpboyscout/go/httpclient v0.2.4/go.mod h1:nUzvdhZsp0MSucWtgiRQ0ChIdjFoO02157Xg/JCe8uU=
 gitlab.com/phpboyscout/go/mcp v0.2.1 h1:aqXkGBbIWLamavOePHo/O5FAnzGW7SS/cg91lE8w+YQ=

@@ -17,7 +17,7 @@ require (
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.2
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1
 	gitlab.com/phpboyscout/go/errors v0.3.0
-	gitlab.com/phpboyscout/go/forge-gitlab v0.26.0
+	gitlab.com/phpboyscout/go/forge-gitlab v0.28.0
 	gitlab.com/phpboyscout/go/signing v0.11.0
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.7.0
 	gitlab.com/phpboyscout/go/signing-cli v0.6.2
@@ -142,7 +142,7 @@ require (
 	gitlab.com/phpboyscout/go/controls v0.8.4 // indirect
 	gitlab.com/phpboyscout/go/credentials v0.3.3 // indirect
 	gitlab.com/phpboyscout/go/features v0.1.0 // indirect
-	gitlab.com/phpboyscout/go/forge v0.33.0 // indirect
+	gitlab.com/phpboyscout/go/forge v0.35.0 // indirect
 	gitlab.com/phpboyscout/go/httpclient v0.2.4 // indirect
 	gitlab.com/phpboyscout/go/observability v0.3.3 // indirect
 	gitlab.com/phpboyscout/go/output v0.2.3 // indirect
