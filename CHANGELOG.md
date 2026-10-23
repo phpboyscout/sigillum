@@ -1,5 +1,21 @@
 # Changelog
 
+## [v0.5.6](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.6)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.5...v0.5.6)
+
+### Notes
+
+- `sigillum update` now refuses a release whose signature is missing or does not verify against the embedded key, instead of installing it.
+
+### Bug Fixes
+
+- **deps**: update go modules ([42d4160](https://gitlab.com/phpboyscout/sigillum/-/commit/42d416099930e74743c94045bae36346e5213227))
+- **update**: refuse a self-update that carries no valid signature ([63ec3a0](https://gitlab.com/phpboyscout/sigillum/-/commit/63ec3a0d66fbbd14fa9d3e08cdd27e554c06c8e8))
+- **deps**: take go-tool-base v0.48.0 ([190c17c](https://gitlab.com/phpboyscout/sigillum/-/commit/190c17ccbb6214a92e536a4e123fc8152fc84489))
+- **deps**: update go modules ([71bd3a3](https://gitlab.com/phpboyscout/sigillum/-/commit/71bd3a3024bcd44d27518eb0ddb18ce1ce9b62fa))
+- **deps**: update module gitlab.com/phpboyscout/go-tool-base to v0.47.0 ([059a61b](https://gitlab.com/phpboyscout/sigillum/-/commit/059a61b33431b8d4c31634ab7577e801ba4d8e8f))
+
 ## [v0.5.5](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.5)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.4...v0.5.5)
