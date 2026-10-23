@@ -9,13 +9,14 @@ hide:
 # Branding
 
 The visual identity of **sigillum** and its downloadable brand assets. All
-marks share the wider phpboyscout palette so the projects read as one family.
+marks are drawn in the phpboyscout house style, with petrol teal and amber as the
+shared accents, so the projects read as one family.
 
 ---
 
 ## The mark
 
-A seal press poised over a disc of amber wax: the handle you push, not the impression it leaves. The signing family's shared mark is the finished seal; sigillum is the tool that makes it, so its mark is the press itself. Deep petrol-teal die, brass-gold handle, warm amber wax and dark charcoal linework.
+A signet ring pressed into a wax seal. Sigillum is Latin for seal, and this is the tool that makes and checks one.
 
 ---
 
@@ -23,7 +24,7 @@ A seal press poised over a disc of amber wax: the handle you push, not the impre
 
 ### Vector (recommended)
 
-Scales without quality loss. Use it for the web, print and
+Scales indefinitely without quality loss. Use it for the web, print and
 high-resolution displays.
 
 - [Transparent (logo_transparent.svg)](../images/branding/logo_transparent.svg)
@@ -47,7 +48,7 @@ high-resolution displays.
 
 | Usage | Name | Hex | Swatch |
 | :--- | :--- | :--- | :--- |
-| Primary | Petrol Teal | `#14534F` | <span style="display:inline-block;width:40px;height:20px;background:#14534F;border:1px solid #333;border-radius:3px;"></span> |
+| Accent | Petrol Teal | `#14534F` | <span style="display:inline-block;width:40px;height:20px;background:#14534F;border:1px solid #333;border-radius:3px;"></span> |
 | Accent | Amber | `#E8912A` | <span style="display:inline-block;width:40px;height:20px;background:#E8912A;border:1px solid #333;border-radius:3px;"></span> |
 | Light background | Cream | `#F5F2EA` | <span style="display:inline-block;width:40px;height:20px;background:#F5F2EA;border:1px solid #333;border-radius:3px;"></span> |
 | Dark detail | Charcoal | `#211E1A` | <span style="display:inline-block;width:40px;height:20px;background:#211E1A;border:1px solid #333;border-radius:3px;"></span> |
