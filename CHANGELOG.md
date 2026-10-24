@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.7](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.7)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.6...v0.5.7)
+
+### Bug Fixes
+
+- **deps**: update module gitlab.com/phpboyscout/go/forge-gitlab to v0.28.0 ([bfb3510](https://gitlab.com/phpboyscout/sigillum/-/commit/bfb351088750aa1981a661450935447521504d57))
+
 ## [v0.5.6](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.6)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.5...v0.5.6)
