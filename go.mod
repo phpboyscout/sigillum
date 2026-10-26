@@ -12,12 +12,12 @@ require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
-	gitlab.com/phpboyscout/go-tool-base v0.48.0
+	gitlab.com/phpboyscout/go-tool-base v0.49.0
 	gitlab.com/phpboyscout/go/encryption v0.2.2
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.2
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1
 	gitlab.com/phpboyscout/go/errors v0.3.0
-	gitlab.com/phpboyscout/go/forge-gitlab v0.28.0
+	gitlab.com/phpboyscout/go/forge-gitlab v0.28.1
 	gitlab.com/phpboyscout/go/signing v0.11.0
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.7.0
 	gitlab.com/phpboyscout/go/signing-cli v0.6.2
@@ -66,7 +66,7 @@ require (
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/cli/browser v1.3.0 // indirect
-	github.com/cli/oauth v1.2.2 // indirect
+	github.com/cli/oauth v1.3.0 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cloudflare/circl v1.6.5 // indirect
@@ -130,12 +130,12 @@ require (
 	github.com/yuin/goldmark v1.8.6 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
-	gitlab.com/gitlab-org/api/client-go/v3 v3.29.0 // indirect
+	gitlab.com/gitlab-org/api/client-go/v3 v3.30.1 // indirect
 	gitlab.com/phpboyscout/go/authn v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/browser v0.2.2 // indirect
 	gitlab.com/phpboyscout/go/changelog v0.4.1 // indirect
-	gitlab.com/phpboyscout/go/chat v0.32.0 // indirect
+	gitlab.com/phpboyscout/go/chat v0.36.0 // indirect
 	gitlab.com/phpboyscout/go/clientlifecycle v0.2.0 // indirect
 	gitlab.com/phpboyscout/go/config v0.21.1 // indirect
 	gitlab.com/phpboyscout/go/config-afero v0.1.13 // indirect
