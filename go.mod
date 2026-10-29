@@ -17,7 +17,7 @@ require (
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.2
 	gitlab.com/phpboyscout/go/errorhandling v0.5.1
 	gitlab.com/phpboyscout/go/errors v0.3.0
-	gitlab.com/phpboyscout/go/forge-gitlab v0.28.1
+	gitlab.com/phpboyscout/go/forge-gitlab v0.29.0
 	gitlab.com/phpboyscout/go/signing v0.11.0
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.7.0
 	gitlab.com/phpboyscout/go/signing-cli v0.6.2
@@ -130,7 +130,7 @@ require (
 	github.com/yuin/goldmark v1.8.6 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
-	gitlab.com/gitlab-org/api/client-go/v3 v3.30.1 // indirect
+	gitlab.com/gitlab-org/api/client-go/v3 v3.33.0 // indirect
 	gitlab.com/phpboyscout/go/authn v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.2 // indirect
 	gitlab.com/phpboyscout/go/browser v0.2.2 // indirect
@@ -142,7 +142,7 @@ require (
 	gitlab.com/phpboyscout/go/controls v0.8.4 // indirect
 	gitlab.com/phpboyscout/go/credentials v0.3.3 // indirect
 	gitlab.com/phpboyscout/go/features v0.1.0 // indirect
-	gitlab.com/phpboyscout/go/forge v0.35.0 // indirect
+	gitlab.com/phpboyscout/go/forge v0.36.0 // indirect
 	gitlab.com/phpboyscout/go/httpclient v0.2.4 // indirect
 	gitlab.com/phpboyscout/go/observability v0.3.3 // indirect
 	gitlab.com/phpboyscout/go/output v0.2.3 // indirect
