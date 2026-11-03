@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.5.7](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.7)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.6...v0.5.7)
+
+### Bug Fixes
+
+- **deps**: update module gitlab.com/phpboyscout/go/forge-gitlab to v0.31.0 ([0639739](https://gitlab.com/phpboyscout/sigillum/-/commit/06397395b7dbb134c331c3ad13844c32c4937e6f))
+- **ci**: keep go-cross-arch on Linux amd64 runners ([dfce635](https://gitlab.com/phpboyscout/sigillum/-/commit/dfce635337ca6c270b061c3362eec9b89cbabded))
+- **deps**: update module gitlab.com/phpboyscout/go-tool-base to v0.50.0 ([f202a5b](https://gitlab.com/phpboyscout/sigillum/-/commit/f202a5b2710d1f32b24f7f5aeda34459c1edce71))
+- **deps**: update module gitlab.com/phpboyscout/go/forge-gitlab to v0.29.0 ([795b22d](https://gitlab.com/phpboyscout/sigillum/-/commit/795b22df214df354526a1338d4ef37070f529e26))
+- **deps**: take golang.org/x/net v0.62.0 for GO-2026-6860 and GO-2026-6866 ([c71afa4](https://gitlab.com/phpboyscout/sigillum/-/commit/c71afa496cb054cb7daae304e6de445b066fee23))
+- **deps**: update go modules ([0b5f406](https://gitlab.com/phpboyscout/sigillum/-/commit/0b5f40609878bd9bf5c0b498db646d56f666c784))
+- **deps**: update module gitlab.com/phpboyscout/go/forge-gitlab to v0.28.0 ([bfb3510](https://gitlab.com/phpboyscout/sigillum/-/commit/bfb351088750aa1981a661450935447521504d57))
+
 ## [v0.5.6](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.6)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.5...v0.5.6)
