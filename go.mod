@@ -12,14 +12,14 @@ require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
-	gitlab.com/phpboyscout/go-tool-base v0.50.1
+	gitlab.com/phpboyscout/go-tool-base v0.50.2
 	gitlab.com/phpboyscout/go/encryption v0.2.3
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.4
 	gitlab.com/phpboyscout/go/errorhandling v0.5.2
 	gitlab.com/phpboyscout/go/errors v0.4.0
-	gitlab.com/phpboyscout/go/forge-gitlab v0.31.0
+	gitlab.com/phpboyscout/go/forge-gitlab v0.31.1
 	gitlab.com/phpboyscout/go/signing v0.11.2
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.7.1
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.7.2
 	gitlab.com/phpboyscout/go/signing-cli v0.6.4
 )
 
@@ -131,27 +131,27 @@ require (
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	gitlab.com/gitlab-org/api/client-go/v3 v3.40.0 // indirect
-	gitlab.com/phpboyscout/go/authn v0.3.0 // indirect
+	gitlab.com/phpboyscout/go/authn v0.3.1 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.4 // indirect
-	gitlab.com/phpboyscout/go/browser v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/changelog v0.6.0 // indirect
-	gitlab.com/phpboyscout/go/chat v0.38.0 // indirect
+	gitlab.com/phpboyscout/go/browser v0.2.3 // indirect
+	gitlab.com/phpboyscout/go/changelog v0.6.1 // indirect
+	gitlab.com/phpboyscout/go/chat v0.38.1 // indirect
 	gitlab.com/phpboyscout/go/clientlifecycle v0.2.0 // indirect
-	gitlab.com/phpboyscout/go/config v0.21.3 // indirect
-	gitlab.com/phpboyscout/go/config-afero v0.1.14 // indirect
-	gitlab.com/phpboyscout/go/controls v0.9.0 // indirect
-	gitlab.com/phpboyscout/go/credentials v0.3.3 // indirect
+	gitlab.com/phpboyscout/go/config v0.21.4 // indirect
+	gitlab.com/phpboyscout/go/config-afero v0.1.15 // indirect
+	gitlab.com/phpboyscout/go/controls v0.9.1 // indirect
+	gitlab.com/phpboyscout/go/credentials v0.3.4 // indirect
 	gitlab.com/phpboyscout/go/features v0.1.1 // indirect
-	gitlab.com/phpboyscout/go/forge v0.38.0 // indirect
-	gitlab.com/phpboyscout/go/httpclient v0.2.5 // indirect
-	gitlab.com/phpboyscout/go/observability v0.4.0 // indirect
-	gitlab.com/phpboyscout/go/output v0.2.4 // indirect
-	gitlab.com/phpboyscout/go/redact v0.3.2 // indirect
-	gitlab.com/phpboyscout/go/regexutil v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/tls v0.2.2 // indirect
-	gitlab.com/phpboyscout/go/transit v0.3.1 // indirect
-	gitlab.com/phpboyscout/go/transport v0.6.5 // indirect
-	gitlab.com/phpboyscout/go/yamldoc v0.9.0 // indirect
+	gitlab.com/phpboyscout/go/forge v0.38.2 // indirect
+	gitlab.com/phpboyscout/go/httpclient v0.2.6 // indirect
+	gitlab.com/phpboyscout/go/observability v0.4.1 // indirect
+	gitlab.com/phpboyscout/go/output v0.2.5 // indirect
+	gitlab.com/phpboyscout/go/redact v0.3.3 // indirect
+	gitlab.com/phpboyscout/go/regexutil v0.2.3 // indirect
+	gitlab.com/phpboyscout/go/tls v0.2.3 // indirect
+	gitlab.com/phpboyscout/go/transit v0.3.2 // indirect
+	gitlab.com/phpboyscout/go/transport v0.6.6 // indirect
+	gitlab.com/phpboyscout/go/yamldoc v0.9.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0 // indirect
