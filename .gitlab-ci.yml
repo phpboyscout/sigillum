@@ -185,7 +185,7 @@ go-mutation:
 
 go-cross-arch:
   stage: test
-  image: registry.gitlab.com/phpboyscout/images/go-tools:v0.5.6
+  image: registry.gitlab.com/phpboyscout/images/go-tools:v0.5.7
   # The 386 run needs a real amd64 kernel. Rosetta translates 64-bit x86
   # only, so on an arm64 runner the 386 test binary crashes. The Windows shell
   # runners carry amd64 too, so linux is required as well.
