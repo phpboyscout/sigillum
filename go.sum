@@ -250,8 +250,8 @@ github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOl
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99/go.mod h1:1lJo3i6rXxKeerYnT8Nvf0QmHCRC1n8sfWVwXF2Frvo=
 github.com/kevinburke/ssh_config v1.6.0 h1:J1FBfmuVosPHf5GRdltRLhPJtJpTlMdKTBjRgTaQBFY=
 github.com/kevinburke/ssh_config v1.6.0/go.mod h1:q2RIzfka+BXARoNexmF9gkxEX7DmvbW9P4hIVx2Kg4M=
-github.com/klauspost/compress v1.19.2 h1:hMRETovs/pu/dVWN7zIT1PGG8t509MwT6bO7XSi26R8=
-github.com/klauspost/compress v1.19.2/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
+github.com/klauspost/compress v1.20.3 h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTfY5j4=
+github.com/klauspost/compress v1.20.3/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
@@ -387,8 +387,8 @@ github.com/zclconf/go-cty v1.19.0 h1:IV8WdqYZc2c5rLX9bEoLNXKojBAp0MZPBHMIrCoa/s4
 github.com/zclconf/go-cty v1.19.0/go.mod h1:12W89jGn3JCOIQi7infWr9m80rOkb5RNYJqXMZcN4c8=
 gitlab.com/gitlab-org/api/client-go/v3 v3.40.0 h1:aWkVhgglUeNPqFVMiYDYv5tmfd8xPqDm7mCwwrsrBKE=
 gitlab.com/gitlab-org/api/client-go/v3 v3.40.0/go.mod h1:jBFhGkTHLKkgeHEdS/A8yA0tQ6UHq96QVsS5muu6flM=
-gitlab.com/phpboyscout/go-tool-base v0.50.3 h1:oAW6N2hrKvgEtxpy2sBQISRN0rfl2kSjNVYcobrZMaY=
-gitlab.com/phpboyscout/go-tool-base v0.50.3/go.mod h1:6dd6rfeoMZ89g7L/7+UbJWBPrJop5xFpYPMZysMjRwY=
+gitlab.com/phpboyscout/go-tool-base v0.50.4 h1:APEgiHg+2G218qqsNiad+tkKbf4t8rk9JRFcCrdlu+o=
+gitlab.com/phpboyscout/go-tool-base v0.50.4/go.mod h1:qvG5dTz+9qOkgsqCyOKVSbRH1o6lmCc++qGOhPwyIWk=
 gitlab.com/phpboyscout/go/authn v0.3.1 h1:i7sAkEZHIDckYec9PF10ytYuVyJIyQE/sDJ/OaZTeNk=
 gitlab.com/phpboyscout/go/authn v0.3.1/go.mod h1:3n56v3bhoik1AxOLoPoaqrY3YuoEIbcZwds6cUJnMxM=
 gitlab.com/phpboyscout/go/awsclient v0.1.4 h1:EmVO+f/CS2LvAr5UcVWVhkmAjwg/27DFyNaBON9RuQM=
