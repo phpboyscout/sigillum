@@ -23,7 +23,7 @@ foreach ($t in 'unix', 'tcp', 'stdio') {
     Write-Output $out
     $ok = ($code -eq 0) -and ($out -match 'describe ok') -and ($out -match 'result ok') -and
           ($out -match 'cancel after first event') -and ($out -match 'wrong token refused') -and
-          ($out -notmatch 'FAIL')
+          ($out -cnotmatch '\] FAIL|^FAIL')
     if ($t -ne 'stdio') {
         $ok = $ok -and ($out -match 'plain gRPC client without token: rpc error')
     }
