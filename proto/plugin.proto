@@ -1,0 +1,19 @@
+syntax = "proto3";
+package spike.plugin.v1;
+option go_package = "spike/pb";
+
+message DescribeRequest {}
+message Command { string use = 1; string short = 2; repeated string flags = 3; }
+message CommandTree { string protocol_version = 1; repeated Command commands = 2; }
+message RunRequest { string command = 1; repeated string args = 2; bytes config_json = 3; bytes secret = 4; }
+message Event {
+  oneof kind {
+    string log = 1;
+    int32 progress = 2;
+    string result = 3;
+  }
+}
+service Plugin {
+  rpc Describe(DescribeRequest) returns (CommandTree);
+  rpc Run(RunRequest) returns (stream Event);
+}

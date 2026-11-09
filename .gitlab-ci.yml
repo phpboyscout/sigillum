@@ -1,0 +1,44 @@
+# Throwaway spike branch: plugin executables spec 0213, OQ12 (Windows and macOS runs).
+# Builds on Linux, runs the prebuilt binaries on the estate's Windows and macOS shell runners.
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "spike/plugin-transport-cross-platform"
+
+stages: [build, run]
+
+build:
+  stage: build
+  image: golang:1.27
+  script:
+    - mkdir -p out/windows-amd64 out/darwin-arm64 out/darwin-amd64
+    - GOOS=windows GOARCH=amd64 go build -o out/windows-amd64/host.exe ./cmd/host
+    - GOOS=windows GOARCH=amd64 go build -o out/windows-amd64/notary-plugin.exe ./cmd/notary-plugin
+    - for a in arm64 amd64; do GOOS=darwin GOARCH=$a go build -o out/darwin-$a/host ./cmd/host; GOOS=darwin GOARCH=$a go build -o out/darwin-$a/notary-plugin ./cmd/notary-plugin; done
+    - cp run.ps1 out/windows-amd64/ && cp run.sh out/darwin-arm64/ && cp run.sh out/darwin-amd64/
+  artifacts:
+    paths: [out/]
+    expire_in: 1 week
+
+.windows:
+  stage: run
+  needs: [build]
+  tags: [windows]
+  script:
+    - cd out/windows-amd64
+    - powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1
+
+windows-a:
+  extends: .windows
+
+windows-b:
+  extends: .windows
+
+macos:
+  stage: run
+  needs: [build]
+  tags: [macos]
+  script:
+    - cd out/darwin-$(uname -m | sed 's/x86_64/amd64/')
+    - chmod +x host notary-plugin run.sh
+    - ./run.sh
