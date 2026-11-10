@@ -20,7 +20,7 @@ require (
 	gitlab.com/phpboyscout/go/forge-gitlab v0.31.1
 	gitlab.com/phpboyscout/go/signing v0.11.2
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.7.2
-	gitlab.com/phpboyscout/go/signing-cli v0.6.4
+	gitlab.com/phpboyscout/go/signing-cli v0.6.5
 )
 
 require (
@@ -124,7 +124,7 @@ require (
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/skeema/knownhosts v1.3.3 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xo/terminfo v1.2.0 // indirect
 	github.com/yuin/goldmark v1.8.6 // indirect
