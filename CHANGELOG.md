@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.5.9](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.9)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.8...v0.5.9)
+
+### Notes
+
+- `sigillum sign --backend` no longer prints a selector setting's key in an error unless the key looks like a flag name, because the key may be a pasted credential. Such a setting is named by its position, with the valid keys listed.
+
+### Bug Fixes
+
+- **deps**: update go modules ([89abdea](https://gitlab.com/phpboyscout/sigillum/-/commit/89abdeae6b206152484de8bf2e1cd3df3f2cf34c))
+- **deps**: take go/signing-cli v0.6.5 ([bff7db7](https://gitlab.com/phpboyscout/sigillum/-/commit/bff7db71fca57af118b986726a38010db689df06))
+- **deps**: update module gitlab.com/phpboyscout/go-tool-base to v0.50.4 ([c6fd968](https://gitlab.com/phpboyscout/sigillum/-/commit/c6fd968db8bfd64ad7b3bbeea099033589fbdf3b))
+
 ## [v0.5.8](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.8)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.7...v0.5.8)
