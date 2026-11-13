@@ -1,6 +1,6 @@
 module gitlab.com/phpboyscout/sigillum
 
-go 1.27.3
+go 1.27.4
 
 tool (
 	gitlab.com/phpboyscout/go-tool-base/cmd/changelog
