@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.10](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.10)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.9...v0.5.10)
+
+### Bug Fixes
+
+- **deps**: update go modules ([e595c38](https://gitlab.com/phpboyscout/sigillum/-/commit/e595c389c0c6b6dcbd6f3a2b10e54a8bb2756acb))
+
 ## [v0.5.9](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.9)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.8...v0.5.9)
