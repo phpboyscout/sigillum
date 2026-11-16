@@ -189,3 +189,18 @@ func TestRunSign_Minisign_NoProjectKeepsMinisignsDefault(t *testing.T) {
 	_, parsed := readSignature(t, req.input+".minisig")
 	assert.NotContains(t, parsed.TrustedComment, "project:")
 }
+
+// sign image is a subcommand, so a file named image is reached as ./image.
+func TestRunSign_SignsAFileNamedLikeTheImageSubcommand(t *testing.T) {
+	req, key := minisignFixture(t)
+
+	dir := t.TempDir()
+	signtest.WriteFile(t, dir, "image", "artefact")
+	t.Chdir(dir)
+
+	req.input = "./image"
+	require.NoError(t, runSign(t, req))
+
+	_, parsed := readSignature(t, "image.minisig")
+	assert.Equal(t, key.KeyID, parsed.KeyID)
+}

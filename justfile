@@ -41,7 +41,11 @@ test-integration:
 
 # Run the Godog behaviour suite (drives the built binary)
 test-e2e:
-    INT_TEST_E2E=1 go test ./test/e2e/... -v -timeout 10m
+    INT_TEST_E2E=1 go test ./test/e2e/... -v -count=1 -timeout 10m
+
+# Check that cosign verifies an image signed by the built binary (needs cosign)
+test-cosign:
+    INT_TEST_COSIGN=1 go test ./test/e2e/cosign/... -v -count=1 -timeout 5m
 
 # Generate HTML coverage report and open it
 coverage:

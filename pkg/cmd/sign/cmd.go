@@ -8,6 +8,7 @@ import (
 	"gitlab.com/phpboyscout/go/signing/minisign"
 
 	"gitlab.com/phpboyscout/sigillum/internal/signcmd"
+	"gitlab.com/phpboyscout/sigillum/pkg/cmd/sign/image"
 )
 
 // SignOptions holds the sign command's own flags. Backend settings such as
@@ -53,6 +54,8 @@ func NewCmdSign(p *props.Props) *setup.Command {
 
 	signcmd.AddBackendFlags(cmd.Command, &opts.Backend, &opts.KeyID)
 
+	cmd.Register(image.NewCmdImage(p))
+
 	return cmd
 }
 
@@ -90,6 +93,9 @@ settings: --backend 'aws-kms:prod?kms-region=eu-west-1'. Quote the
 whole value; ? and & are shell metacharacters.
 A named instance takes its settings from the selector only: setting a
 backend flag such as --kms-region alongside it is an error.
+
+'sign image' signs a container image instead. To sign a file named
+image, write it as ./image.
 
 Examples:
 

@@ -7,6 +7,7 @@ import (
 	"gitlab.com/phpboyscout/go-tool-base/pkg/setup"
 
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/generate"
+	generate_image "gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/generate-image"
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/minisign"
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/mint"
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/publish"
@@ -28,6 +29,7 @@ func NewCmdKeys(p *props.Props) *setup.Command {
 		wkd.NewCmdWkd(p),
 		minisign.NewCmdMinisign(p),
 		publish.NewCmdPublish(p),
+		generate_image.NewCmdGenerateImage(p),
 	)
 
 	return cmd
@@ -37,10 +39,11 @@ const longHelp = `Commands for the cryptographic operations a tool author runs d
 release-binary signing setup.
 
 Available subcommands:
-  mint      Wrap an existing signer (KMS or local PEM) in OpenPGP framing and emit the armored public half.
-  generate  Generate a fresh keypair locally (Ed25519 or RSA) and emit both halves.
-  wkd       Generate a Web Key Directory tree from one or more public keys (for static hosting).
-  minisign  Emit the minisign public key for an Ed25519 signer (what release consumers pin).
-  publish   Stage a minisign public key into a keys site with a manifest.
+  mint            Wrap an existing signer (KMS or local PEM) in OpenPGP framing and emit the armored public half.
+  generate        Generate a fresh keypair locally (Ed25519 or RSA) and emit both halves.
+  wkd             Generate a Web Key Directory tree from one or more public keys (for static hosting).
+  minisign        Emit the minisign public key for an Ed25519 signer (what release consumers pin).
+  publish         Stage a minisign public key into a keys site with a manifest.
+  generate-image  Generate an ECDSA P-256 keypair for image signing (tests and local registries).
 
 See https://gitlab.com/phpboyscout/go-tool-base/-/wikis/specs/0067-keys-mint-command for the full design.`

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gitlab.com/phpboyscout/go/errors"
+	"gitlab.com/phpboyscout/go/signing/keyfile"
 
 	"gitlab.com/phpboyscout/sigillum/internal/signcmd"
 )
@@ -43,4 +44,34 @@ func TestWriteKeyFile_ForceOverwritesAndTightensTheMode(t *testing.T) {
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+func TestWriteKeyPair_RefusalNamesTheHalfThatExistsAndWritesNeither(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	private := keyfile.Half{Path: filepath.Join(dir, "image.key"), Data: []byte("private")}
+	public := keyfile.Half{Path: filepath.Join(dir, "image.pub"), Data: []byte("public")}
+	require.NoError(t, os.WriteFile(public.Path, []byte("original"), 0o600))
+
+	err := signcmd.WriteKeyPair(private, public, false)
+	require.ErrorIs(t, err, signcmd.ErrKeyFileExists)
+	require.EqualError(t, err, `"`+public.Path+`" (pass --force to overwrite): output file already exists`)
+	assert.Equal(t, "signing-cli.key_file_exists", errors.KindOf(err))
+
+	assert.NoFileExists(t, private.Path)
+
+	kept, readErr := os.ReadFile(public.Path)
+	require.NoError(t, readErr)
+	assert.Equal(t, "original", string(kept))
+}
+
+func TestWriteKeyPair_OtherRefusalsKeepTheLibrarysError(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "image.key")
+	half := keyfile.Half{Path: path, Data: []byte("key")}
+
+	require.ErrorIs(t, signcmd.WriteKeyPair(half, half, true), keyfile.ErrSameOutput)
+	assert.NoFileExists(t, path)
 }

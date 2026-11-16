@@ -569,6 +569,7 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	})
 
 	registerDecryptSteps(ctx, w)
+	registerImageSteps(ctx, w)
 
 	ctx.Given(`^a freshly built sigillum binary$`, w.aFreshlyBuiltBinary)
 	ctx.Given(`^an empty working directory$`, w.anEmptyWorkingDirectory)

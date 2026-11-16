@@ -119,6 +119,13 @@ commands:
     hashes:
       cmd.go: ""
     protected: true
+    commands:
+      - name: image
+        description: Sign a container image by digest, in both cosign signature forms
+        args: ExactArgs(1)
+        hashes:
+          cmd.go: ""
+        protected: true
   - name: keys
     description: Manage OpenPGP keys for release-binary signing
     hashes:
@@ -149,6 +156,12 @@ commands:
       - name: publish
         description: Stage a minisign public key into a keys site with a manifest
         args: ExactArgs(1)
+        hashes:
+          cmd.go: ""
+        protected: true
+      - name: generate-image
+        description: Generate an ECDSA P-256 keypair for image signing
+        args: NoArgs
         hashes:
           cmd.go: ""
         protected: true
