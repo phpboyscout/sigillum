@@ -12,6 +12,8 @@ require (
 	github.com/cucumber/godog v0.16.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.1.0
+	github.com/stretchr/testify v1.12.1
 	gitlab.com/phpboyscout/go-tool-base v0.50.4
 	gitlab.com/phpboyscout/go/encryption v0.2.3
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.4
@@ -20,7 +22,6 @@ require (
 	gitlab.com/phpboyscout/go/forge-gitlab v0.32.0
 	gitlab.com/phpboyscout/go/signing v0.13.0
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.9.0
-	gitlab.com/phpboyscout/go/signing-cli v0.7.0
 )
 
 require (
@@ -124,7 +125,6 @@ require (
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/skeema/knownhosts v1.3.3 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xo/terminfo v1.2.0 // indirect
 	github.com/yuin/goldmark v1.8.6 // indirect

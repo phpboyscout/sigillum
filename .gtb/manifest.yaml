@@ -22,18 +22,6 @@ properties:
     public_key: internal/trustkeys/keys/signing-key-v2.asc
   module_path: gitlab.com/phpboyscout/sigillum
   docs_layout: diataxis
-  external_commands:
-    - module: gitlab.com/phpboyscout/go/signing-cli
-      version: v0.6.2
-      attach:
-        - constructor: NewCmdSign
-          args:
-            - logger
-          wrap: true
-        - constructor: NewCmdKeys
-          args:
-            - logger
-          wrap: true
 release_source:
   type: gitlab
   backend: gitlab
@@ -125,3 +113,42 @@ commands:
       - name: follow-symlinks
         type: bool
         description: Write through a symbolic link named by --output instead of refusing it
+  - name: sign
+    description: Produce a detached signature over a file using a configured backend
+    args: ExactArgs(1)
+    hashes:
+      cmd.go: ""
+    protected: true
+  - name: keys
+    description: Manage OpenPGP keys for release-binary signing
+    hashes:
+      cmd.go: ""
+    protected: true
+    commands:
+      - name: mint
+        description: Mint an ASCII-armored OpenPGP public key from an existing signer
+        hashes:
+          cmd.go: ""
+        protected: true
+      - name: generate
+        description: Generate a fresh keypair locally (Ed25519 or RSA) and emit both halves
+        hashes:
+          cmd.go: ""
+        protected: true
+      - name: wkd
+        description: Generate a Web Key Directory tree from one or more public keys
+        args: MinimumNArgs(1)
+        hashes:
+          cmd.go: ""
+        protected: true
+      - name: minisign
+        description: Emit the minisign public key for an Ed25519 signer
+        hashes:
+          cmd.go: ""
+        protected: true
+      - name: publish
+        description: Stage a minisign public key into a keys site with a manifest
+        args: ExactArgs(1)
+        hashes:
+          cmd.go: ""
+        protected: true

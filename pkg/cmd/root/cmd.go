@@ -11,10 +11,11 @@ import (
 	setup "gitlab.com/phpboyscout/go-tool-base/pkg/setup"
 	forge "gitlab.com/phpboyscout/go-tool-base/pkg/setup/forge"
 	version "gitlab.com/phpboyscout/go-tool-base/pkg/version"
-	signingcli "gitlab.com/phpboyscout/go/signing-cli"
 	trustkeys "gitlab.com/phpboyscout/sigillum/internal/trustkeys"
 	certificate "gitlab.com/phpboyscout/sigillum/pkg/cmd/certificate"
 	decrypt "gitlab.com/phpboyscout/sigillum/pkg/cmd/decrypt"
+	keys "gitlab.com/phpboyscout/sigillum/pkg/cmd/keys"
+	sign "gitlab.com/phpboyscout/sigillum/pkg/cmd/sign"
 	"os"
 )
 
@@ -47,7 +48,7 @@ func NewCmdRoot(v version.Info) (*setup.Command, *props.Props, error) {
 		return nil, nil, err
 	}
 
-	rootCmd := gtbRoot.NewCmdRoot(p, decrypt.NewCmdDecrypt(p), certificate.NewCmdCertificate(p), setup.Wrap("", signingcli.NewCmdSign(p.GetLogger())), setup.Wrap("", signingcli.NewCmdKeys(p.GetLogger())))
+	rootCmd := gtbRoot.NewCmdRoot(p, decrypt.NewCmdDecrypt(p), certificate.NewCmdCertificate(p), sign.NewCmdSign(p), keys.NewCmdKeys(p))
 
 	return rootCmd, p, nil
 }

@@ -29,3 +29,15 @@ renovate.json5
 .golangci.yaml
 .colophon.yaml
 .pre-commit-config.yaml
+
+# Hand-written registration files (sigillum spec 0007 D5). They build flags from
+# each linked backend's settings, which a manifest cannot describe. The
+# manifest's protected: true does not stop 'regenerate project' under --force;
+# a rule here does.
+pkg/cmd/sign/cmd.go
+pkg/cmd/keys/cmd.go
+pkg/cmd/keys/generate/cmd.go
+pkg/cmd/keys/mint/cmd.go
+pkg/cmd/keys/minisign/cmd.go
+pkg/cmd/keys/publish/cmd.go
+pkg/cmd/keys/wkd/cmd.go
