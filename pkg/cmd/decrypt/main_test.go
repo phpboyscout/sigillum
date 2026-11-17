@@ -374,8 +374,8 @@ func TestStdinSentinelIsHonoured(t *testing.T) {
 // The message file is the same shape and worse in one respect: the report is
 // replaced by its own plaintext, so a second run has nothing to decrypt.
 //
-// signing-cli refuses the equivalent — "Refuses to let --output equal
-// --private-output (would overwrite)" — so this is the estate's own rule
+// keys generate refuses the equivalent ("Refuses to let --output equal
+// --private-output (would overwrite)"), so this is the estate's own rule
 // applied to the command that did not have it.
 func TestCheckFlagsRefusesWritingOverAnInput(t *testing.T) {
 	t.Parallel()

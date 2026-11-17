@@ -4,8 +4,8 @@ Feature: Signing release artefacts
   So that cargo-binstall and rtb-update can trust what I publish
 
   # These scenarios drive the BUILT BINARY, not the library. That is the
-  # point: sigillum is a thin shell over go/signing-cli, so the risk it
-  # carries is in the wiring — which stream a value lands on, whether a
+  # point: sigillum's commands are thin over go/signing, so the risk they
+  # carry is in the wiring — which stream a value lands on, whether a
   # flag reaches the library, whether a file appears where documented.
   # A library-level test cannot see any of that.
 

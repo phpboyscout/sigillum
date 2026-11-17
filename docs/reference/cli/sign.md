@@ -1,8 +1,8 @@
 ---
 title: sign command
-description: Reference for `sigillum sign`, with every flag, its default, which signature format it belongs to, and the exact error each wrong combination produces.
+description: Reference for `sigillum sign` and `sigillum sign image`, with every flag, its default, which signature format it belongs to, and the exact error each wrong combination produces.
 date: 2026-08-02
-tags: [reference, commands, sign, signing, openpgp, minisign]
+tags: [reference, commands, sign, signing, openpgp, minisign, cosign, container-images]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
 ---
 
@@ -19,6 +19,10 @@ file using a configured signing backend, in one of two formats:
 The private key never leaves the backend: signing is one round-trip via
 `crypto.Signer`. The signature is written next to the input unless `--output`
 says otherwise.
+
+To sign a container image instead, see [`sign image`](#sign-image). Because
+`image` is a subcommand, a file literally named `image` has to be signed as
+`./image`.
 
 ## Usage
 
@@ -175,11 +179,86 @@ and is covered by the signature:
 trusted comment: timestamp:1785704190	file:tool.tar.gz	hashed	project:mytool	key:846E063241A4289F
 ```
 
+## `sign image` {#sign-image}
+
+`sigillum sign image <registry>/<repository>@sha256:<hex>` signs a container
+image and pushes the signature to the image's own registry, in both forms
+cosign verifies:
+
+| Form | Where it is pushed |
+|---|---|
+| Legacy cosign signature | `<repository>:sha256-<hex>.sig` |
+| Sigstore bundle | an OCI referrer of the image, or the `<repository>:sha256-<hex>` fallback index where the registry has no referrers API |
+
+Nothing is uploaded to a transparency log.
+
+```bash
+sigillum sign image <registry>/<repository>@sha256:<hex> [flags]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--backend` | *(required)* | Signing backend, as for `sign`. |
+| `--key-id` | *(required)* | Backend-specific key identifier, as for `sign`. |
+| `--registry-username` | *(none)* | Registry username. Needs `--registry-password-stdin`. |
+| `--registry-password-stdin` | `false` | Read the registry password from the first line of stdin. Needs `--registry-username`. |
+
+Backend-contributed flags (`--kms-region` for `aws-kms`) apply here too.
+
+There is no password flag. A password on the command line ends up in shell
+history and in the process list, so it is read from stdin only. Without
+`--registry-username`, credentials come from the Docker config, which is what
+`docker login` and `crane auth login` write.
+
+### Which key to use
+
+The key decides the signature algorithm. **ECDSA P-256** is the one every image
+verifier surveyed accepts, and `keys generate-image` writes one. Ed25519 and
+RSA keys sign too, but check that your verifier accepts them first.
+
+### Which inputs are refused
+
+| Input | Error |
+|---|---|
+| A tag instead of a digest | `signing image: "localhost:1/x:latest" names a tag; sign repository@sha256:<hex>: image reference must name a sha256 digest` |
+| `--registry-username` without `--registry-password-stdin`, or the reverse | `--registry-username and --registry-password-stdin go together` |
+| An empty first line on stdin | `--registry-password-stdin read an empty password: --registry-username and --registry-password-stdin go together` |
+
+A tag is refused because signing what a tag points at now races whoever moves
+the tag next. Resolve the tag to a digest first (`crane digest`, or the digest
+your build step printed) and sign that.
+
+### What it writes
+
+On success it prints where each form went on stdout, so a pipeline can capture
+them:
+
+```
+signature: <repository>:sha256-<hex>.sig
+bundle: <repository>@sha256:<bundle-hex>
+```
+
+It also logs one INFO line on stderr, `Signed image`, with the `image` and
+`backend` it used.
+
+### Verifying the result
+
+```bash
+cosign verify --key image.pub --insecure-ignore-tlog <repository>@sha256:<hex>
+```
+
+`--insecure-ignore-tlog` is needed because nothing went to a transparency log.
+For a KMS key, give cosign the public half exported from the key service.
+
 ## Related
 
 - [Sign a release artefact](../../how-to/sign-a-release-artefact.md): the
   OpenPGP procedure, including AWS KMS and CI
 - [Sign an artefact for Rust consumers](../../how-to/sign-an-artefact-for-rust-consumers.md):
   the minisign procedure
+- [Sign a container image](../../how-to/sign-a-container-image.md): the image
+  procedure, including GitLab CI
 - [`keys` command reference](keys.md)
 - [What sigillum does not do](../../explanation/what-sigillum-does-not-do.md)

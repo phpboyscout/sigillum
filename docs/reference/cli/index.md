@@ -15,18 +15,17 @@ defaults, failure modes and flag combinations that `--help` has no room for.
 | Command | Purpose |
 |---------|---------|
 | [`sign`](sign.md) | Produce a detached signature over one file: armored OpenPGP for checksum manifests, or minisign for release artefacts. |
-| [`keys`](keys.md) | Manage signing keys: `generate`, `mint`, `wkd`, `minisign`, `publish`. |
+| [`sign image`](sign.md#sign-image) | Sign a container image by digest and push the signature to its registry, in the forms cosign verifies. |
+| [`keys`](keys.md) | Manage signing keys: `generate`, `generate-image`, `mint`, `wkd`, `minisign`, `publish`. |
 | [`decrypt`](decrypt.md) | Read an OpenPGP message addressed to a KMS-backed certificate. |
 | [`certificate`](certificate.md) | Assemble a publishable certificate whose keys both live in a key service. |
 
-`sign` and `keys` are attached from
-[`gitlab.com/phpboyscout/go/signing-cli`](https://signing-cli.go.phpboyscout.uk/)
-as **top-level** commands rather than reimplemented, which is the point of
-sigillum existing separately from gtb.
-
-`decrypt` and `certificate` are sigillum's own, in `pkg/cmd`. The split matters
-when something goes wrong: a signing defect belongs upstream in signing-cli, a
-decryption defect belongs in this repository.
+All four are sigillum's own, in `pkg/cmd`, and mounted as **top-level**
+commands. That is the point of sigillum existing separately from gtb. The
+commands are thin, so where a defect belongs depends on what went wrong. A wrong
+flag, message or output path belongs in this repository. A wrong signature
+belongs upstream in [`go/signing`](https://signing.go.phpboyscout.uk), or in
+`go/signing-sigstore` for an image.
 
 ## Which framework built-ins are present
 
@@ -86,7 +85,7 @@ the same flag name selects from whichever the command needs:
 
 | Commands | Registry | Backends shipped | `--backend` |
 |---|---|---|---|
-| `sign`, `keys mint`, `keys minisign` | signing | `aws-kms`, `local` | required |
+| `sign`, `sign image`, `keys mint`, `keys minisign` | signing | `aws-kms`, `local` | required |
 | `decrypt`, `certificate` | encryption | `aws-kms`, `local` | required |
 
 They are separate registries because the operations are: signing needs a key
@@ -104,8 +103,8 @@ binary is a worse thing to rely on than an explicit flag.
 
 | Backend | `--key-id` is | Key algorithms accepted | Extra flags |
 |---------|---------------|-------------------------|-------------|
-| `aws-kms` | a KMS key ID, ARN or alias | RSA `SIGN_VERIFY`, `ECC_NIST_EDWARDS25519` | `--kms-region` (default `eu-west-2`) |
-| `local` | a PEM file path | RSA (PKCS#1 or PKCS#8), Ed25519 (PKCS#8) | none |
+| `aws-kms` | a KMS key ID, ARN or alias | RSA, `ECC_NIST_P256` and `ECC_NIST_EDWARDS25519` `SIGN_VERIFY` keys | `--kms-region` (default `eu-west-2`) |
+| `local` | a PEM file path | RSA (PKCS#1 or PKCS#8), ECDSA P-256 (PKCS#8 or SEC 1), Ed25519 (PKCS#8) | none |
 
 An unrecognised name fails immediately and names the alternatives:
 
@@ -119,7 +118,7 @@ adds nothing of its own: no `--profile` and no assume-role step. Set
 `AWS_PROFILE`, or export session credentials, before invoking it.
 
 `local` reads unencrypted PEMs only. Encrypted PKCS#8 is refused, and so is
-ECDSA. See
+ECDSA on any curve but P-256. See
 [What sigillum does not do](../../explanation/what-sigillum-does-not-do.md).
 
 A regulated build can drop the AWS KMS blank import and rebuild; linker
@@ -127,12 +126,16 @@ dead-code elimination then keeps that SDK out of the binary entirely.
 
 ## Which key algorithm do I need?
 
-The signature format decides the key algorithm, and the two do not overlap:
+The signature format decides the key algorithm. The two file formats do not
+overlap:
 
 | `sign --format` | Key algorithm | Output file | Identity comes from |
 |---|---|---|---|
 | `openpgp` (default) | **RSA only** | `<input>.sig` | `--public-key` (an armored `.asc`) |
 | `minisign` | **Ed25519 only** | `<input>.minisig` | the signer itself |
+
+`sign image` takes any of the three. Use **ECDSA P-256**, which every image
+verifier surveyed accepts. `keys generate-image` writes a P-256 pair.
 
 `keys mint` builds an OpenPGP entity, so it is RSA-only for the same reason.
 `keys minisign` derives a minisign public key, so it is Ed25519-only. A project

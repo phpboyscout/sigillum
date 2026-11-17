@@ -1,6 +1,6 @@
 ---
 title: How-to guides
-description: Task-oriented guides for signing, publishing and decryption with sigillum, covering OpenPGP manifests, minisign artefacts, key generation, trust-anchor publication and encrypted vulnerability reports.
+description: Task-oriented guides for signing, publishing and decryption with sigillum, covering OpenPGP manifests, minisign artefacts, container images, key generation, trust-anchor publication and encrypted vulnerability reports.
 tags: [how-to, signing, keys, publishing]
 ---
 
@@ -34,6 +34,12 @@ if you do not.
 - **[Sign an artefact for Rust consumers](sign-an-artefact-for-rust-consumers.md)**:
   produce a `.minisig` artefact signature, emit the public key cargo-binstall
   and rtb-update pin, and publish it into a keys site with a manifest.
+
+## Container images
+
+- **[Sign a container image](sign-a-container-image.md)**: sign an image by
+  digest, push the signature in the forms cosign verifies, and check it with
+  `cosign verify`, locally or in GitLab CI with an AWS KMS key.
 
 ## Which lane do I need?
 

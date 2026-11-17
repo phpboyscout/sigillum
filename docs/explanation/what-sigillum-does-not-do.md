@@ -1,6 +1,6 @@
 ---
 title: What sigillum does not do
-description: The deliberate limits of sigillum. No verify command, no key-algorithm crossover between the OpenPGP and minisign paths, no encrypted private keys, no runtime backend selection, and no configuration file for signing options.
+description: The deliberate limits of sigillum. No verify command, no key-algorithm crossover between the OpenPGP and minisign paths, no encrypted private keys, no ECDSA for files, no runtime backend selection, and no configuration file for signing options.
 date: 2026-08-02
 tags: [explanation, limitations, constraints, signing]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -28,6 +28,9 @@ surface does. Verification happens in three other places:
 - **`minisign -Vm <artefact> -P <pubkey>`** for `.minisig` artefact signatures,
   or the consumers themselves: cargo-binstall and rtb-update both verify before
   installing.
+- **`cosign verify --key <pub> --insecure-ignore-tlog <image>@sha256:<hex>`**
+  for image signatures from `sign image`. Nothing is uploaded to a
+  transparency log, so the log check has to be off.
 - **[`gitlab.com/phpboyscout/go/signing/verify`](https://signing.go.phpboyscout.uk)**,
   a Go library, for tools that check their own downloads during self-update.
   sigillum links it for its *own* `update` command; it does not expose it.
@@ -60,22 +63,30 @@ path rejects every non-RSA signer up front.
 A project that publishes both a signed checksum manifest and signed artefacts
 therefore runs **two keys**: one RSA for OpenPGP, one Ed25519 for minisign.
 
-## ECDSA keys are refused outright
+## ECDSA signs images, not files
 
-Both backends reject ECDSA:
+Both backends load an ECDSA P-256 key, because `sign image` uses one. The two
+file formats refuse it:
 
-- `local` fails with *PKCS#8 holds \*ecdsa.PrivateKey: PEM key is neither RSA nor
-  Ed25519; only those are supported*.
-- `aws-kms` fails with *KMS key is neither RSA nor Ed25519; only RSA SIGN_VERIFY and
-  ECC_NIST_EDWARDS25519 keys are supported*.
+- `--format openpgp` fails with *computing signature: DetachSign:
+  \*ecdsa.PublicKey: unsupported key type: only RSA is supported*.
+- `--format minisign` fails with *minisign requires an Ed25519 signing key, but
+  --key-id resolved to \*ecdsa.PublicKey; RSA keys sign the OpenPGP manifest
+  path (--format openpgp) instead*.
 
-Nothing in the phpboyscout estate verifies ECDSA signatures, so accepting the
-key type would produce signatures no consumer could check.
+Nothing that verifies the estate's files checks ECDSA signatures, so accepting
+the key type there would produce signatures no consumer could check.
+
+Other curves are refused by both backends. `local` fails with *ECDSA on P-384;
+only P-256 is supported: PEM key type is not supported; only RSA, ECDSA P-256
+and Ed25519 are*. `aws-kms` accepts only `ECC_NIST_P256` among the ECC NIST
+key specs.
 
 ## Private keys on disk are never encrypted
 
-`keys generate` writes unencrypted private halves, and the `local` backend reads
-only unencrypted PEMs. An encrypted PEM (a file whose block header reads
+`keys generate` and `keys generate-image` write unencrypted private halves, and
+the `local` backend reads only unencrypted PEMs. An encrypted PEM (a file whose
+block header reads
 `-----BEGIN ENCRYPTED PRIVATE KEY-----`) gets *encrypted PEM private keys are
 not supported in v0.1; decrypt out-of-band first or use the aws-kms backend*.
 

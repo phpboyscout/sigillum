@@ -35,7 +35,7 @@ hide:
 <div class="cap-grid">
   <div class="cap">
     <h3>Sign</h3>
-    <p>Turn any file into a detached signature: armored OpenPGP for checksum manifests, minisign for release artefacts. The key stays in the backend; only a digest is ever sent to it.</p>
+    <p>Turn any file into a detached signature: armored OpenPGP for checksum manifests, minisign for release artefacts. Sign a container image by digest in the forms cosign verifies. The key stays in the backend; only a digest is ever sent to it.</p>
   </div>
   <div class="cap">
     <h3>Mint</h3>
@@ -69,9 +69,9 @@ graph stops being a graph.
 
 sigillum is the leaf that resolves it. It is a CLI over
 [`go/signing`](https://signing.go.phpboyscout.uk) that depends on the framework
-and is depended on by nothing. Its `sign` and `keys` are the same commands as
-`gtb sign` and `gtb keys`, mounted at the top level, so a release pipeline that
-is not Go, and was never built with gtb, can still use them. The two commands
+and is depended on by nothing. It owns `sign` and `keys` and mounts them at the
+top level, so a release pipeline that is not Go, and was never built with gtb,
+can still use them. The two commands
 sigillum adds of its own, `decrypt` and `certificate`, cover the other job a
 project's keys do: receiving encrypted vulnerability reports.
 
@@ -109,23 +109,24 @@ decryption all happen locally. See
 ## How do I verify a signature?
 
 Not with sigillum. It signs, and there is no `sigillum verify`. Use
-`gpg --verify` for OpenPGP signatures and `minisign -Vm` for `.minisig` artefact
-signatures, or let the consumers do it: cargo-binstall and rtb-update both
+`gpg --verify` for OpenPGP signatures, `minisign -Vm` for `.minisig` artefact
+signatures and `cosign verify --key` for image signatures, or let the consumers
+do it: cargo-binstall and rtb-update both
 verify before installing. The reasoning, and the rest of the limits, are in
 [What sigillum does not do](explanation/what-sigillum-does-not-do.md).
 
 ## Architecture at a glance
 
-All signing logic lives upstream. sigillum wires the pieces together, ships the
+All signing logic lives upstream. sigillum owns the commands, ships the
 backends, and owns one piece of real work: reading an OpenPGP message for
 `decrypt`, which nothing upstream does.
 
 ```
-sigillum  (this CLI: attaches the commands, ships the backends)
+sigillum  (this CLI: owns the commands, ships the backends)
    │
-   ├─ sign, keys   →  go/signing-cli   the cobra command builders
-   │                     └─ go/signing   signing & verification logic
-   │                           └─ go/signing/openpgpkey, .../verify   OpenPGP + WKD helpers
+   ├─ sign, keys   →  go/signing   signing & verification logic
+   │                     └─ go/signing/openpgpkey, .../verify   OpenPGP + WKD helpers
+   ├─ sign image   →  go/signing-sigstore   cosign signature + Sigstore bundle
    │       ├─ go/signing-aws-kms   AWS KMS backend   (blank-imported)
    │       └─ go/signing/local     local PEM backend (blank-imported)
    │
@@ -136,11 +137,11 @@ sigillum  (this CLI: attaches the commands, ships the backends)
 ```
 
 - **`go/signing`** holds all signing and verification logic.
-- **`go/signing-cli`** holds only the cobra command builders (`sign`, `keys`).
-  It depends on neither gtb nor sigillum.
+- **`go/signing-sigstore`** signs container images in cosign's formats.
 - **`go/encryption`** holds the certificate assembler and parser and the
   cryptographic steps of decryption.
-- **sigillum** attaches the commands to its root and blank-imports the backends
+- **sigillum** owns `sign`, `keys`, `decrypt` and `certificate`, attaches them
+  to its root and blank-imports the backends
   it ships (AWS KMS and local PEM, on each side). Which backends are compiled in
   is a build-time decision: a regulated build can drop a blank import and
   rebuild.
@@ -155,8 +156,8 @@ The documentation follows the [Diátaxis](https://diataxis.fr/) framework:
 - **[Tutorials](tutorials/index.md)**: install, generate a key, sign a file and
   verify it, start to finish.
 - **[How-to guides](how-to/index.md)**: sign a release artefact, sign an
-  artefact for Rust consumers, generate or mint a signing key, publish a WKD
-  tree, receive an encrypted report.
+  artefact for Rust consumers, sign a container image, generate or mint a
+  signing key, publish a WKD tree, receive an encrypted report.
 - **[Reference](reference/index.md)**: every command, flag, default,
   configuration key and failure mode.
 - **[Explanation](explanation/index.md)**: the architecture, the reasoning

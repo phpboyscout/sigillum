@@ -14,19 +14,19 @@ while the skill does not.
 
 ## What sigillum is
 
-`gitlab.com/phpboyscout/sigillum` is a standalone signing and encrypted-report
-CLI for the phpboyscout ecosystem, built on
+`gitlab.com/phpboyscout/sigillum` is the estate's signing CLI, and it handles
+encrypted reports too. It is built on
 [go-tool-base](https://gitlab.com/phpboyscout/go-tool-base). It produces
-signatures over release artefacts, OpenPGP for checksum manifests and minisign
-for the artefacts themselves, and exposes the ecosystem's `sign` and `keys`
-commands as top-level commands.
+signatures over release artefacts (OpenPGP for checksum manifests, minisign for
+the artefacts themselves) and over container images (`sign image`, in cosign's
+formats).
 
-**Why it exists, beyond the README.** The same signing surface is already
-reachable as `gtb sign` / `gtb keys`, so sigillum is not new capability. It
-exists so a project whose release pipeline is not Go, and has no reason to build
-a gtb-based tool, can still install one small binary and sign. That framing
-settles scope questions: if a change only helps gtb-based tools, it almost
-certainly belongs upstream in `go/signing-cli`, not here.
+**Why it exists, beyond the README.** It is one small binary that a project
+whose release pipeline is not Go can install and sign with. The `sign` and
+`keys` commands began in gtb and then in `go/signing-cli`. sigillum spec 0007
+moved them here, so sigillum now owns them and that module is deprecated.
+Signing logic still belongs in `go/signing` and its backends. A change that
+only reshapes the command surface belongs here.
 
 **What it deliberately does not do** is the sharpest way to see its edges, and it
 is written down: see
@@ -41,9 +41,10 @@ subcommand here. See the trap below about the binary's own description string.
 
 Pre-1.0. The `sign` / `keys` / `certificate` / `decrypt` surface is in place and
 exercised end to end by the behaviour suite (`features/signing.feature`,
-`features/decrypt.feature`). Named signing backend instances
-(`--backend aws-kms:prod?kms-region=eu-west-1`, from `go/signing-cli` spec 0001)
-are live. Production signing runs through AWS KMS over OIDC.
+`features/image-signing.feature`, `features/decrypt.feature`). Named signing
+backend instances (`--backend aws-kms:prod?kms-region=eu-west-1`, first
+specified in go/signing-cli's spec 0001) are live. Production signing runs
+through AWS KMS over OIDC.
 
 Do not hardcode a version anywhere. `git tag` (or the releases page) is the
 source of truth for where the version actually is; a local checkout's tags can
@@ -53,10 +54,11 @@ lag the remote, so a bare `git describe` may read older than the cut release.
 
 Its direct toolkit dependencies say what it actually consumes:
 
-- **`go/signing`, `go/signing-cli`, `go/signing-aws-kms`.** The real signing
-  logic lives in `go/signing`; `go/signing-cli` owns the shareable command
-  surface, and this tool exposes that surface top level rather than reimplementing
-  it. A change to a shape `go/signing` owns reaches here.
+- **`go/signing`, `go/signing-aws-kms`, `go/signing-sigstore`.** The real
+  signing logic lives in `go/signing`, and image signing in
+  `go/signing-sigstore`. The commands in `pkg/cmd/sign` and `pkg/cmd/keys`
+  are thin over them, with the shared flag and key-file handling in
+  `internal/signcmd`. A change to a shape `go/signing` owns reaches here.
 - **`go/encryption`, `go/encryption-aws-kms`** for the encrypted-report half.
 - **`go/credentials`, `go/errorhandling`, `go/errors`** as the common spine.
 
@@ -84,7 +86,10 @@ files alongside. See **work-on-a-gtb-project**.
 tests. **The e2e and integration suites are env-gated and silently pass without
 the variable** (a bare `go test ./test/e2e/...` runs nothing and reports `ok`):
 use `just test-e2e` (`INT_TEST_E2E=1`) and `just test-integration`
-(`INT_TEST=1`).
+(`INT_TEST=1`). `just test-cosign` (`INT_TEST_COSIGN=1`) checks `sign image`
+output with a real `cosign verify`. It needs cosign on PATH (the registry runs
+in-process), and CI never runs it, because the CI image has no cosign. Run it after any change to
+the image path.
 
 ## Traps
 
@@ -108,19 +113,29 @@ handles keys and signatures, so the keys-and-signing traps matter more than most
   a key on disk; that premise is what the `decrypt` and KMS `sign` paths are
   built on. Do not add a code path that pulls a private key out to sign or
   decrypt locally.
+- **`sign image` is a subcommand of `sign`, so a file named `image` must be
+  signed as `./image`.** Cobra resolves `sign image` to the subcommand before
+  it looks at arguments. The help says so. Do not "fix" it by renaming the
+  subcommand: spec 0007 chose the name.
+- **The `sign`/`keys` handlers and their `cmd.go` files are hand-maintained.**
+  They are `protected: true` in the manifest and listed in `.gtb/ignore`, and
+  both are needed. `regenerate project --force` ignores `protected` and stubs
+  every handler, so never run it here. The generator also adds `Register`
+  lines to ignored files, and it only recognises an existing one under the
+  import alias it would have written (`generate_image` for `generate-image`).
 - **Named backend instances are a selector string, not new flags.** `--backend`
   takes `type[:instance][?k=v&k=v]`: a bare `<type>` resolves the registered
   default (unchanged), and `<type>:<instance>` mints a fresh instance configured
   by the query. `type:instance` only works if the backend module registered a
   factory; a registered-default-without-a-factory gives a clear error saying so.
 - **A partial bump of the signing family can advertise a flag with no capability
-  behind it.** Go's minimum-version selection means bumping only `signing-cli`
-  while its `go/signing` floor predates a capability leaves the CLI offering a
-  flag the linked registry cannot honour (this shipped once as the
+  behind it.** Go's minimum-version selection means bumping one module while its
+  `go/signing` floor predates a capability leaves the CLI offering a flag the
+  linked registry cannot honour (this shipped once as the
   "flag-without-capability" footgun and was fixed by raising the floor). When
-  re-pinning, move `go/signing`, `go/signing-cli` and the backends together and
-  check the resolved versions with `go list -m`, not just the `go.mod` require
-  lines.
+  re-pinning, move `go/signing`, `go/signing-sigstore` and the backends together
+  and check the resolved versions with `go list -m`, not just the `go.mod`
+  require lines.
 - **releaser-pleaser majors a pre-1.0 break to v1.0.0.** A `feat!:` or a
   breaking-change footer cuts `v1.0.0` even from `v0.x` (this genuinely
   mis-released a sibling). Read **pre-1-0-release-safety** before writing any

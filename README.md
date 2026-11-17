@@ -1,14 +1,15 @@
 # sigillum
 
-**A standalone CLI that signs release artefacts and decrypts the vulnerability reports sent to your security contact.**
+**A standalone CLI that signs release artefacts and container images, and decrypts the vulnerability reports sent to your security contact.**
 
 `sigillum` does two jobs for a project's release pipeline and security contact.
 
 It produces **signatures** over release artefacts: OpenPGP for checksum
-manifests, minisign for the artefacts themselves. The `sign` and `keys` commands
-are the same ones `gtb sign` and `gtb keys` provide, mounted here as
-**top-level** commands, so a release pipeline written in any language can call
-them.
+manifests, minisign for the artefacts themselves. `sign image` signs a
+container image by digest and pushes the signature to its registry in the
+forms cosign verifies. The `sign` and `keys` commands began in gtb and now live
+here as **top-level** commands, so a release pipeline written in any language
+can call them.
 
 It also **receives encrypted vulnerability reports**. `certificate` assembles
 the OpenPGP certificate you publish at your security contact address, and
@@ -30,12 +31,19 @@ pipeline needs neither gtb nor Go. Install one binary and sign.
   (`--format openpgp`, the default) for checksum manifests, or minisign
   (`--format minisign`) for release artefacts. The private key never leaves the
   KMS or the local PEM file.
+- **`sigillum sign image <repository>@sha256:<hex>`** signs a container image
+  by digest and pushes the signature to its registry, both as a cosign
+  signature and as a Sigstore bundle. A tag is refused. Verify it with
+  `cosign verify --key`.
 - **`sigillum keys generate`** generates a fresh keypair locally (Ed25519 or
   RSA) and writes both halves.
 - **`sigillum keys mint`** mints an ASCII-armored OpenPGP public key from an
   existing signer, such as an AWS KMS key.
 - **`sigillum keys wkd`** builds a Web Key Directory tree from your public keys,
   so verifiers can fetch them from your own domain.
+- **`sigillum keys generate-image`** generates an ECDSA P-256 keypair for
+  image signing, for tests and local registries. Production image keys live in
+  a key service.
 - **`sigillum keys minisign`** prints the minisign public key that release
   consumers (cargo-binstall, rtb-update) pin.
 - **`sigillum keys publish`** stages a minisign public key into a static keys
@@ -76,6 +84,7 @@ walk over recipients, the size and compression bounds) lives in sigillum's
 sigillum
    ├─ sign, keys      →  go/signing  (+ openpgpkey, minisign, keysite, verify)
    │   (sigillum's own pkg/cmd)   (all signing & verification logic)
+   ├─ sign image      →  go/signing-sigstore  (cosign signature + Sigstore bundle)
    │       ├─ go/signing-aws-kms   AWS KMS backend   (blank-imported)
    │       └─ go/signing/local     local PEM backend (blank-imported)
    │
@@ -94,7 +103,8 @@ uses.
 
 - **`go/signing`** holds all signing and verification logic.
 - **`sign` and `keys`** live in sigillum's own `pkg/cmd`. They parse flags,
-  resolve the backend and call `go/signing`. Each backend describes its own
+  resolve the backend and call `go/signing`, or `go/signing-sigstore` for
+  `sign image`. Each backend describes its own
   settings, and the commands turn those into flags, so a backend that is not
   compiled in contributes none.
 - **`go/encryption`** holds the OpenPGP certificate assembler and parser, the

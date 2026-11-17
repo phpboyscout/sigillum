@@ -1,6 +1,6 @@
 ---
 title: keys command
-description: Reference for `sigillum keys`, with every flag of generate, mint, wkd, minisign and publish, with defaults, output layouts, file permissions and failure modes.
+description: Reference for `sigillum keys`, with every flag of generate, generate-image, mint, wkd, minisign and publish, with defaults, output layouts, file permissions and failure modes.
 date: 2026-08-02
 tags: [reference, commands, keys, signing, openpgp, minisign, wkd, publish]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
@@ -9,7 +9,8 @@ authors: [Matt Cockayne <matt@phpboyscout.uk>]
 # `keys` command
 
 `sigillum keys` manages the keys used for release signing: OpenPGP for checksum
-manifests, minisign for the artefacts themselves.
+manifests, minisign for the artefacts themselves, and ECDSA P-256 for container
+images.
 
 ```bash
 sigillum keys <subcommand> [flags]
@@ -22,6 +23,7 @@ sigillum keys <subcommand> [flags]
 | Subcommand | Purpose | Key algorithm |
 |---|---|---|
 | [`generate`](#keys-generate) | Generate a fresh keypair locally and emit both halves. | Ed25519 or RSA |
+| [`generate-image`](#keys-generate-image) | Generate an image-signing keypair locally, for tests and local registries. | ECDSA P-256 |
 | [`mint`](#keys-mint) | Build an armored OpenPGP public key from an existing signer. | RSA only |
 | [`wkd`](#keys-wkd) | Build a Web Key Directory tree from one or more public keys. | n/a (reads `.asc` files) |
 | [`minisign`](#keys-minisign) | Emit the minisign public key release consumers pin. | Ed25519 only |
@@ -39,9 +41,16 @@ parses OpenPGP.
 | Private-half key files | `0600` | The irreplaceable half. A fresh private key is never world-readable. |
 | Public keys, WKD trees, `keys.json` | `0644` | Publishing them is the entire point. |
 
-Output files are created with `O_EXCL`, so the "does it exist?" check and the
-create are one atomic syscall, with no window between them. `--force`
-switches to truncate-and-rewrite.
+`generate`, `generate-image`, `mint` and `minisign` create their output with
+`O_EXCL`, so the "does it exist?" check and the create are one atomic syscall,
+with no window between them. With `--force` the new content is written to a
+temporary file beside the target and renamed over it, so a failure part-way
+leaves the old file intact. That needs write access to the directory, and the
+replaced file's hard links, owner and ACLs are not carried over. These four set
+their modes explicitly, so the umask does not narrow them.
+
+`wkd` and `publish` have no `--force`. They write their trees in place, and the
+umask applies. See their sections below.
 
 ---
 
@@ -100,6 +109,52 @@ private half was never saved.
 ```
 INFO Generated OpenPGP keypair algorithm=rsa public_output=release.asc private_output=release.pem creation_time=… fingerprint=9458EAFE…
 WARN Move the private-half file to offline storage now. private_output=release.pem
+```
+
+---
+
+## `keys generate-image` {#keys-generate-image}
+
+`sigillum keys generate-image` generates an ECDSA P-256 keypair in the process
+and writes both halves, for [`sign image`](sign.md#sign-image).
+
+```bash
+sigillum keys generate-image [flags]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `image.pub` | Where to write the PEM public key (`PUBLIC KEY`, PKIX). |
+| `--private-output` | `image.key` | Where to write the private key: unencrypted PKCS#8 PEM, mode `0600`. |
+| `--force` | `false` | Overwrite the output files if they exist. |
+
+The private key is what `--backend local` signs with, and anyone who can read
+that file can sign. The public key is what `cosign verify --key` reads.
+
+This command is for tests and local registries. Production image keys live in
+a key service, such as an `ECC_NIST_P256` `SIGN_VERIFY` key in AWS KMS, and
+their private half never leaves it.
+
+### Failure modes
+
+| Situation | Message |
+|---|---|
+| `--output` and `--private-output` name the same file | `"a.pem" and "a.pem": --output and --private-output name the same file` |
+| An output file exists, no `--force` | `"image.key" (pass --force to overwrite): output file already exists` |
+
+Both paths are checked before either file is written. The same-file check also
+catches a symlink, a linked directory, and two names that differ only by case.
+If writing the public half fails, the private half this run created is removed.
+Under `--force`, both halves are staged first, and the old private half is held
+in a hidden `.<name>.old.*` directory beside it until the public half is written.
+If the public half then fails, the old private half is put back. If it cannot be
+put back, the error says the private half was replaced, and names where the old
+one is when it could be held.
+
+### What it logs
+
+```
+INFO Generated image-signing keypair public=image.pub private=image.key
 ```
 
 ---
@@ -326,4 +381,5 @@ publishing a new generation, never removing an old one.
 - [Generate or mint a signing key](../../how-to/generate-or-mint-a-signing-key.md)
 - [Publish a WKD tree](../../how-to/publish-a-wkd-tree.md)
 - [Sign an artefact for Rust consumers](../../how-to/sign-an-artefact-for-rust-consumers.md)
+- [Sign a container image](../../how-to/sign-a-container-image.md)
 - [What sigillum does not do](../../explanation/what-sigillum-does-not-do.md)

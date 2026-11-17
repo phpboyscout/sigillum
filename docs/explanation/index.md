@@ -16,8 +16,8 @@ OpenPGP message, because nothing upstream does. The pages below explain why it
 is built this way.
 
 - **[Components & architecture](components/index.md)**: the module stack
-  (sigillum → `go/signing-cli` → `go/signing` + backends, and the encryption
-  side beside it) and how the pieces fit together.
+  (sigillum → `go/signing` + backends, `go/signing-sigstore` for images, and
+  the encryption side beside it) and how the pieces fit together.
 - **[Concepts](concepts/index.md)**: why sigillum exists as a separate tool
   from gtb, and the build-time backend blank-import model.
 - **[What sigillum does not do](what-sigillum-does-not-do.md)**: the limits.
