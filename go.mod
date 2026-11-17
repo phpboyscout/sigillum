@@ -17,9 +17,9 @@ require (
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.4
 	gitlab.com/phpboyscout/go/errorhandling v0.5.2
 	gitlab.com/phpboyscout/go/errors v0.4.0
-	gitlab.com/phpboyscout/go/forge-gitlab v0.31.1
-	gitlab.com/phpboyscout/go/signing v0.11.4
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.7.2
+	gitlab.com/phpboyscout/go/forge-gitlab v0.32.0
+	gitlab.com/phpboyscout/go/signing v0.12.0
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.8.0
 	gitlab.com/phpboyscout/go/signing-cli v0.7.0
 )
 
@@ -34,21 +34,21 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.47.5 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.48.0 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.33.13 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.13 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.5 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.8 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.8 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.23 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.8 // indirect
-	github.com/aws/aws-sdk-go-v2/service/kms v1.62.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/kms v1.62.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.12.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.39.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.6 // indirect
-	github.com/aws/smithy-go v1.28.7 // indirect
+	github.com/aws/smithy-go v1.28.9 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.6.1 // indirect
@@ -130,7 +130,7 @@ require (
 	github.com/yuin/goldmark v1.8.6 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
-	gitlab.com/gitlab-org/api/client-go/v3 v3.40.0 // indirect
+	gitlab.com/gitlab-org/api/client-go/v3 v3.48.0 // indirect
 	gitlab.com/phpboyscout/go/authn v0.3.1 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.4 // indirect
 	gitlab.com/phpboyscout/go/browser v0.2.3 // indirect
@@ -142,7 +142,7 @@ require (
 	gitlab.com/phpboyscout/go/controls v0.9.1 // indirect
 	gitlab.com/phpboyscout/go/credentials v0.3.4 // indirect
 	gitlab.com/phpboyscout/go/features v0.1.1 // indirect
-	gitlab.com/phpboyscout/go/forge v0.38.2 // indirect
+	gitlab.com/phpboyscout/go/forge v0.39.0 // indirect
 	gitlab.com/phpboyscout/go/httpclient v0.2.6 // indirect
 	gitlab.com/phpboyscout/go/observability v0.4.1 // indirect
 	gitlab.com/phpboyscout/go/output v0.2.5 // indirect
