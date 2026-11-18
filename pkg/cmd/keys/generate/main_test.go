@@ -17,6 +17,7 @@ import (
 
 	"gitlab.com/phpboyscout/go-tool-base/pkg/logger"
 	"gitlab.com/phpboyscout/go-tool-base/pkg/props"
+	"gitlab.com/phpboyscout/go/signing/keyfile"
 	"gitlab.com/phpboyscout/go/signing/local"
 	"gitlab.com/phpboyscout/go/signing/minisign"
 
@@ -182,6 +183,39 @@ func TestRunGenerate_RefusesOnePathForBothHalves(t *testing.T) {
 	assert.NoFileExists(t, same)
 }
 
+func TestRunGenerate_RefusesOneFileSpeltTwoWays(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "same.asc")
+	require.NoError(t, os.WriteFile(path, []byte("an older private key"), keyfile.PrivatePerm))
+
+	respelt := dir + string(filepath.Separator) + "." + string(filepath.Separator) + "same.asc"
+
+	err := runGenerate(t, keyPaths{pub: respelt, priv: path}, "--algorithm", "rsa", "--rsa-bits", "2048", "--force")
+	require.ErrorContains(t, err, "must differ")
+
+	kept, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "an older private key", string(kept), "the private half is not overwritten by the public one")
+}
+
+func TestRunGenerate_AFailedPublicWriteKeepsTheOldPair(t *testing.T) {
+	t.Parallel()
+
+	paths := pathsIn(t.TempDir(), "out.asc", "out.pem")
+	require.NoError(t, os.WriteFile(paths.priv, []byte("an older private key"), keyfile.PrivatePerm))
+	require.NoError(t, os.Mkdir(paths.pub, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(paths.pub, "blocker"), nil, 0o600))
+
+	err := runGenerate(t, paths, "--algorithm", "rsa", "--rsa-bits", "2048", "--force")
+	require.Error(t, err)
+
+	kept, err := os.ReadFile(paths.priv)
+	require.NoError(t, err)
+	assert.Equal(t, "an older private key", string(kept))
+}
+
 func TestRunGenerate_RequiresAlgorithmNameAndEmail(t *testing.T) {
 	t.Parallel()
 
@@ -207,9 +241,8 @@ func TestRunGenerate_RefusesToClobberPrivateKey(t *testing.T) {
 	assert.Equal(t, original, readFile(t, paths.priv), "a refused generate must not modify the existing private key")
 }
 
-// The public half alone existing must stop the run too, and it is found after
-// the private half is written. That is go/signing-cli's order, kept: the new
-// private key is on disk and the error names the file in the way.
+// The public half alone existing stops the run before either half is written,
+// so no new private key is left without its public half.
 func TestRunGenerate_RefusesToClobberPublicKey(t *testing.T) {
 	t.Parallel()
 
@@ -218,9 +251,10 @@ func TestRunGenerate_RefusesToClobberPublicKey(t *testing.T) {
 
 	err := runGenerate(t, paths, "--algorithm", "ed25519")
 	require.ErrorIs(t, err, signcmd.ErrKeyFileExists)
-	require.ErrorContains(t, err, "writing public-half output")
+	require.ErrorContains(t, err, paths.pub)
 
 	assert.Equal(t, "published", string(readFile(t, paths.pub)))
+	assert.NoFileExists(t, paths.priv)
 }
 
 func TestRunGenerate_ForceOverwritesPrivateKey(t *testing.T) {

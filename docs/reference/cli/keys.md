@@ -98,11 +98,14 @@ PKCS#1 PEM`. An unknown value fails with `unknown --private-format "x"`.
 | Situation | Message |
 |---|---|
 | `--output` equals `--private-output` | `--output (x.asc) must differ from --private-output (x.asc)` |
-| An output file exists, no `--force` | `writing private-half output: "release.pem" (pass --force to overwrite): output file already exists` |
+| An output file exists, no `--force` | `"release.pem" (pass --force to overwrite): output file already exists` |
 
-The private half is encoded and written **before** the public half, under the
-no-clobber guard, so a failure cannot leave a lone public key behind whose
-private half was never saved.
+Both halves are written through the same pair write as `keys generate-image`,
+so a run writes both or neither. `--output` and `--private-output` are compared
+as the files they resolve to, so `./a.asc` and `a.asc`, or a symlink from one
+to the other, give the same refusal as identical paths. Under `--force` a
+failed public half puts the old private half back, as described under
+`keys generate-image`.
 
 ### What it logs
 

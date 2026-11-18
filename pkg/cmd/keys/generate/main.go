@@ -14,9 +14,7 @@ import (
 	"gitlab.com/phpboyscout/sigillum/internal/signcmd"
 )
 
-// RunGenerate makes a keypair and writes both halves. The private half goes
-// first: it is the one that cannot be remade, so a refusal to overwrite it must
-// come before anything is written.
+// RunGenerate makes a keypair and writes both halves, or neither.
 func RunGenerate(_ context.Context, p *props.Props, opts *GenerateOptions, _ []string) error {
 	if err := validatePrivateFormat(opts.Algorithm, opts.PrivateFormat); err != nil {
 		return err
@@ -48,12 +46,17 @@ func RunGenerate(_ context.Context, p *props.Props, opts *GenerateOptions, _ []s
 		return err //nolint:wrapcheck // the library names the step that failed
 	}
 
-	if err := signcmd.WriteKeyFile(privPath, key.PrivateKey, keyfile.PrivatePerm, opts.Force); err != nil {
-		return errors.Wrap(err, "writing private-half output")
+	err = signcmd.WriteKeyPair(
+		keyfile.Half{Path: privPath, Data: key.PrivateKey},
+		keyfile.Half{Path: pubPath, Data: key.PublicKey},
+		opts.Force,
+	)
+	if errors.Is(err, keyfile.ErrSameOutput) {
+		return sameOutputError(pubPath, privPath)
 	}
 
-	if err := signcmd.WriteKeyFile(pubPath, key.PublicKey, keyfile.PublicPerm, opts.Force); err != nil {
-		return errors.Wrap(err, "writing public-half output")
+	if err != nil {
+		return err //nolint:wrapcheck // names the path and the fault
 	}
 
 	log := p.GetLogger()
@@ -126,8 +129,14 @@ func resolveOutputs(algorithm, format, output, privateOutput string) (pubPath, p
 	}
 
 	if output == privateOutput {
-		return "", "", errors.Newf("--output (%s) must differ from --private-output (%s)", output, privateOutput)
+		return "", "", sameOutputError(output, privateOutput)
 	}
 
 	return output, privateOutput, nil
+}
+
+// sameOutputError covers both checks: the spelling compared before a key is
+// made, and keyfile's check of the file each path resolves to.
+func sameOutputError(output, privateOutput string) error {
+	return errors.Newf("--output (%s) must differ from --private-output (%s)", output, privateOutput)
 }
