@@ -68,8 +68,11 @@ into flags, resolves `--backend` to a signer, and writes key files with the
 The `sign` and `keys` commands began in gtb and were then moved into a separate
 `go/signing-cli` module, so that gtb and sigillum could share them. sigillum
 spec 0007 moved them here. gtb is dropping its copies, and `go/signing-cli` is
-deprecated. Their error texts and error kinds are unchanged, so a log filter
-written against the old commands still matches.
+deprecated. Their error kinds are unchanged, so a log filter that matches on
+kind still matches. Their error texts are unchanged too, except for
+`keys generate`: it now writes its pair the way `keys generate-image` does, and
+its write errors lost the `writing private-half output` and
+`writing public-half output` prefixes. The release notes say so.
 
 The split is deliberate and it is not symmetric. Signing logic is entirely
 upstream, so sigillum's signing commands only parse, resolve and write.

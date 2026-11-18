@@ -24,6 +24,13 @@ func WriteKeyFile(path string, data []byte, perm os.FileMode, force bool) error 
 	return err //nolint:wrapcheck // keyfile's error names the path and the step
 }
 
+// IsSameOutput reports whether a pair write was refused because both paths
+// name one file, and nothing was replaced. A failed restore can carry
+// keyfile.ErrSameOutput as its cause, and that error must reach the user whole.
+func IsSameOutput(err error) bool {
+	return errors.Is(err, keyfile.ErrSameOutput) && !errors.Is(err, keyfile.ErrPrivateHalfReplaced)
+}
+
 // WriteKeyPair writes both halves of a keypair through keyfile.WritePair,
 // adding the --force hint to a refusal to overwrite either.
 func WriteKeyPair(private, public keyfile.Half, force bool) error {

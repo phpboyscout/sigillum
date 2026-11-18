@@ -1,6 +1,7 @@
 package signcmd_test
 
 import (
+	stderrors "errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,6 +65,15 @@ func TestWriteKeyPair_RefusalNamesTheHalfThatExistsAndWritesNeither(t *testing.T
 	kept, readErr := os.ReadFile(public.Path)
 	require.NoError(t, readErr)
 	assert.Equal(t, "original", string(kept))
+}
+
+func TestIsSameOutput(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, signcmd.IsSameOutput(errors.Wrap(keyfile.ErrSameOutput, "a.pem")))
+	assert.False(t, signcmd.IsSameOutput(stderrors.Join(keyfile.ErrPrivateHalfReplaced, keyfile.ErrSameOutput)),
+		"a replaced private half is never reported as a mere refusal")
+	assert.False(t, signcmd.IsSameOutput(keyfile.ErrKeyFileExists))
 }
 
 func TestWriteKeyPair_OtherRefusalsKeepTheLibrarysError(t *testing.T) {

@@ -41,7 +41,7 @@ func RunGenerateImage(_ context.Context, p *props.Props, opts *GenerateImageOpti
 		keyfile.Half{Path: opts.Output, Data: public},
 		opts.Force,
 	)
-	if errors.Is(err, keyfile.ErrSameOutput) {
+	if signcmd.IsSameOutput(err) {
 		return errors.Wrapf(ErrSameOutput, "%q and %q", opts.Output, opts.PrivateOutput)
 	}
 

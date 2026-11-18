@@ -200,13 +200,14 @@ func TestRunGenerate_RefusesOneFileSpeltTwoWays(t *testing.T) {
 	assert.Equal(t, "an older private key", string(kept), "the private half is not overwritten by the public one")
 }
 
-func TestRunGenerate_AFailedPublicWriteKeepsTheOldPair(t *testing.T) {
+// The put-back after a late failure is go/signing's to test. This proves only
+// that generate's writes go through the pair write's up-front checks.
+func TestRunGenerate_AnUnwritablePublicPathIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 	t.Parallel()
 
 	paths := pathsIn(t.TempDir(), "out.asc", "out.pem")
 	require.NoError(t, os.WriteFile(paths.priv, []byte("an older private key"), keyfile.PrivatePerm))
 	require.NoError(t, os.Mkdir(paths.pub, 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(paths.pub, "blocker"), nil, 0o600))
 
 	err := runGenerate(t, paths, "--algorithm", "rsa", "--rsa-bits", "2048", "--force")
 	require.Error(t, err)

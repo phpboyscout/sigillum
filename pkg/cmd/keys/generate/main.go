@@ -51,7 +51,7 @@ func RunGenerate(_ context.Context, p *props.Props, opts *GenerateOptions, _ []s
 		keyfile.Half{Path: pubPath, Data: key.PublicKey},
 		opts.Force,
 	)
-	if errors.Is(err, keyfile.ErrSameOutput) {
+	if signcmd.IsSameOutput(err) {
 		return sameOutputError(pubPath, privPath)
 	}
 
