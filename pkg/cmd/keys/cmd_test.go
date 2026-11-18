@@ -36,7 +36,7 @@ func TestNewCmdKeys_AttachesItsSubcommands(t *testing.T) {
 		got = append(got, c.Name())
 	}
 
-	assert.ElementsMatch(t, []string{"generate", "generate-image", "minisign", "mint", "publish", "wkd"}, got)
+	assert.ElementsMatch(t, []string{"generate", "generate-image", "minisign", "mint", "publish", "rotate", "wkd"}, got)
 }
 
 func TestKeys_ReportsAVerbItDoesNotHave(t *testing.T) {

@@ -1,8 +1,8 @@
 ---
 title: keys command
-description: Reference for `sigillum keys`, with every flag of generate, generate-image, mint, wkd, minisign and publish, with defaults, output layouts, file permissions and failure modes.
+description: Reference for `sigillum keys`, with every flag of generate, generate-image, mint, wkd, minisign, publish and rotate, with defaults, output layouts, file permissions and failure modes.
 date: 2026-08-02
-tags: [reference, commands, keys, signing, openpgp, minisign, wkd, publish]
+tags: [reference, commands, keys, signing, openpgp, minisign, wkd, publish, rotation]
 authors: [Matt Cockayne <matt@phpboyscout.uk>]
 ---
 
@@ -28,6 +28,7 @@ sigillum keys <subcommand> [flags]
 | [`wkd`](#keys-wkd) | Build a Web Key Directory tree from one or more public keys. | n/a (reads `.asc` files) |
 | [`minisign`](#keys-minisign) | Emit the minisign public key release consumers pin. | Ed25519 only |
 | [`publish`](#keys-publish) | Stage a minisign public key into a keys site with a manifest. | n/a (reads a `.pub` file) |
+| [`rotate`](#keys-rotate) | Issue a signed rotation manifest that changes which release keys binaries trust. | Ed25519 authority |
 
 The two families serve different verifiers. OpenPGP keys are published over WKD
 and verify checksum manifests; minisign keys are published as plain files and
@@ -378,6 +379,101 @@ publishing a new generation, never removing an old one.
 
 ---
 
+## `keys rotate` {#keys-rotate}
+
+Write `rotate-keys.json` and its minisign signature, `rotate-keys.json.minisig`,
+signed by the project's rotation authority. A rotation-capable binary that
+fetches both from a release trusts the release keys the manifest adds and stops
+trusting the ones it revokes. The format and the updater are
+[go-tool-base spec 0101](https://gitlab.com/phpboyscout/go-tool-base/-/wikis/specs/0101-signing-key-rotation);
+the flags and refusals below are
+[sigillum spec 0008](https://gitlab.com/phpboyscout/sigillum/-/wikis/specs/0008-keys-rotate).
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--reason` | *(required)* | `scheduled` or `compromise`. Only a `compromise` manifest may revoke. |
+| `--not-after` | *(required)* | RFC 3339 time after which an updater no longer applies the manifest for the first time. |
+| `--epoch` | 1, or the previous epoch plus one | The manifest's epoch, at least 1. Without `--previous` only 1 is accepted. With it, a value past the next epoch needs `--allow-epoch-gap`, and one at or below the previous epoch is refused. |
+| `--allow-epoch-gap` | `false` | Accept an `--epoch` that skips past the previous manifest's next epoch. |
+| `--add` | *(none)* | Armored OpenPGP public key file of a release key to trust: one public key, in one armored block. Repeatable. The fingerprint is read from the key, and the key is re-armored before it is published. A file holding private key material is refused. |
+| `--revoke` | *(none)* | 40-hex fingerprint of a release key to stop trusting, optionally `@<RFC 3339>` for when it stopped being trustworthy. `since` defaults to the time of the run. Repeatable. |
+| `--previous` | *(none)* | The latest published `rotate-keys.json`. Its `.minisig` must sit beside it. Required above epoch 1. |
+| `--previous-authority` | *(the signer's key)* | The minisign public key (`RW…`) that signed `--previous`, when the authority has been replaced. |
+| `--anchor` | *(none)* | Armored release key the binaries embed. With it, the manifest is checked as an updater checks it. Repeatable. |
+| `--anchor-only` | *(none)* | Armored key the binaries embed as anchor-only. Repeatable. |
+| `--backend` | *(required)* | Signing backend holding the authority key, such as `aws-kms` or `local`. |
+| `--key-id` | *(required)* | The authority key: a KMS key ID, ARN or alias, or a PKCS#8 PEM path for `local`. Must be Ed25519. |
+| `--output-dir` | `.` | Directory to write the two files into. |
+| `--force` | `false` | Overwrite existing output files. |
+
+`issued_at` is always the time of the run, with no flag to set it.
+
+### Carrying the previous manifest forward
+
+Each manifest **replaces** what an updater stored. So a manifest must carry every
+earlier add and revoke, or an updater trusts a revoked key again. With
+`--previous`, the command verifies that manifest and copies its adds and revokes
+into the new one, and this run's `--add` and `--revoke` apply on top. Revoking a
+key an earlier manifest added removes it from `add`.
+
+Once a manifest revokes a key, every later one carries the revoke, so every later
+one must be `--reason compromise`.
+
+### What it writes and prints
+
+Both files are written at `0644`, because they are published as release assets.
+Without `--force`, an existing file at either path is refused before anything is
+written. If the signature cannot be written, the manifest is put back as it was:
+removed if it is new, or restored to the earlier manifest under `--force`. So a
+run never leaves a manifest beside a signature that does not cover it. If the
+undo itself fails, the error says what the manifest path now holds.
+
+On success it prints the paths, the epoch and reason, every add and revoke, with
+those taken from `--previous` marked `(carried)`, and the authority's minisign
+public key:
+
+```text
+Wrote out/rotate-keys.json and out/rotate-keys.json.minisig
+epoch      1 (scheduled)
+not after  2027-11-18T00:00:00Z
+authority  RWRMTCwy9KhAalReu2jRMWyIaqAUrtkEgFZIA9FHNBZzyaQ089+PxvIG
+```
+
+Check the `authority` line against the key your binaries embed. A manifest
+signed by any other key is refused by every updater.
+
+### Not an MCP tool
+
+`keys rotate` is withheld from the MCP tool surface. Its key can rewrite the
+trust of every installed binary, so it runs only from a terminal a person chose
+to open.
+
+### Failure modes
+
+Every refusal exits non-zero and writes nothing.
+
+| Situation | Message |
+|---|---|
+| `--epoch` above 1 with no `--previous` | `epoch 3: pass --previous with the latest published manifest: an epoch above 1 needs the previous manifest` |
+| `--epoch` skips ahead | `epoch 5, previous is 1: a stale --previous drops later revokes; pass --allow-epoch-gap if the gap is deliberate: epoch skips past the previous manifest's next epoch` |
+| `--epoch` at or below the previous | `epoch 1, previous is 1: epoch is not above the previous manifest's` |
+| `--epoch` more than 1024 above the previous | `epoch is further above the previous manifest's than an updater accepts` |
+| `--previous` does not verify | `the previous manifest: ...` with the verification error |
+| `--revoke` with `--reason scheduled` | `pass --reason compromise: a manifest that revokes must have reason compromise` |
+| A carried revoke with `--reason scheduled` | `the previous manifest revokes keys, and every later manifest must carry them, so pass --reason compromise: ...` |
+| One key in both `--add` and `--revoke` | `<fingerprint>: a key is both added and revoked` |
+| Revokes and no adds, with no `--anchor` | `pass --anchor with the release keys the binaries embed: a manifest that revokes and adds nothing needs the anchors to prove a release key remains` |
+| An updater would refuse it against the anchors | the updater's own refusal: the reason, then `rotation manifest refused` |
+| A malformed fingerprint | `"ABCD": not a 40-character hex fingerprint` |
+| `--add` names a file holding private key material | `--add v2.priv.asc: holds private key material, which a published manifest must never carry` |
+| `--add` names a file with no key, or more than one | `--add <file>: ...: not exactly one armored OpenPGP public key` |
+| `--epoch 0` | `--epoch must be at least 1` |
+| `--not-after` not after the time of the run | `not_after must be after issued_at: rotation manifest is malformed` |
+| A non-Ed25519 authority | `the rotation authority signs with minisign, so --key-id must be an Ed25519 key: ...` |
+| An output file exists, no `--force` | `".../rotate-keys.json" (pass --force to overwrite): output file already exists` |
+
+---
+
 ## Related
 
 - [`sign` command reference](sign.md)
@@ -385,4 +481,5 @@ publishing a new generation, never removing an old one.
 - [Publish a WKD tree](../../how-to/publish-a-wkd-tree.md)
 - [Sign an artefact for Rust consumers](../../how-to/sign-an-artefact-for-rust-consumers.md)
 - [Sign a container image](../../how-to/sign-a-container-image.md)
+- [Issue a rotation manifest](../../how-to/issue-a-rotation-manifest.md)
 - [What sigillum does not do](../../explanation/what-sigillum-does-not-do.md)

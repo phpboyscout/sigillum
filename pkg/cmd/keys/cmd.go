@@ -11,6 +11,7 @@ import (
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/minisign"
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/mint"
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/publish"
+	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/rotate"
 	"gitlab.com/phpboyscout/sigillum/pkg/cmd/keys/wkd"
 )
 
@@ -30,6 +31,7 @@ func NewCmdKeys(p *props.Props) *setup.Command {
 		minisign.NewCmdMinisign(p),
 		publish.NewCmdPublish(p),
 		generate_image.NewCmdGenerateImage(p),
+		rotate.NewCmdRotate(p),
 	)
 
 	return cmd
@@ -45,5 +47,6 @@ Available subcommands:
   minisign        Emit the minisign public key for an Ed25519 signer (what release consumers pin).
   publish         Stage a minisign public key into a keys site with a manifest.
   generate-image  Generate an ECDSA P-256 keypair for image signing (tests and local registries).
+  rotate          Issue a signed rotation manifest for a project's release keys.
 
 See https://gitlab.com/phpboyscout/go-tool-base/-/wikis/specs/0067-keys-mint-command for the full design.`

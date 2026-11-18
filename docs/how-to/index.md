@@ -35,6 +35,12 @@ if you do not.
   produce a `.minisig` artefact signature, emit the public key cargo-binstall
   and rtb-update pin, and publish it into a keys site with a manifest.
 
+## Rotating release keys
+
+- **[Issue a rotation manifest](issue-a-rotation-manifest.md)**: tell installed
+  binaries to trust a new release key or stop trusting a compromised one, from
+  the empty fire drill onwards.
+
 ## Container images
 
 - **[Sign a container image](sign-a-container-image.md)**: sign an image by

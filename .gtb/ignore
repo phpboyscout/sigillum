@@ -42,4 +42,5 @@ pkg/cmd/keys/minisign/cmd.go
 pkg/cmd/keys/publish/cmd.go
 pkg/cmd/keys/wkd/cmd.go
 pkg/cmd/keys/generate-image/cmd.go
+pkg/cmd/keys/rotate/cmd.go
 pkg/cmd/sign/image/cmd.go

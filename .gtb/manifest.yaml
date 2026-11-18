@@ -165,3 +165,10 @@ commands:
         hashes:
           cmd.go: ""
         protected: true
+      - name: rotate
+        description: Issue a signed rotation manifest for a project's release keys
+        args: NoArgs
+        hashes:
+          cmd.go: ""
+        protected: true
+        mcp_enabled: false
