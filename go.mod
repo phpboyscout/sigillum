@@ -18,8 +18,8 @@ require (
 	gitlab.com/phpboyscout/go/errorhandling v0.5.2
 	gitlab.com/phpboyscout/go/errors v0.4.0
 	gitlab.com/phpboyscout/go/forge-gitlab v0.32.0
-	gitlab.com/phpboyscout/go/signing v0.12.0
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.8.0
+	gitlab.com/phpboyscout/go/signing v0.13.0
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.9.0
 	gitlab.com/phpboyscout/go/signing-cli v0.7.0
 )
 
