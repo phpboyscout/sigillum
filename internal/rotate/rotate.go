@@ -257,8 +257,6 @@ func checkAgainstAnchors(m verify.RotationManifest, req Request) error {
 	return verify.CheckRotation(m, agreed) //nolint:wrapcheck // the updater's own refusal, unchanged
 }
 
-// publicKey returns the fingerprint of the one public key in armored, and that
-// key re-serialised, so nothing else in the file can reach a published manifest.
 // carry copies the previous manifest's adds and revokes into m. A carried add
 // passes the same public-only check as --add, since another issuer wrote it.
 func carry(m *verify.RotationManifest, prev *verify.RotationManifest) (Carried, error) {
@@ -286,6 +284,8 @@ func carry(m *verify.RotationManifest, prev *verify.RotationManifest) (Carried, 
 	return carried, nil
 }
 
+// publicKey returns the fingerprint of the one public key in armored, and that
+// key re-serialised, so nothing else in the file can reach a published manifest.
 func publicKey(armored []byte) (fingerprint, public string, err error) {
 	e, err := onePublicEntity(armored)
 	if err != nil {

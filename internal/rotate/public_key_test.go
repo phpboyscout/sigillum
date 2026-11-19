@@ -2,8 +2,6 @@ package rotate
 
 import (
 	"bytes"
-	"encoding/json"
-	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -13,7 +11,6 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gitlab.com/phpboyscout/go/signing/minisign"
 	"gitlab.com/phpboyscout/go/signing/verify"
 )
 
@@ -100,43 +97,28 @@ func publicPrimarySecretSubkey(w io.Writer, e *openpgp.Entity) error {
 	return nil
 }
 
-func TestBuild_RefusesACarriedAddHoldingPrivateKeyMaterial(t *testing.T) {
+func TestCarry_RefusesAnAddHoldingPrivateKeyMaterial(t *testing.T) {
 	t.Parallel()
 
-	a := newAuthority(t)
 	v2 := newReleaseKey(t, "v2")
+	prev := &verify.RotationManifest{Add: []verify.RotationAdd{{Fingerprint: v2.fingerprint, Armored: string(v2.private)}}}
 
-	first := scheduled()
-	first.Add = []KeyFile{{Armored: v2.armored}}
-	manifest, _ := issue(t, a, first)
-
-	pub, err := json.Marshal(string(v2.armored))
-	require.NoError(t, err)
-	priv, err := json.Marshal(string(v2.private))
-	require.NoError(t, err)
-	trimmed := func(b []byte) string { return strings.Trim(string(b), `"`) }
-	require.Contains(t, string(manifest), trimmed(pub))
-
-	tampered := []byte(strings.Replace(string(manifest), trimmed(pub), trimmed(priv), 1))
-	signature, err := minisign.Sign(a.signer, bytes.NewReader(tampered), minisign.Options{})
-	require.NoError(t, err)
-
-	second := scheduled()
-	second.Previous = &Previous{Manifest: tampered, Signature: signature}
-
-	_, _, err = Build(second, a.public)
-	require.Error(t, err)
-	// go/signing#26 makes verifying the previous manifest refuse this first.
-	assert.True(t, errorIsAny(err, ErrSecretKey, verify.ErrRotationManifestMalformed), "got %v", err)
-	assert.Contains(t, err.Error(), v2.fingerprint)
+	_, err := carry(&verify.RotationManifest{}, prev)
+	require.ErrorIs(t, err, ErrSecretKey)
+	assert.Contains(t, err.Error(), "carried add "+v2.fingerprint)
 }
 
-func errorIsAny(err error, targets ...error) bool {
-	for _, target := range targets {
-		if errors.Is(err, target) {
-			return true
-		}
-	}
+func TestCarry_RepublishesOnlyTheKeyItRead(t *testing.T) {
+	t.Parallel()
 
-	return false
+	v2 := newReleaseKey(t, "v2")
+	prev := &verify.RotationManifest{Add: []verify.RotationAdd{{Fingerprint: v2.fingerprint, Armored: "issued by another tool\n" + string(v2.armored)}}}
+
+	var m verify.RotationManifest
+	carried, err := carry(&m, prev)
+	require.NoError(t, err)
+	assert.True(t, carried[v2.fingerprint])
+	require.Len(t, m.Add, 1)
+	assert.NotContains(t, m.Add[0].Armored, "issued by another tool")
+	assert.True(t, strings.HasPrefix(m.Add[0].Armored, "-----BEGIN PGP PUBLIC KEY BLOCK-----"))
 }

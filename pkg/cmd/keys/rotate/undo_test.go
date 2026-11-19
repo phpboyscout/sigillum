@@ -9,38 +9,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func readOnlyDirWith(t *testing.T, name, content string) string {
+// underAFile returns a path whose parent is a regular file, which every write and
+// remove refuses with ENOTDIR, root included.
+func underAFile(t *testing.T) string {
 	t.Helper()
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
-	require.NoError(t, os.Chmod(dir, 0o500)) //nolint:gosec // the test needs a directory nothing can be created or removed in
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	parent := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(parent, nil, 0o600))
 
-	if f, err := os.Create(filepath.Join(dir, "probe")); err == nil {
-		_ = f.Close()
-		t.Skip("the directory is still writable, as it is for root")
-	}
-
-	return path
+	return filepath.Join(parent, "rotate-keys.json")
 }
 
 func TestUndoManifest_SaysWhenRemovingTheNewManifestFails(t *testing.T) {
 	t.Parallel()
 
-	path := readOnlyDirWith(t, "rotate-keys.json", "new")
+	path := underAFile(t)
 
 	err := undoManifest(path, nil, false)
-	assert.Contains(t, err.Error(), "holds an unsigned manifest, and removing it failed")
-	assert.FileExists(t, path)
+	assert.Contains(t, err.Error(), path+" holds an unsigned manifest, and removing it failed")
 }
 
 func TestUndoManifest_SaysWhenRestoringTheEarlierManifestFails(t *testing.T) {
 	t.Parallel()
 
-	path := readOnlyDirWith(t, "rotate-keys.json", "new")
+	path := underAFile(t)
 
 	err := undoManifest(path, []byte("earlier"), true)
-	assert.Contains(t, err.Error(), "now holds the new manifest with the earlier signature, and restoring it failed")
+	assert.Contains(t, err.Error(), path+" now holds the new manifest with the earlier signature, and restoring it failed")
 }

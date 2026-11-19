@@ -414,7 +414,11 @@ Each manifest **replaces** what an updater stored. So a manifest must carry ever
 earlier add and revoke, or an updater trusts a revoked key again. With
 `--previous`, the command verifies that manifest and copies its adds and revokes
 into the new one, and this run's `--add` and `--revoke` apply on top. Revoking a
-key an earlier manifest added removes it from `add`.
+key an earlier manifest added removes it from `add`. A carried add passes the same
+check as `--add` and is re-armored the same way, so a previous manifest from
+another issuer that carries private key material is refused, naming the key. That
+refusal comes before this run's `--revoke`, so revoking the leaked key in the same
+run does not get past it.
 
 Once a manifest revokes a key, every later one carries the revoke, so every later
 one must be `--reason compromise`.
@@ -466,6 +470,7 @@ Every refusal exits non-zero and writes nothing.
 | An updater would refuse it against the anchors | the updater's own refusal: the reason, then `rotation manifest refused` |
 | A malformed fingerprint | `"ABCD": not a 40-character hex fingerprint` |
 | `--add` names a file holding private key material | `--add v2.priv.asc: holds private key material, which a published manifest must never carry` |
+| `--previous` carries an add holding private key material | `carried add <fingerprint> from --previous: holds private key material, which a published manifest must never carry` |
 | `--add` names a file with no key, or more than one | `--add <file>: ...: not exactly one armored OpenPGP public key` |
 | `--epoch 0` | `--epoch must be at least 1` |
 | `--not-after` not after the time of the run | `not_after must be after issued_at: rotation manifest is malformed` |
