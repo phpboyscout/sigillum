@@ -99,18 +99,9 @@ func Build(req Request, authority string) (verify.RotationManifest, Carried, err
 		return m, nil, err
 	}
 
-	carried := Carried{}
-
-	if prev != nil {
-		m.Add, m.Revoke = slices.Clone(prev.Add), slices.Clone(prev.Revoke)
-
-		for _, a := range m.Add {
-			carried[a.Fingerprint] = true
-		}
-
-		for _, r := range m.Revoke {
-			carried[r.Fingerprint] = true
-		}
+	carried, err := carry(&m, prev)
+	if err != nil {
+		return m, nil, err
 	}
 
 	if err := applyRun(&m, req, carried); err != nil {
@@ -268,6 +259,33 @@ func checkAgainstAnchors(m verify.RotationManifest, req Request) error {
 
 // publicKey returns the fingerprint of the one public key in armored, and that
 // key re-serialised, so nothing else in the file can reach a published manifest.
+// carry copies the previous manifest's adds and revokes into m. A carried add
+// passes the same public-only check as --add, since another issuer wrote it.
+func carry(m *verify.RotationManifest, prev *verify.RotationManifest) (Carried, error) {
+	carried := Carried{}
+	if prev == nil {
+		return carried, nil
+	}
+
+	m.Add, m.Revoke = slices.Clone(prev.Add), slices.Clone(prev.Revoke)
+
+	for i, a := range m.Add {
+		_, public, err := publicKey([]byte(a.Armored))
+		if err != nil {
+			return nil, errors.Wrapf(err, "carried add %s from --previous", a.Fingerprint)
+		}
+
+		m.Add[i].Armored = public
+		carried[a.Fingerprint] = true
+	}
+
+	for _, r := range m.Revoke {
+		carried[r.Fingerprint] = true
+	}
+
+	return carried, nil
+}
+
 func publicKey(armored []byte) (fingerprint, public string, err error) {
 	e, err := onePublicEntity(armored)
 	if err != nil {

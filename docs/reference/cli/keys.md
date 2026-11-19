@@ -40,14 +40,14 @@ parses OpenPGP.
 | Artefact | Mode | Why |
 |---|---|---|
 | Private-half key files | `0600` | The irreplaceable half. A fresh private key is never world-readable. |
-| Public keys, WKD trees, `keys.json` | `0644` | Publishing them is the entire point. |
+| Public keys, WKD trees, `keys.json`, rotation manifests and their signatures | `0644` | Publishing them is the entire point. |
 
-`generate`, `generate-image`, `mint` and `minisign` create their output with
+`generate`, `generate-image`, `mint`, `minisign` and `rotate` create their output with
 `O_EXCL`, so the "does it exist?" check and the create are one atomic syscall,
 with no window between them. With `--force` the new content is written to a
 temporary file beside the target and renamed over it, so a failure part-way
 leaves the old file intact. That needs write access to the directory, and the
-replaced file's hard links, owner and ACLs are not carried over. These four set
+replaced file's hard links, owner and ACLs are not carried over. These five set
 their modes explicitly, so the umask does not narrow them.
 
 `wkd` and `publish` have no `--force`. They write their trees in place, and the
