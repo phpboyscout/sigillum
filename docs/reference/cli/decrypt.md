@@ -55,6 +55,11 @@ not have to know which you have.
 
 `--help` is authoritative for the flags this build actually carries.
 
+With `--backend aws-kms` there is no region flag. The KMS region comes from the
+AWS chain (`AWS_REGION`, then the profile's region), and with neither set the
+command refuses rather than guess. See the
+[configuration reference](../config/index.md).
+
 ### `--follow-symlinks`
 
 Off by default, and the default is the safe half. Writing the output replaces

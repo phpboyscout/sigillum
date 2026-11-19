@@ -17,7 +17,16 @@ read.
 
 The only AWS-related configuration sigillum honours is whatever the AWS SDK's
 own default chain picks up (`AWS_PROFILE`, `AWS_REGION`, `~/.aws/credentials`,
-OIDC web identity), plus the `--kms-region` flag.
+OIDC web identity), plus the `--kms-region` flag. Which region the KMS key is
+looked up in depends on the command:
+
+| Commands | KMS region comes from | When it is unset |
+|---|---|---|
+| `sign`, `keys` | `--kms-region` only. `AWS_REGION` and the profile's region are not consulted. | `eu-west-2`. An empty `--kms-region` is refused. |
+| `decrypt`, `certificate` | The AWS chain: `AWS_REGION`, then the profile's region. There is no flag. | Refused: there is no default region. |
+
+For `sign` and `keys` that region also serves the OIDC web-identity exchange
+with STS, because the SDK builds its STS client from the same configuration.
 
 What is configurable is the surrounding framework: logging, self-update,
 telemetry, and the GitLab connection that self-update uses.

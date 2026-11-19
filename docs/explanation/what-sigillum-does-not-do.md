@@ -190,7 +190,9 @@ Three things people reasonably expect to find here live outside it:
   `--role-arn`, and sigillum has no OIDC code of its own. The SDK chain does:
   with `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` set, it assumes the
   role itself. Otherwise a CI job populates the chain before sigillum runs.
-  `--kms-region` (default `eu-west-2`) is the only AWS-specific flag.
+  `--kms-region` (default `eu-west-2`) on `sign` and `keys` is the only
+  AWS-specific flag. `decrypt` and `certificate` take the region from the SDK
+  chain.
 - **Deploying a keys site.** `keys wkd` and `keys publish` write a staging
   directory. Getting it onto a host is your deploy tool's job.
 - **Timestamping and notarisation.** No RFC 3161 timestamps, no transparency-log
