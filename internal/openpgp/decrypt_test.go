@@ -224,7 +224,10 @@ func testCertificate(t *testing.T) ([]byte, openpgp.SecretDeriver) {
 			HashID:   8, // SHA-256
 			KEKAlgID: 7, // AES-128
 		},
-	}.Assemble(localSigner{key: signing})
+	}.Assemble(localSigner{key: signing},
+		// A wall-clock signature time fails when the runner's clock steps back
+		// before encrypting: go-crypto treats a future-dated signature as expired.
+		certificate.WithSignatureTime(created))
 	if err != nil {
 		t.Fatalf("Assemble: %v", err)
 	}

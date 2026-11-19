@@ -345,7 +345,10 @@ func newTestCertificate() ([]byte, error) {
 			HashID:   8, // SHA-256
 			KEKAlgID: 7, // AES-128
 		},
-	}.Assemble(testSigner{key: signing})
+	}.Assemble(testSigner{key: signing},
+		// A wall-clock signature time fails when the runner's clock steps back
+		// before encrypting: go-crypto treats a future-dated signature as expired.
+		certificate.WithSignatureTime(created))
 	if err != nil {
 		return nil, err
 	}
