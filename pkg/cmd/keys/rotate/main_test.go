@@ -3,6 +3,8 @@ package rotate_test
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"gitlab.com/phpboyscout/go-tool-base/pkg/setup"
+	"gitlab.com/phpboyscout/go/signing/minisign"
 	"gitlab.com/phpboyscout/go/signing/verify"
 
 	"gitlab.com/phpboyscout/sigillum/internal/rotate"
@@ -263,4 +266,70 @@ func TestNewCmdRotate_IsNotAnMCPTool(t *testing.T) {
 	cmd := rotatecmd.NewCmdRotate(signtest.Props())
 
 	assert.Equal(t, setup.MCPExposureExcluded, setup.MCPExposureOf(cmd.Command))
+}
+
+// The authority signs over whatever bytes it is given, so a previous manifest
+// from another issuer can carry a secret even though SignRotationManifest
+// would refuse to write one.
+func TestRunRotate_RefusesAPreviousManifestCarryingPrivateKeyMaterial(t *testing.T) {
+	registerAuthority(t)
+	keys, first, second := t.TempDir(), t.TempDir(), t.TempDir()
+
+	e, err := openpgp.NewEntity("v2", "", "v2@example.test", &packet.Config{Algorithm: packet.PubKeyAlgoEdDSA})
+	require.NoError(t, err)
+
+	public, secret := armored(t, e, false), armored(t, e, true)
+	add := signtest.WriteFile(t, keys, "v2.asc", public)
+
+	_, err = runRotate(t, "--reason", "scheduled", "--not-after", notAfter(), "--output-dir", first, "--add", add)
+	require.NoError(t, err)
+
+	previous := filepath.Join(first, verify.RotationManifestFile)
+	leakSecretInto(t, previous, secret)
+
+	_, err = runRotate(t, "--reason", "scheduled", "--not-after", notAfter(), "--output-dir", second,
+		"--previous", previous)
+	require.ErrorIs(t, err, verify.ErrRotationManifestMalformed)
+	assert.Contains(t, err.Error(), "the previous manifest: added key")
+	assert.Contains(t, err.Error(), "the armored text must be one PGP PUBLIC KEY BLOCK")
+	assert.NoFileExists(t, filepath.Join(second, verify.RotationManifestFile))
+}
+
+func armored(t *testing.T, e *openpgp.Entity, private bool) string {
+	t.Helper()
+
+	blockType, serialize := openpgp.PublicKeyType, e.Serialize
+	if private {
+		blockType = openpgp.PrivateKeyType
+		serialize = func(w io.Writer) error { return e.SerializePrivateWithoutSigning(w, nil) }
+	}
+
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, blockType, nil)
+	require.NoError(t, err)
+	require.NoError(t, serialize(w))
+	require.NoError(t, w.Close())
+
+	return buf.String()
+}
+
+// leakSecretInto swaps the manifest's one added key for secret and re-signs it
+// with the authority, as a careless issuer's tool might.
+func leakSecretInto(t *testing.T, path, secret string) {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	doc["add"].([]any)[0].(map[string]any)["armored"] = secret
+
+	raw, err = json.Marshal(doc)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, raw, 0o600))
+
+	sig, err := minisign.Sign(signtest.Ed25519Key(), bytes.NewReader(raw), minisign.Options{})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path+".minisig", sig, 0o600))
 }
