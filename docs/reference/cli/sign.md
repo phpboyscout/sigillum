@@ -86,14 +86,21 @@ would leave you believing something was in play that was not.
 
 | What you passed | What happens |
 |---|---|
-| `--format minisign --public-key …` | `--public-key is not accepted for --format minisign: a minisign signature carries its own key identifier, so the identity comes from --backend / --key-id` |
-| `--format minisign --append` | `--append is not supported for --format minisign; it is an OpenPGP dual-sign primitive` |
-| `--format openpgp --project …` | `--project is only meaningful for --format minisign; an OpenPGP signature has no trusted comment to record it in` |
+| `--format minisign --public-key …` | `--public-key is not accepted for --format minisign; it is a --format openpgp flag` |
+| `--format minisign --append` | `--append is not accepted for --format minisign; it is a --format openpgp flag` |
+| `--format openpgp --project …` | `--project is not accepted for --format openpgp; it is a --format minisign flag` |
 | `--format openpgp` with an Ed25519 key | `computing signature: DetachSign: ed25519.PublicKey: unsupported key type: only RSA is supported` |
 | `--format openpgp --backend local` with an armored OpenPGP secret key (the Ed25519 `.priv.asc`) | `constructing signer: ./ed.priv.asc: unsupported key type: an armored OpenPGP secret key; the local backend reads PEM only`, with the hints `OpenPGP signing takes an RSA key (keys generate --algorithm rsa); an Ed25519 key signs with --format minisign` and `write the private half as PKCS#8 PEM instead (keys generate --private-format pem)` |
 | `--format minisign --backend local` with the same file | The same error, with only the `--private-format pem` hint |
 | `--format minisign` with an RSA key | `minisign requires an Ed25519 signing key, but --key-id resolved to *rsa.PublicKey; RSA keys sign the OpenPGP manifest path (--format openpgp) instead` |
 | `--output` naming the input file | `refusing to write signature to "art.txt" which equals the input path "art.txt"` |
+
+The first three refusals follow from the formats. A minisign signature carries
+its own key identifier, so its identity comes from `--backend` and `--key-id`,
+and there is no public key to pass. `--append` merges a new signature into an
+existing armored OpenPGP signature, and minisign has no such block.
+`--project` is recorded in minisign's trusted comment, and an OpenPGP signature
+has no trusted comment to hold it.
 
 The clobber guard is not fooled by a different spelling of the same path. It
 compares cleaned paths first, then falls back to `os.SameFile` when both exist,
