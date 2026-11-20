@@ -152,6 +152,29 @@ verification, or flip telemetry consent, by shipping a dotfile.
 Trust is bound to the file's exact content. Editing a trusted file revokes
 trust until you run `config trust` again.
 
+### When `~/.sigillum` is inside a git checkout
+
+If the per-user config directory sits inside a git checkout (a home directory
+kept as a dotfiles repository, say), its file may have come from the
+repository. The protected keys above are stripped from it, the rest of the
+file is still read, and sigillum warns:
+
+```text
+WARN  ignoring security-sensitive keys from a user config file inside a git checkout file=/home/you/.sigillum/config.yaml keys=update.policy hint="the file may have come from the repository; set these keys through environment variables or flags"
+```
+
+The hint does not fit sigillum. It has no environment layer (see "Why
+`SIGILLUM_LOG_LEVEL` does nothing" above), and no flags for `update.*` or `telemetry.*`. `config trust` does not help
+either, because it covers only project-local files.
+
+What works is a config file outside the checkout, passed with `--config`. That
+file is read in place of the per-user one, so nothing is stripped:
+
+```console
+$ sigillum --config /srv/sigillum/config.yaml config get update.policy
+enabled
+```
+
 ## Managing configuration from the CLI
 
 | Command | What it does |
