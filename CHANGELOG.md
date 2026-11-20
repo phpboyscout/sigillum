@@ -1,5 +1,40 @@
 # Changelog
 
+## [v0.6.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.6.0)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.9...v0.6.0)
+
+### Notes
+
+- An empty `--kms-region` is now refused, rather than left for the AWS SDK to fill in.
+
+- If `~/.sigillum` sits inside a git checkout (a dotfiles repository, for example), sigillum now ignores the security-sensitive keys in its config file (self-update verification and policy, telemetry consent, credentials) and logs a WARN. The WARN suggests environment variables or flags, but sigillum has none for these keys. Put them in a file outside the checkout and pass it with `--config` instead.
+
+- New `sigillum keys rotate` issues a signed rotation manifest (`rotate-keys.json` and `rotate-keys.json.minisig`) from an Ed25519 rotation authority held by any signing backend. It carries the previous manifest forward and guards the epoch. Given the binaries' keys with `--anchor` and `--anchor-only`, it also refuses a manifest an updater would refuse against them; without them it checks only the rules that need no keys. It refuses an `--add` file holding private key material. See the how-to "Issue a rotation manifest". Nothing existing changes.
+
+- `keys generate` now writes both halves or neither, and refuses `--output` and `--private-output` that resolve to one file however they are spelt. Under `--force` it replaces a symlink at an output path rather than writing through it, as `keys generate-image` does. Its write errors no longer start with `writing private-half output` or `writing public-half output`, so a log filter on either prefix needs changing to the error kind, which is unchanged.
+
+- New `sign image` signs a container image by digest and pushes the signature to its registry in both cosign forms (legacy `.sig` tag and Sigstore bundle referrer), with no transparency log; verify with `cosign verify --key <pub> --insecure-ignore-tlog`. New `keys generate-image` writes an ECDSA P-256 keypair for tests and local registries. A file literally named `image` is now signed as `sign ./image`.
+
+- `sign` and `keys` are now sigillum's own commands and no longer come from go/signing-cli. Flags, defaults, exit codes and error text are unchanged. Under `--force`, `keys generate`, `keys mint` and `keys minisign` now replace an existing output file by rename instead of overwriting it in place. A symlink at the output path is replaced rather than followed, a hard link to the old file keeps the old contents, and the new file takes the ownership of the user who ran the command.
+
+### Features
+
+- **keys**: issue a signed rotation manifest with keys rotate ([fa10b9b](https://gitlab.com/phpboyscout/sigillum/-/commit/fa10b9bd908870b51c85e477de971c8a7f00d490))
+- **sign**: sign container images, and generate image-signing keys ([ee36880](https://gitlab.com/phpboyscout/sigillum/-/commit/ee36880505c15755e885f3ff5aac651a086bf581))
+- **sign**: serve sign and keys from sigillum's own commands ([fc2f29a](https://gitlab.com/phpboyscout/sigillum/-/commit/fc2f29ae0ee05a23aa5321ed7fc908299d211762))
+
+### Bug Fixes
+
+- **deps**: update go modules ([e1266e5](https://gitlab.com/phpboyscout/sigillum/-/commit/e1266e532b080dac20d268f6dfcf5e45d3cd5690))
+- **keys**: check adds carried from --previous for private key material ([96bc9c3](https://gitlab.com/phpboyscout/sigillum/-/commit/96bc9c35e8d542dda70722318bcd1d276aaa421d))
+- **deps**: update go modules ([073c7ab](https://gitlab.com/phpboyscout/sigillum/-/commit/073c7abbdf7ab9d31c163b00f22525922a7ccc89))
+- **keys**: report a replaced private half even when both paths match ([2790f17](https://gitlab.com/phpboyscout/sigillum/-/commit/2790f17806021f8e912ecb302def50a31f94fac5))
+- **keys**: write a generated keypair as a pair ([0fb4e41](https://gitlab.com/phpboyscout/sigillum/-/commit/0fb4e41f7fd123ba0f5094c636021bb68f519621))
+- **deps**: update go modules ([eef6406](https://gitlab.com/phpboyscout/sigillum/-/commit/eef64067a2b3598de5f5cb52fea41c6581be71d4))
+- **deps**: update go modules ([4eba3e1](https://gitlab.com/phpboyscout/sigillum/-/commit/4eba3e13d20456c2758d797ffb348179cd6eee82))
+- **deps**: update go modules ([e595c38](https://gitlab.com/phpboyscout/sigillum/-/commit/e595c389c0c6b6dcbd6f3a2b10e54a8bb2756acb))
+
 ## [v0.5.9](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.5.9)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.8...v0.5.9)
