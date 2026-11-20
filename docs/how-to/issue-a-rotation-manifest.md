@@ -98,21 +98,77 @@ later one must be `--reason compromise`, even a routine rotation. If a manifest
 revoked a key and added none, every later run needs `--anchor`, because nothing
 else proves a release key remains.
 
-## When the previous manifest published a private key
+## When the previous manifest is refused for an added key
 
-`keys rotate` will not build on a manifest whose `add` holds private key
-material, even one your authority signed. It fails with an error starting
-`the previous manifest: added key <fingerprint>:`.
-That key's private half is now public, so treat the key as compromised.
+`keys rotate` will not build on a previous manifest with an add that go/signing
+refuses, even one your authority signed. The error starts `the previous
+manifest: added key <fingerprint>:`. There are two causes, and they need
+opposite fixes, so check which one you have before you change anything.
 
-An updater that checks added keys (go/signing v0.15.1 and later) refuses that
-manifest too, so it stays on the epoch before it. An older updater may have
-applied it and now trusts the leaked key. The next manifest has to cover both.
+- **The key leaked.** The add holds private key material.
+- **The export is refused.** A manifest written with go/signing v0.15.0 or
+  earlier can carry an add with a `Comment:` armour header, a photo ID or a gpg
+  backup export. go/signing v0.15.1 refuses those. The key itself is sound.
+
+Both can print the same message. **Treat the key as leaked unless you can show
+it is not.** If the error says `holds private key material`, it leaked. Otherwise
+run this check on the add, with the fingerprint from the error (it needs `jq` and
+`gpg`):
+
+```bash
+fp='<fingerprint>'
+armored=$(jq -r --arg fp "$fp" '.add[]
+    | select((.fingerprint | ascii_upcase | gsub(" "; "")) == ($fp | ascii_upcase | gsub(" "; "")))
+    | .armored' ./published/rotate-keys.json)
+packets=$(gpg --list-packets <<<"$armored" 2>/dev/null)
+if grep -q 'BEGIN PGP PUBLIC KEY BLOCK' <<<"$armored" && ! grep -q 'PRIVATE KEY' <<<"$armored" \
+    && grep -q '^:public key packet:' <<<"$packets" && ! grep -q 'secret' <<<"$packets"; then
+    echo "refused export: the key is sound"
+else
+    echo "treat the key as leaked"
+fi
+```
+
+Only `refused export: the key is sound` means **do not revoke the key**. Any
+other result means the key leaked, and that includes a wrong path or
+fingerprint, which finds nothing.
+
+In both cases an updater on go/signing v0.15.1 or later refuses that manifest
+too, and stays on whatever it applied before it. An updater on v0.15.0 may have
+applied it, and keeps what it stored after an upgrade. Both are put right by
+the next manifest, which you build on the **last clean** manifest instead.
+
+### The export is refused
+
+1. Export the key again in a form go/signing accepts. See
+   [what an added key's armored text may hold](https://signing.go.phpboyscout.uk/reference/file-formats/#what-an-added-keys-armored-text-may-hold).
+2. Build on the last clean manifest, with an epoch above the refused one, and
+   add the clean export:
+
+   ```bash
+   sigillum keys rotate --reason scheduled --not-after 2027-11-18T00:00:00Z \
+       --previous ./published/epoch-4/rotate-keys.json \
+       --epoch 6 --allow-epoch-gap \
+       --add ./release-key-v3.asc \
+       --backend aws-kms --key-id alias/rotation-authority --output-dir ./out
+   ```
+
+   Here epoch 5 is the refused one. Use `--reason compromise` if anything
+   carried is a revoke.
+
+3. Pass every other add and revoke the refused manifest made with `--add` and
+   `--revoke`, because nothing from it is carried.
+
+### The key leaked
+
+That key's private half is now public, so treat the key as compromised. An
+install that applied the leaked manifest under go/signing v0.15.0 trusts the
+leaked key until the next manifest reaches it, upgraded or not.
 
 1. Stop publishing the leaked manifest, and sign nothing more with the leaked
    key.
-2. Build on the **last clean** manifest instead, with an epoch above the leaked
-   one, and revoke the leaked key:
+2. Build on the last clean manifest, with an epoch above the leaked one, and
+   revoke the leaked key:
 
    ```bash
    sigillum keys rotate --reason compromise --not-after 2027-11-18T00:00:00Z \
@@ -129,7 +185,7 @@ applied it and now trusts the leaked key. The next manifest has to cover both.
    `--revoke`, because nothing from it is carried. For an add, use the public
    key file, not what the manifest holds.
 
-From then on, pass this new manifest as `--previous`.
+Either way, pass the new manifest as `--previous` from then on.
 
 ## Replace the authority key
 
