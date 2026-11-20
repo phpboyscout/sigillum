@@ -15,14 +15,14 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
-	gitlab.com/phpboyscout/go-tool-base v0.51.0
+	gitlab.com/phpboyscout/go-tool-base v0.51.1
 	gitlab.com/phpboyscout/go/encryption v0.2.3
-	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.4
+	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.5
 	gitlab.com/phpboyscout/go/errorhandling v0.5.2
-	gitlab.com/phpboyscout/go/errors v0.4.0
-	gitlab.com/phpboyscout/go/forge-gitlab v0.32.0
-	gitlab.com/phpboyscout/go/signing v0.15.0
-	gitlab.com/phpboyscout/go/signing-aws-kms v0.9.1
+	gitlab.com/phpboyscout/go/errors v0.4.1
+	gitlab.com/phpboyscout/go/forge-gitlab v0.32.1
+	gitlab.com/phpboyscout/go/signing v0.15.1
+	gitlab.com/phpboyscout/go/signing-aws-kms v0.9.2
 	gitlab.com/phpboyscout/go/signing-sigstore v0.1.0
 )
 
@@ -31,7 +31,7 @@ require (
 	charm.land/bubbletea/v2 v2.1.1 // indirect
 	charm.land/glamour/v2 v2.0.1 // indirect
 	charm.land/huh/v2 v2.0.3 // indirect
-	charm.land/lipgloss/v2 v2.1.0 // indirect
+	charm.land/lipgloss/v2 v2.1.1 // indirect
 	charm.land/log/v2 v2.0.1 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -137,7 +137,7 @@ require (
 	github.com/yuin/goldmark v1.8.6 // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
-	gitlab.com/gitlab-org/api/client-go/v3 v3.48.0 // indirect
+	gitlab.com/gitlab-org/api/client-go/v3 v3.51.0 // indirect
 	gitlab.com/phpboyscout/go/authn v0.3.1 // indirect
 	gitlab.com/phpboyscout/go/awsclient v0.1.4 // indirect
 	gitlab.com/phpboyscout/go/browser v0.2.3 // indirect
