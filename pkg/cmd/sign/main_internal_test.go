@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,4 +47,16 @@ func TestSameSignPath_SameFileViaSymlink(t *testing.T) {
 	require.NoError(t, os.Symlink(target, link))
 
 	assert.True(t, sameSignPath(link, target), "a symlink to the input is the input")
+}
+
+// The verifying tests pin --created, so this is what holds the default to now.
+func TestSignatureTime_UnsetIsNow(t *testing.T) {
+	t.Parallel()
+
+	got, err := signatureTime("")
+
+	require.NoError(t, err)
+	assert.Equal(t, time.UTC, got.Location())
+	// Wide enough that a runner's clock stepping back cannot fail it (#21).
+	assert.WithinDuration(t, time.Now(), got, 5*time.Second)
 }

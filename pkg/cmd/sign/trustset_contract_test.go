@@ -53,7 +53,7 @@ func signManifest(t *testing.T, priv *rsa.PrivateKey, body string) (signature, p
 	manifestPath := signtest.WriteFile(t, tmp, "checksums.txt", body)
 
 	signtest.Register(t, &signtest.Backend{BackendName: fakeBackend, Signer: priv})
-	require.NoError(t, runSign(t, signRequest{publicKey: publicKeyPath, input: manifestPath, created: fixedCreated}))
+	require.NoError(t, runSign(t, signRequest{publicKey: publicKeyPath, input: manifestPath, created: pinnedCreated}))
 
 	signature, err := os.ReadFile(manifestPath + ".sig")
 	require.NoError(t, err)

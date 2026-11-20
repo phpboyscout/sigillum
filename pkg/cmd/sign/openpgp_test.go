@@ -38,10 +38,6 @@ func openPGPFixture(t *testing.T) (signRequest, *rsa.PrivateKey) {
 	}, priv
 }
 
-// fixedCreated pins a signature's time for a test that verifies it, because
-// go-crypto rejects a signature dated even a second ahead of its clock (#21).
-const fixedCreated = "2026-07-29T12:00:00Z"
-
 func TestRunSign_OpenPGP_WritesArmoredSignatureBesideTheInput(t *testing.T) {
 	req, _ := openPGPFixture(t)
 
@@ -174,7 +170,7 @@ func TestRunSign_OpenPGP_InvalidCreatedFlag_Errors(t *testing.T) {
 
 func TestRunSign_OpenPGP_IsReproducibleWithPinnedCreated(t *testing.T) {
 	req, _ := openPGPFixture(t)
-	req.created = "2026-07-29T12:00:00Z"
+	req.created = pinnedCreated
 
 	req.output = req.input + ".a.sig"
 	require.NoError(t, runSign(t, req))
@@ -209,7 +205,7 @@ func TestRunSign_OpenPGP_Append_DualSignServesBothTrustSets(t *testing.T) {
 		signtest.Register(t, &signtest.Backend{BackendName: fakeBackend, Signer: priv})
 		require.NoError(t, runSign(t, signRequest{
 			publicKey: publicKeys[name], output: sigPath, input: input, appendSig: true,
-			created: fixedCreated,
+			created: pinnedCreated,
 		}))
 	}
 

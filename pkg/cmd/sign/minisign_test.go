@@ -17,6 +17,9 @@ import (
 	"gitlab.com/phpboyscout/sigillum/internal/signtest"
 )
 
+// pinnedCreated fixes a signature's time, so a test can compare signatures
+// byte for byte. A test that verifies with go-crypto needs it too, because
+// go-crypto rejects a signature dated even a second ahead of its clock (#21).
 const pinnedCreated = "2026-07-29T12:00:00Z"
 
 // minisignFixture registers a backend serving the fixture Ed25519 key and
