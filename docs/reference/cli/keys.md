@@ -419,7 +419,9 @@ refuses an add whose armored text is anything but one public key block, so a
 previous manifest from another issuer that carries private key material is
 refused, naming the key. Carried adds are then re-armored the same way as
 `--add`. The refusal comes before this run's `--revoke`, so revoking the leaked
-key in the same run does not get past it.
+key in the same run does not get past it. Build on the last clean manifest
+instead: see
+[When the previous manifest published a private key](../../how-to/issue-a-rotation-manifest.md#when-the-previous-manifest-published-a-private-key).
 
 Once a manifest revokes a key, every later one carries the revoke, so every later
 one must be `--reason compromise`.
@@ -471,7 +473,7 @@ Every refusal exits non-zero and writes nothing.
 | An updater would refuse it against the anchors | the updater's own refusal: the reason, then `rotation manifest refused` |
 | A malformed fingerprint | `"ABCD": not a 40-character hex fingerprint` |
 | `--add` names a file holding private key material | `--add v2.priv.asc: holds private key material, which a published manifest must never carry` |
-| `--previous` carries an add holding private key material | `the previous manifest: added key <fingerprint>: the armored text must be one PGP PUBLIC KEY BLOCK with no armour headers and nothing around it: rotation manifest is malformed` |
+| `--previous` carries an add holding private key material | As a `PGP PRIVATE KEY BLOCK`: `the previous manifest: added key <fingerprint>: the armored text must be one PGP PUBLIC KEY BLOCK with no armour headers and nothing around it: rotation manifest is malformed`. Inside a `PGP PUBLIC KEY BLOCK`: `the previous manifest: added key <fingerprint>: holds private key material: rotation manifest is malformed`. |
 | `--add` names a file with no key, or more than one | `--add <file>: ...: not exactly one armored OpenPGP public key` |
 | `--epoch 0` | `--epoch must be at least 1` |
 | `--not-after` not after the time of the run | `not_after must be after issued_at: rotation manifest is malformed` |

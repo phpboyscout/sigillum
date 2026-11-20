@@ -98,6 +98,39 @@ later one must be `--reason compromise`, even a routine rotation. If a manifest
 revoked a key and added none, every later run needs `--anchor`, because nothing
 else proves a release key remains.
 
+## When the previous manifest published a private key
+
+`keys rotate` will not build on a manifest whose `add` holds private key
+material, even one your authority signed. It fails with an error starting
+`the previous manifest: added key <fingerprint>:`.
+That key's private half is now public, so treat the key as compromised.
+
+An updater that checks added keys (go/signing v0.15.1 and later) refuses that
+manifest too, so it stays on the epoch before it. An older updater may have
+applied it and now trusts the leaked key. The next manifest has to cover both.
+
+1. Stop publishing the leaked manifest, and sign nothing more with the leaked
+   key.
+2. Build on the **last clean** manifest instead, with an epoch above the leaked
+   one, and revoke the leaked key:
+
+   ```bash
+   sigillum keys rotate --reason compromise --not-after 2027-11-18T00:00:00Z \
+       --previous ./published/epoch-4/rotate-keys.json \
+       --epoch 6 --allow-epoch-gap \
+       --revoke <leaked fingerprint> \
+       --backend aws-kms --key-id alias/rotation-authority --output-dir ./out
+   ```
+
+   Here epoch 5 is the leaked one. The gap is deliberate, which is what
+   `--allow-epoch-gap` is for.
+
+3. Pass every other add and revoke the leaked manifest made with `--add` and
+   `--revoke`, because nothing from it is carried. For an add, use the public
+   key file, not what the manifest holds.
+
+From then on, pass this new manifest as `--previous`.
+
 ## Replace the authority key
 
 When the authority key itself changes, ship binaries that embed the new
