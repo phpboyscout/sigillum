@@ -17,16 +17,18 @@ read.
 
 The only AWS-related configuration sigillum honours is whatever the AWS SDK's
 own default chain picks up (`AWS_PROFILE`, `AWS_REGION`, `~/.aws/credentials`,
-OIDC web identity), plus the `--kms-region` flag. Which region the KMS key is
-looked up in depends on the command:
+OIDC web identity), plus the AWS KMS backend's `kms-region` setting. Which
+region the KMS key is looked up in depends on the command:
 
 | Commands | KMS region comes from | When it is unset |
 |---|---|---|
-| `sign`, `keys` | `--kms-region` only. `AWS_REGION` and the profile's region are not consulted. | `eu-west-2`. An empty `--kms-region` is refused. |
-| `decrypt`, `certificate` | The AWS chain: `AWS_REGION`, then the profile's region. There is no flag. | Refused: there is no default region. |
+| `sign`, `keys` | `--kms-region`, or `kms-region` in a named instance's selector (`--backend 'aws-kms:prod?kms-region=eu-west-1'`). `AWS_REGION` and the profile's region are not consulted. | `eu-west-2`. An empty value is refused. |
+| `decrypt`, `certificate` | The AWS chain: `AWS_REGION`, then `AWS_DEFAULT_REGION`, then the profile's region. There is no flag. | Refused: there is no default region. |
 
 For `sign` and `keys` that region also serves the OIDC web-identity exchange
 with STS, because the SDK builds its STS client from the same configuration.
+With an SSO profile, the SSO sign-in calls go to the profile's `sso_region`
+instead, whichever command runs.
 
 What is configurable is the surrounding framework: logging, self-update,
 telemetry, and the GitLab connection that self-update uses.
@@ -37,8 +39,8 @@ telemetry, and the GitLab connection that self-update uses.
 |---|---|
 | `/etc/sigillum/config.yaml` | System-wide. |
 | `~/.sigillum/config.yaml` | Per-user, and the **writable** target: this is where `config set` lands. |
-| `.sigillum.yaml` in the working directory or above | Project-local, discovered automatically. Sits above the user's files. |
-| Anything passed to `--config` | Explicit. Repeatable. |
+| `.sigillum.yaml` in the working directory or above | Project-local, discovered automatically. Sits above the user's files. Not read when `--config` is passed. |
+| Anything passed to `--config` | Explicit. Repeatable. Read in place of the three files above, none of which is read. |
 
 Only files that **exist** become layers. A non-existent path contributes
 nothing and is not a candidate write target, which is why `config set` never
@@ -62,7 +64,10 @@ Highest precedence first:
 1. **Command-line flags**, but only flags you actually changed. A flag sitting
    at its default never clobbers a configured value.
 2. **Project-local `.sigillum.yaml`**, above the user's files and below flags.
-3. **`--config` files and the default file paths**, in the order declared.
+   It is skipped when `--config` is passed.
+3. **The config files.** With `--config`, each file passed, a later one above
+   an earlier one. Without it, `~/.sigillum/config.yaml` above
+   `/etc/sigillum/config.yaml`.
 4. **Embedded defaults** shipped in the binary's assets.
 
 ## Why `SIGILLUM_LOG_LEVEL` does nothing
@@ -173,11 +178,13 @@ WARN  ignoring security-sensitive keys from a user config file inside a git chec
 ```
 
 The hint does not fit sigillum. It has no environment layer (see "Why
-`SIGILLUM_LOG_LEVEL` does nothing" above), and no flags for `update.*` or `telemetry.*`. `config trust` does not help
-either, because it covers only project-local files.
+`SIGILLUM_LOG_LEVEL` does nothing" above), and no flags for `update.*` or
+`telemetry.*`. `config trust` does not help either, because it covers only
+project-local files.
 
 What works is a config file outside the checkout, passed with `--config`. That
-file is read in place of the per-user one, so nothing is stripped:
+file is read in place of the system, per-user and project-local files, so
+nothing is stripped:
 
 ```console
 $ sigillum --config /srv/sigillum/config.yaml config get update.policy
