@@ -3,7 +3,9 @@
 `sigillum mcp start` serves a fixed set of sigillum's commands as MCP tools over
 standard input and output. The set covers commands that report state or work
 with public key material. Nothing on it signs, decrypts, publishes a key,
-changes configuration or replaces the binary.
+runs a config command that changes anything, or replaces the binary. The key
+generators do write files, which can include the config file: see
+[Served tools](#served-tools).
 
 ## Subcommands
 
@@ -62,7 +64,7 @@ These stay fully runnable on the command line. Over MCP, `call_tool` and
 | `decrypt` | Spends a KMS credential and reveals report plaintext. |
 | `certificate` | Its signatures are made by `kms:Sign`. |
 | `update` | Replaces the binary the agent is driving. |
-| `config get` | Its `--unmask` flag prints a credential in clear. `config list` stays served, because it always masks. |
+| `config get` | Its `--unmask` flag prints a credential in clear. `config list` stays served, because it masks every credential sigillum reads. |
 | `config set`, `unset`, `edit`, `trust`, `convert`, `migrate-credentials` | Change configuration or move credentials. |
 | `docs` | An interactive terminal browser. |
 
