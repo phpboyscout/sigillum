@@ -21,7 +21,7 @@ require (
 	gitlab.com/phpboyscout/go/errorhandling v0.5.2
 	gitlab.com/phpboyscout/go/errors v0.4.1
 	gitlab.com/phpboyscout/go/forge-gitlab v0.32.1
-	gitlab.com/phpboyscout/go/signing v0.15.1
+	gitlab.com/phpboyscout/go/signing v0.15.2
 	gitlab.com/phpboyscout/go/signing-aws-kms v0.9.2
 	gitlab.com/phpboyscout/go/signing-sigstore v0.1.0
 )
