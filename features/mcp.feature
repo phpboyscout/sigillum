@@ -25,6 +25,7 @@ Feature: The MCP tool surface
       | sigillum_version             |
 
   Scenario Outline: A withheld command cannot be called over MCP
+    Given the CLI has the command behind the MCP tool "<tool>"
     When I call the MCP tool "<tool>"
     Then the MCP call is refused as unavailable
 

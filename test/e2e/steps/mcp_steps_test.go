@@ -19,6 +19,7 @@ const mcpTimeout = 30 * time.Second
 
 func registerMCPSteps(ctx *godog.ScenarioContext, w *world) {
 	ctx.When(`^I browse the MCP tool catalogue$`, w.browseMCPCatalogue)
+	ctx.Given(`^the CLI has the command behind the MCP tool "([^"]*)"$`, w.cliHasCommandBehindTool)
 	ctx.When(`^I call the MCP tool "([^"]*)"$`, w.callMCPTool)
 	ctx.When(`^I run mcp stream$`, w.runMCPStream)
 	ctx.Then(`^the catalogue lists exactly these tools:$`, w.catalogueListsExactly)
@@ -284,6 +285,33 @@ func (w *world) runMCPStream() error {
 
 	if ctx.Err() != nil {
 		return errors.New("mcp stream was still running at the timeout: it served instead of refusing")
+	}
+
+	return nil
+}
+
+// cliHasCommandBehindTool stops a misspelt tool name passing as withheld: an
+// unknown tool also answers unavailable. Help on a misspelt path falls back to
+// the parent's usage, so the usage line is what proves the command exists.
+func (w *world) cliHasCommandBehindTool(tool string) error {
+	name, ok := strings.CutPrefix(tool, "sigillum_")
+	if !ok {
+		return fmt.Errorf("tool %q does not start with sigillum_", tool)
+	}
+
+	path := strings.Split(name, "_")
+
+	if err := w.run(append(slices.Clone(path), "--help", "--ci")...); err != nil {
+		return err
+	}
+
+	if w.exitErr != nil {
+		return fmt.Errorf("%s --help failed: %w\n%s", strings.Join(path, " "), w.exitErr, w.stderr)
+	}
+
+	want := "Usage:\n  sigillum " + strings.Join(path, " ") + " "
+	if !strings.Contains(w.stdout, want) {
+		return fmt.Errorf("no command %q behind tool %q; help printed:\n%s", strings.Join(path, " "), tool, w.stdout)
 	}
 
 	return nil
