@@ -39,7 +39,10 @@ func NewCmdRoot(v version.Info) (*setup.Command, *props.Props, error) {
 			Repo:  "sigillum",
 			Type:  "gitlab",
 		},
-		Signing: props.SigningConfig{EmbeddedKeys: trustkeys.Keys()},
+		Signing: props.SigningConfig{
+			AnchorOnlyKeys: trustkeys.AuthorityKeys(),
+			EmbeddedKeys:   trustkeys.Keys(),
+		},
 		Summary: "sigillum utility",
 	}
 

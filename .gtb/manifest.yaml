@@ -29,28 +29,28 @@ release_source:
   owner: phpboyscout
   repo: sigillum
 version:
-  gtb: v0.48.0
+  gtb: v0.51.1
   go: 1.27.1
 hashes:
-  .gitignore: 660975e0ad0d5136feb10221a14835d0d6a0bf86788a08f8c97d4f9cbd06c453
-  .gitlab-ci.yml: b6d31032d80f53eac04e8edffbf6786100ace256c32d47e2001733b5379e3ac1
+  .gitignore: a4a91482714277a3ab792d57deb62dfab7b85e7108f44c5ac2a458d5f96ef738
+  .gitlab-ci.yml: da206cb53b87026992ed4a6139b59078c710702da632f7b565316ab2a98ab075
   .gitlab/CODEOWNERS: 6384f3b0fa79ff53d5428c8499b4af97bd5c35328a3b7058df34164b2e875f2f
-  .golangci.yaml: b41c089be6a30fbd149cf43812e2b08a6c8c6420de9d63545420539d0e256ea4
+  .golangci.yaml: c976e89704118333d66da0ae22ab09b6ac2dffdac58cdcb0d5c04abdabb27130
   .goreleaser.yaml: 1cc56b7169d2eb3a58149afba75692d94ef4a3e868c8aa0f25870e98c31d4167
   .mockery.yml: e2ada0fc97ec0a6f64c091ba6fb9f4a3308a678082588745ea23e9d4682bff15
-  .pre-commit-config.yaml: 1dbbf5621e83f9665e0e88df4641c942b45a79ace7e21b04135d2ac5ebab679c
-  CHANGELOG.md: 623496153c56f4f153045bc618050f9f83c19eeddc8d314c8aaf8da1459d6f8e
-  README.md: f20687868b953e886c534519be44f22c5cf28d904db74dfb04ac15f1c2fff9f1
-  docs/explanation/components/index.md: 1c7357d04e5757c95fd30b76bc70a84cc7c72c834d86f50ca05ed80eaed7f18a
+  .pre-commit-config.yaml: 386b574d7486ba85ab2b16b7e7b733001ab1cbaca27a8d6b7f0f37f89078c34b
+  CHANGELOG.md: 379641ee6f54b76fa7390d1ea33bfcf5845f4d510c2cbb7fb8108d14bd947b36
+  README.md: b376ce8b5b39daaf1f6726c770583608aac33f8a78805e7fb8a19b8a6a71ab5b
+  docs/explanation/components/index.md: 9cb818f41d5ea37b48bfeda971563ea410c176c34829223be164d46ea09176e8
   docs/explanation/concepts/index.md: 59bcce92a8cd635c64f27145d2a408873f4f919b79766e12d2b2c9fefff53b3b
-  docs/explanation/index.md: 6c9eaf7e825e28ac9b580f87ee3b245de361ebd2f49f7acf9fe10396738a1a44
-  docs/how-to/index.md: 22ea7d86d821e95ea0135d532f43d5a8a3ce2ea2787d1e7169a0951805317afa
-  docs/index.md: b623638a500945e365d959aff9f0f7386177a7c9a62dcf0fa9ec2a38352c48ce
-  docs/reference/cli/index.md: d8dc4afbb460f4347fe52dbc4753eef5942ace4ffa1c04cf63e85a669a6b2a52
-  docs/reference/config/index.md: 22519e62f004644c3119a9b80875fac4ddcbe5572834960396c91226c4d43b18
+  docs/explanation/index.md: 591839128544f53f7241e0eb210459c2ab897db85d67d9f168d30102f607f2ee
+  docs/how-to/index.md: fbb3c7d222bb4e674ec52b0f640a6cfc3dbbfbb401bad25edfc9a4526dd2856b
+  docs/index.md: 36b4d47236395defa44c63a1c8f483d8a986b06d69cf8609d61cd2e99a4ea687
+  docs/reference/cli/index.md: 7e45cdcec8139b14ff918b7421fe346a52b14172517d5d795a4b028812f0b752
+  docs/reference/config/index.md: 13f0a3fe8ca4c185a1f9d89a51e0425e1425c394cf4389cc22c5190ce6d19977
   docs/reference/index.md: 4d9de0e2159312a5ceaf7ebd2545b1a9c7931deacf38f940840385d64c186c9e
   docs/tutorials/index.md: e16a53a06a8ba4bc2702148ab38c7e012c3fd08d222567bbfd5dabf2e7e9c9aa
-  justfile: 0086e91304b5cf6b41dfe19b2e10663e28d67d56aa6d3c21ca489f77ff6beadd
+  justfile: 389fee6b79e6b91b29e1f675f94ee249d6f3dbe21fa36640d793cf093b3d00eb
   pkg/cmd/root/assets/init/config.yaml: 93df4d1e86bfa4be31b5761ca0adf65adc8ea399686a60a3a776305478b64c15
   zensical.toml: 7b5f064fd8128937ea1e427ced1ceb052a932cf0a4629c5ae601f78d5da63379
 commands:

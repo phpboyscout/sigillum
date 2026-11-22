@@ -8,7 +8,11 @@
 // directory is embedded at build time and surfaced to the
 // SelfUpdater via props.Tool.Signing.EmbeddedKeys.
 //
-// The directory ships empty (only a .gitkeep): with no keys present
+// A rotation-authority key goes in internal/trustkeys/authority/ instead.
+// It joins the trust set through props.Tool.Signing.AnchorOnlyKeys, which
+// refuses it as a release signer.
+//
+// Both directories ship empty (only a .gitkeep): with no keys present
 // Keys returns nil, so signature verification stays dormant until a
 // real key is added and the rollout flips require_signature.
 package trustkeys
@@ -26,13 +30,29 @@ import (
 //go:embed all:keys
 var keyFS embed.FS
 
+// authorityFS embeds the keys that anchor trust but must never sign a
+// release. They live outside keys/ so Keys cannot return them.
+//
+//go:embed all:authority
+var authorityFS embed.FS
+
 // Keys returns every embedded ASCII-armored public key (the contents of
 // internal/trustkeys/keys/*.asc). It returns nil when no key files are
 // present, which leaves the embedded trust anchor unset.
 func Keys() [][]byte {
+	return keysIn(keyFS, "keys")
+}
+
+// AuthorityKeys returns the embedded rotation-authority public keys (the
+// contents of internal/trustkeys/authority/*.asc), for
+// props.Tool.Signing.AnchorOnlyKeys.
+func AuthorityKeys() [][]byte {
+	return keysIn(authorityFS, "authority")
+}
+func keysIn(fsys embed.FS, dir string) [][]byte {
 	var out [][]byte
 
-	_ = fs.WalkDir(keyFS, "keys", func(p string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(fsys, dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -41,7 +61,7 @@ func Keys() [][]byte {
 			return nil
 		}
 
-		b, readErr := keyFS.ReadFile(p)
+		b, readErr := fsys.ReadFile(p)
 		if readErr != nil {
 			return readErr
 		}
