@@ -20,7 +20,8 @@ type MintOptions struct {
 	Force   bool
 }
 
-// NewCmdMint returns the keys mint command.
+// NewCmdMint returns the keys mint command. It is kept off the MCP tool surface:
+// its self-signature is a kms:Sign call with the real key (spec 0003 D3).
 func NewCmdMint(p *props.Props) *setup.Command {
 	opts := &MintOptions{}
 
@@ -51,7 +52,7 @@ func NewCmdMint(p *props.Props) *setup.Command {
 
 	signcmd.AddBackendFlags(cmd.Command, &opts.Backend, &opts.KeyID)
 
-	return cmd
+	return setup.ExcludeFromMCP(cmd)
 }
 
 const longHelp = `Wrap an existing signer (HSM-held key or on-disk PEM private key) in

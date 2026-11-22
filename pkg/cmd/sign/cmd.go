@@ -24,7 +24,8 @@ type SignOptions struct {
 	Project   string
 }
 
-// NewCmdSign returns the sign command.
+// NewCmdSign returns the sign command. It is kept off the MCP tool surface:
+// it signs with the real release key (spec 0003 D3).
 func NewCmdSign(p *props.Props) *setup.Command {
 	opts := &SignOptions{}
 
@@ -56,7 +57,7 @@ func NewCmdSign(p *props.Props) *setup.Command {
 
 	cmd.Register(image.NewCmdImage(p))
 
-	return cmd
+	return setup.ExcludeFromMCP(cmd)
 }
 
 const longHelp = `Sign <input-file> with a signing backend (AWS KMS, local PEM, or any other

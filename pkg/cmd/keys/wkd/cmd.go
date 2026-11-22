@@ -17,7 +17,8 @@ type WkdOptions struct {
 	SubmissionAddress string
 }
 
-// NewCmdWkd returns the keys wkd command.
+// NewCmdWkd returns the keys wkd command. It is kept off the MCP tool surface:
+// it builds a tree for public hosting (spec 0003 D3).
 func NewCmdWkd(p *props.Props) *setup.Command {
 	opts := &WkdOptions{}
 
@@ -48,7 +49,7 @@ func NewCmdWkd(p *props.Props) *setup.Command {
 
 	_ = cmd.MarkFlagRequired("domain")
 
-	return cmd
+	return setup.ExcludeFromMCP(cmd)
 }
 
 const longHelp = `Read one or more ASCII-armored OpenPGP public keys, group them by

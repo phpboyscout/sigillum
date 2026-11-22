@@ -20,7 +20,8 @@ type PublishOptions struct {
 	ValidFrom  string
 }
 
-// NewCmdPublish returns the keys publish command.
+// NewCmdPublish returns the keys publish command. It is kept off the MCP tool surface:
+// it changes what consumers pin against (spec 0003 D3).
 func NewCmdPublish(p *props.Props) *setup.Command {
 	opts := &PublishOptions{}
 
@@ -50,7 +51,7 @@ func NewCmdPublish(p *props.Props) *setup.Command {
 
 	_ = cmd.MarkFlagRequired("project")
 
-	return cmd
+	return setup.ExcludeFromMCP(cmd)
 }
 
 const longHelp = `Stage a minisign public key into a static keys site: write it to a

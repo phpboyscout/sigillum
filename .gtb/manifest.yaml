@@ -10,8 +10,6 @@ properties:
       enabled: false
     - name: keychain
       enabled: true
-    - name: mcp
-      enabled: false
   signing:
     enabled: true
     require_signature: true
@@ -21,6 +19,17 @@ properties:
     kms_region: eu-west-2
     public_key: internal/trustkeys/keys/signing-key-v2.asc
   module_path: gitlab.com/phpboyscout/sigillum
+  mcp:
+    withhold:
+      - config/convert
+      - config/edit
+      - config/get
+      - config/migrate-credentials
+      - config/set
+      - config/trust
+      - config/unset
+      - docs
+      - update
   docs_layout: diataxis
 release_source:
   type: gitlab
@@ -58,8 +67,9 @@ commands:
     description: Decrypt an OpenPGP message addressed to a KMS-backed certificate
     long_description: Decrypt an OpenPGP message addressed to a KMS-backed certificate
     hashes:
-      cmd.go: ccc66182ca899212acb4c4de5d501ee59b828933d4cbf11b77ada0d966f85fd2
+      cmd.go: 2915ac8a7e8ed544880dc9a5a6bb4f3673b5727d5bf5bd5edb0aaff7d0243d1a
     protected: false
+    mcp_enabled: false
     flags:
       - name: certificate
         type: string
@@ -80,8 +90,9 @@ commands:
     description: Assemble and emit an OpenPGP certificate backed by key-service keys
     long_description: Assemble and emit an OpenPGP certificate backed by key-service keys
     hashes:
-      cmd.go: 5b0be342a564d10be3510068258e6f741dd1384ae046910d4363e611351c16b3
+      cmd.go: 2ac9dabff1f34140893a23891e8bdd3c63d9fdc48fcd5c558adff25495e06de6
     protected: true
+    mcp_enabled: false
     flags:
       - name: user-id
         type: string
@@ -119,6 +130,7 @@ commands:
     hashes:
       cmd.go: ""
     protected: true
+    mcp_enabled: false
     commands:
       - name: image
         description: Sign a container image by digest, in both cosign signature forms
@@ -137,6 +149,7 @@ commands:
         hashes:
           cmd.go: ""
         protected: true
+        mcp_enabled: false
       - name: generate
         description: Generate a fresh keypair locally (Ed25519 or RSA) and emit both halves
         hashes:
@@ -148,6 +161,7 @@ commands:
         hashes:
           cmd.go: ""
         protected: true
+        mcp_enabled: false
       - name: minisign
         description: Emit the minisign public key for an Ed25519 signer
         hashes:
@@ -159,6 +173,7 @@ commands:
         hashes:
           cmd.go: ""
         protected: true
+        mcp_enabled: false
       - name: generate-image
         description: Generate an ECDSA P-256 keypair for image signing
         args: NoArgs

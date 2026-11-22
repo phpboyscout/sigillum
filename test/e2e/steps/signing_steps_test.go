@@ -78,6 +78,9 @@ type world struct {
 	// manifestBefore snapshots keys.json so a re-publish can be shown
 	// to change nothing.
 	manifestBefore string
+
+	mcpTools []string
+	mcpCall  mcpResult
 }
 
 // run executes sigillum with args, capturing stdout and stderr
@@ -571,6 +574,7 @@ func initializeScenario(ctx *godog.ScenarioContext) {
 	registerDecryptSteps(ctx, w)
 	registerImageSteps(ctx, w)
 	registerRotationSteps(ctx, w)
+	registerMCPSteps(ctx, w)
 
 	ctx.Given(`^a freshly built sigillum binary$`, w.aFreshlyBuiltBinary)
 	ctx.Given(`^an empty working directory$`, w.anEmptyWorkingDirectory)

@@ -32,6 +32,8 @@ func NewCmdDecrypt(props *props.Props) *setup.Command {
 		},
 	})
 
+	setup.ExcludeFromMCP(cmd)
+
 	cmd.Flags().StringVar(&opts.Certificate, "certificate", "", "Path to the recipient certificate, or '-' for stdin")
 	cmd.Flags().StringVar(&opts.Key, "key", "", "Key service identifier for the encryption subkey")
 	cmd.Flags().StringVar(&opts.Backend, "backend", "", "Key service backend to use")

@@ -37,6 +37,8 @@ func NewCmdCertificate(props *props.Props) *setup.Command {
 		},
 	})
 
+	setup.ExcludeFromMCP(cmd)
+
 	cmd.Flags().StringVar(&opts.UserId, "user-id", "", "Identity to certify, as 'Name <email>'")
 	cmd.Flags().StringVar(&opts.CertifyKey, "certify-key", "", "Key service identifier for the certification primary")
 	cmd.Flags().StringVar(&opts.EncryptKey, "encrypt-key", "", "Key service identifier for the encryption subkey")

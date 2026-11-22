@@ -170,16 +170,22 @@ Retired and revoked keys stay published. A signature made under a key must
 remain checkable after the private half is destroyed, so removal is never the
 rotation mechanism.
 
-## The `init` and `mcp` commands are switched off
+## The `init` command is switched off, and MCP serves a fixed subset
 
 sigillum is generated from the go-tool-base framework, which offers an `init`
-subsystem-configuration command and an MCP server command. Both are disabled in
-this tool, so neither appears in `--help` and neither can be enabled at run
-time. `sigillum config --help` still mentions `init` in its prose; that text
+subsystem-configuration command. It is disabled in this tool, so it does not
+appear in `--help` and cannot be enabled at run time. `sigillum config --help` still mentions `init` in its prose; that text
 comes from the framework and does not apply here.
 
-`config`, `changelog`, `completion`, `docs`, `doctor`, `update` and `version`
-are present. See the [CLI reference](../reference/cli/index.md).
+`sigillum mcp start` serves only the commands that report state or work with
+public key material, over stdio. An agent driving it cannot sign, mint, rotate,
+publish, decrypt, run a config command that changes anything, or update the
+binary, and no setting changes that. It can still write files: the key
+generators take an output path and `--force`, so an account that can write a
+trust key or the config file lets an agent overwrite them. The served list is in the [`mcp` reference](../reference/cli/mcp.md).
+
+`config`, `changelog`, `completion`, `docs`, `doctor`, `mcp`, `update` and
+`version` are present. See the [CLI reference](../reference/cli/index.md).
 
 ## sigillum knows nothing about your CI, your cloud or your deploy
 

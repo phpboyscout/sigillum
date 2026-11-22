@@ -39,12 +39,12 @@ framework's command set. What is actually there, as `sigillum --help` reports:
 | `config` | View, set and validate configuration. See the [configuration reference](../config/index.md). |
 | `docs` | Browse the embedded documentation. |
 | `doctor` | Check environment and configuration health. |
+| [`mcp`](mcp.md) | Serve a fixed, read-mostly set of commands as MCP tools. Signing, decrypting, publishing, config changes and `update` are withheld. |
 | `update` | Update to the latest available release, verifying its signature against the embedded key. |
 | `version` | Print version, commit and build date. |
 
-**`init` and `mcp` are disabled** in this tool and do not appear. They are
-switched off in the root command's feature set, so no flag or configuration key
-brings them back. Some framework help text still mentions `init`:
+**`init` is disabled** in this tool and does not appear. It is switched off in
+the root command's feature set, so no flag or configuration key brings it back. Some framework help text still mentions `init`:
 `sigillum config --help` suggests running `init <subsystem>` for guided
 reconfiguration, and that suggestion does not apply here.
 
