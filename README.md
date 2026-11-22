@@ -130,6 +130,28 @@ The `main` package lives at `cmd/sigillum/`, so the install path ends in
 `/cmd/sigillum`. Alternatively, download a pre-built binary from the
 [GitLab Releases](https://gitlab.com/phpboyscout/sigillum/-/releases) page.
 
+Each release's `checksums.txt` is signed. Fetch the release key over WKD from
+`release-v2@phpboyscout.uk` and verify:
+
+```bash
+gpg --auto-key-locate clear,wkd --locate-keys release-v2@phpboyscout.uk
+gpg --verify checksums.txt.sig checksums.txt
+sha256sum --ignore-missing -c checksums.txt   # macOS: shasum -a 256 --ignore-missing -c
+```
+
+`gpg --verify` must report a good signature and this primary key fingerprint:
+
+```text
+Primary key fingerprint: E969 F9AB 1678 97D8 76B6  A93A A44A 36F8 D7AC F36D
+```
+
+The fingerprint is the check that matters. The WKD address serves two older
+keys under the same user ID, and a signature from either would also read
+"Good signature". A fresh keyring also warns that the key "is not certified
+with a trusted signature". That is expected, and the fingerprint is what
+answers it. Use `release-v2@`, not `release@`. `release@` serves the keys from before the
+rotation, and gpg reports "No public key" against a current release.
+
 ## Quick start
 
 Generate a local keypair, sign a file and verify it. No cloud account is needed:

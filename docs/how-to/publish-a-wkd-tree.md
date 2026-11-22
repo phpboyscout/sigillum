@@ -25,10 +25,10 @@ WKD layout:
 ```bash
 sigillum keys wkd \
     --domain phpboyscout.uk \
-    --email release@phpboyscout.uk \
-    --submission-address release@phpboyscout.uk \
+    --email release-v2@phpboyscout.uk \
+    --submission-address release-v2@phpboyscout.uk \
     --output ./wkd-staging \
-    rotation-authority.asc signing-key-v1.asc
+    rotation-authority.asc signing-key-v2.asc
 ```
 
 Result (the advanced layout, which is the default):
@@ -89,17 +89,30 @@ on an account and domain distinct from both.
 ## Verify the round-trip
 
 ```bash
-gpg --auto-key-locate clear,wkd --locate-keys release@phpboyscout.uk
+gpg --auto-key-locate clear,wkd --locate-keys release-v2@phpboyscout.uk
 ```
 
-You should see every published fingerprint, matching what `keys mint` /
-`keys generate` reported and what you embedded in the verifying tool. A direct
-HTTP fetch of the logged `hu/<hash>` path also works for spot-checking.
+`--locate-keys` prints one key. To see every key the address serves, list
+them, and check each fingerprint against what `keys mint` / `keys generate`
+reported and what you embedded in the verifying tool:
+
+```bash
+gpg --list-keys release-v2@phpboyscout.uk
+```
+
+A direct HTTP fetch of the logged `hu/<hash>` path also works for spot-checking.
 
 ## Per-rotation re-deploy
 
 When you mint a new key, re-run `keys wkd` against the new public-key file set
-(plus any keys you keep serving) and redeploy. The tree is fully reproducible
+(plus any keys you keep serving) and redeploy.
+
+Publish a rotated key under a new address (`release-v2@` after `release@`),
+and tell verifiers to switch. gpg keeps only the keys whose user ID matches the
+address it looked up, so the new key appears at the old address only if it
+carries that user ID too. Adding one means certifying it with the new key. If
+the old address's bytes are pinned, as a canary might pin them, changing them
+also breaks that pin. The tree is fully reproducible
 from the `.asc` files, so there is no manual surgery on the host.
 
 ## What WKD does not cover
