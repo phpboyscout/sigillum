@@ -17,7 +17,7 @@ conventions stay in `docs/`, because those change with the code.
 | [0005](https://gitlab.com/phpboyscout/sigillum/-/wikis/specs/0005-estate-container-image-signing) | Estate container image signing | `APPROVED` |
 | [0006](https://gitlab.com/phpboyscout/sigillum/-/wikis/specs/0006-countersigned-tuf-releases) | Countersigned TUF releases | `DRAFT` |
 | [0007](https://gitlab.com/phpboyscout/sigillum/-/wikis/specs/0007-sigillum-is-the-signing-cli) | sigillum is the signing CLI, and the libraries own their Settings | `APPROVED` |
-| [0008](https://gitlab.com/phpboyscout/sigillum/-/wikis/specs/0008-keys-rotate) | keys rotate: issue a signed rotation manifest | `APPROVED` |
+| [0008](https://gitlab.com/phpboyscout/sigillum/-/wikis/specs/0008-keys-rotate) | keys rotate: issue a signed rotation manifest | `IMPLEMENTED` |
 
 ## Referring to a spec
 
