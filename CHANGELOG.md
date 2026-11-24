@@ -1,5 +1,27 @@
 # Changelog
 
+## [v0.7.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.7.0)
+
+[Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.6.0...v0.7.0)
+
+### Notes
+
+- keys generate and keys mint now refuse a --created outside 1970-01-01 to 2106-02-07 UTC with "creation time is outside 1970-01-01 to 2106-02-07 UTC, the range an OpenPGP timestamp holds", and sign refuses a signature dated before its key. Before, the key was written and the first signature failed with "no valid signing keys", or the key silently recorded a different creation time.
+
+- To verify a downloaded release, fetch the release key over WKD from release-v2@phpboyscout.uk, not release@, and check that gpg --verify reports primary key fingerprint E969 F9AB 1678 97D8 76B6 A93A A44A 36F8 D7AC F36D. The README's Install section has the steps.
+
+- `sigillum mcp start` now serves a fixed set of commands as MCP tools over stdio: changelog, version, doctor, doctor report, config list/path/validate, and keys generate, generate-image and minisign. Signing, minting, rotating, publishing, decrypting, certificate, config get and every config change, docs and update are withheld and stay CLI only. `mcp stream` refuses to run for now. The key generators can overwrite files, so run an agent from an account that cannot write your trust keys; see docs/reference/cli/mcp.md.
+
+### Features
+
+- **mcp**: serve a read-mostly tool surface over stdio ([811c418](https://gitlab.com/phpboyscout/sigillum/-/commit/811c4185cf78fe3754c53bdfd1f79bb825a2b32a))
+
+### Bug Fixes
+
+- **deps**: update go modules ([845bf7f](https://gitlab.com/phpboyscout/sigillum/-/commit/845bf7f1c2c7de02b4620e1a35e200207ee95693))
+- **deps**: update module gitlab.com/phpboyscout/go/forge-gitlab to v0.32.2 ([3a9799b](https://gitlab.com/phpboyscout/sigillum/-/commit/3a9799b9bd2cbdebd3ed44108c8aede08451a009))
+- **deps**: take go/signing v0.15.2 ([18248fb](https://gitlab.com/phpboyscout/sigillum/-/commit/18248fb28e9b07ae170605456054147046471b4e))
+
 ## [v0.6.0](https://gitlab.com/phpboyscout/sigillum/-/releases/v0.6.0)
 
 [Compare to previous version](https://gitlab.com/phpboyscout/sigillum/-/compare/v0.5.9...v0.6.0)
