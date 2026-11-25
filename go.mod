@@ -15,7 +15,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
-	gitlab.com/phpboyscout/go-tool-base v0.53.0
+	gitlab.com/phpboyscout/go-tool-base v0.54.0
 	gitlab.com/phpboyscout/go/encryption v0.2.3
 	gitlab.com/phpboyscout/go/encryption-aws-kms v0.3.5
 	gitlab.com/phpboyscout/go/errorhandling v0.5.2
@@ -27,7 +27,7 @@ require (
 )
 
 require (
-	charm.land/bubbles/v2 v2.2.1 // indirect
+	charm.land/bubbles/v2 v2.2.2 // indirect
 	charm.land/bubbletea/v2 v2.1.2 // indirect
 	charm.land/glamour/v2 v2.0.1 // indirect
 	charm.land/huh/v2 v2.0.3 // indirect
@@ -115,7 +115,7 @@ require (
 	github.com/klauspost/compress v1.20.3 // indirect
 	github.com/leodido/go-conventionalcommits v0.13.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
-	github.com/mattn/go-runewidth v0.0.30 // indirect
+	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.8.0 // indirect
@@ -126,7 +126,7 @@ require (
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/pjbgf/sha1cd v0.7.0 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/rivo/uniseg v0.4.8-0.20261110175422-3a370411ca06 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
@@ -157,10 +157,10 @@ require (
 	gitlab.com/phpboyscout/go/features v0.1.1 // indirect
 	gitlab.com/phpboyscout/go/forge v0.40.0 // indirect
 	gitlab.com/phpboyscout/go/httpclient v0.2.6 // indirect
-	gitlab.com/phpboyscout/go/mcp v0.2.6 // indirect
+	gitlab.com/phpboyscout/go/mcp v0.2.7 // indirect
 	gitlab.com/phpboyscout/go/observability v0.6.1 // indirect
 	gitlab.com/phpboyscout/go/output v0.2.6 // indirect
-	gitlab.com/phpboyscout/go/redact v0.3.5 // indirect
+	gitlab.com/phpboyscout/go/redact v0.3.6 // indirect
 	gitlab.com/phpboyscout/go/regexutil v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/tls v0.2.3 // indirect
 	gitlab.com/phpboyscout/go/transit v0.3.2 // indirect
