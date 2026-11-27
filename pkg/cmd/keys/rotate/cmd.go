@@ -44,7 +44,7 @@ func NewCmdRotate(p *props.Props) *setup.Command {
 
 	fs := cmd.Flags()
 	fs.StringVar(&opts.Reason, flagReason, "",
-		"Why the keys change: scheduled or compromise. Only a compromise may revoke.")
+		"Why the keys change: scheduled or compromise. Only a compromise may revoke a key afresh.")
 	fs.StringVar(&opts.NotAfter, flagNotAfter, "",
 		"RFC 3339 time after which an updater no longer applies this manifest for the first time.")
 	fs.Uint64Var(&opts.Epoch, flagEpoch, 0,
@@ -98,10 +98,10 @@ The authority key must be Ed25519, held by any signing backend. Its minisign
 public key is printed on success; check it against the key your binaries
 embed.
 
-Each manifest replaces what an updater stored, so it must carry every earlier
-add and revoke. Pass the latest published manifest as --previous and they are
-carried forward; above epoch 1 that is required. Leaving out an earlier revoke
-would make every updater trust that key again.
+A release ships only its latest manifest, so it must carry every earlier add
+and revoke for an install that skipped the releases between. Pass the latest
+published manifest as --previous and they are carried forward; above epoch 1
+that is required. A carried revoke stays under either --reason.
 
 Without --anchor, a manifest that revokes and adds nothing is refused, because
 nothing proves a release key would remain. With --anchor and --anchor-only it

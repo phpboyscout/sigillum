@@ -87,15 +87,21 @@ revoked key, so tell those users to update by hand.
 
 ## Every later manifest carries the earlier ones
 
-An updater replaces what it stored with each manifest it applies, so a manifest
-that leaves out an earlier revoke makes every updater trust that key again. Always
-pass the **latest published** manifest as `--previous`. The command refuses an
+A release ships only its latest manifest, so an install that skipped earlier
+releases learns of an add or a revoke only if the latest manifest carries it.
+Always pass the **latest published** manifest as `--previous`. The command refuses an
 epoch that skips ahead, because the likeliest cause is an older manifest passed
 by mistake. Pass `--allow-epoch-gap` only when the gap is deliberate.
 
-Once a manifest revokes a key, every later manifest carries that revoke, so every
-later one must be `--reason compromise`, even a routine rotation. If a manifest
-revoked a key and added none, every later run needs `--anchor`, because nothing
+Once a manifest revokes a key, every later manifest carries that revoke. A carried
+revoke doesn't make a manifest a compromise, so a routine rotation after one is
+still `--reason scheduled`. Only a manifest that revokes a key afresh needs
+`--reason compromise`.
+
+An updater built on go/signing v0.15.x or earlier refuses a `scheduled` manifest
+that carries a revoke, and applies nothing from it. While binaries that old are
+still installed, issue a manifest that carries a revoke with `--reason compromise`
+as before. Both reasons carry the same revokes. Only the label differs. If a manifest revoked a key and added none, every later run needs `--anchor`, because nothing
 else proves a release key remains.
 
 ## When the previous manifest is refused for an added key
@@ -153,8 +159,8 @@ the next manifest, which you build on the **last clean** manifest instead.
        --backend aws-kms --key-id alias/rotation-authority --output-dir ./out
    ```
 
-   Here epoch 5 is the refused one. Use `--reason compromise` if anything
-   carried is a revoke.
+   Here epoch 5 is the refused one. Use `--reason compromise` if you pass a
+   `--revoke` the clean manifest doesn't already carry.
 
 3. Pass every other add and revoke the refused manifest made with `--add` and
    `--revoke`, because nothing from it is carried.
@@ -191,11 +197,12 @@ Either way, pass the new manifest as `--previous` from then on.
 
 When the authority key itself changes, ship binaries that embed the new
 authority's public key first. Then sign the next manifest with the new key, and
-name the old one so the previous manifest still verifies. This example carries a
-revoke, so it is a compromise manifest:
+name the old one so the previous manifest still verifies. This example revokes
+nothing afresh, so it stays scheduled even if the previous manifest carries a
+revoke:
 
 ```bash
-sigillum keys rotate --reason compromise --not-after 2027-11-18T00:00:00Z \
+sigillum keys rotate --reason scheduled --not-after 2027-11-18T00:00:00Z \
     --previous ./published/rotate-keys.json \
     --previous-authority RWRMTCwy9KhAalReu2jRMWyIaqAUrtkEgFZIA9FHNBZzyaQ089+PxvIG \
     --backend aws-kms --key-id alias/rotation-authority-2 --output-dir ./out

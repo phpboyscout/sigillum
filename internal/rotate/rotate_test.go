@@ -182,6 +182,59 @@ func TestBuild_ThePreviousManifestMustVerify(t *testing.T) {
 	require.Error(t, err)
 }
 
+// A scheduled manifest after a compromise carries its revokes and stays
+// scheduled (go-tool-base spec 0101 D5 and D13, amended 2026-11-27).
+func TestBuild_AScheduledManifestCarriesTheEarlierRevokes(t *testing.T) {
+	t.Parallel()
+
+	a := newAuthority(t)
+	v1, v2, v3 := newReleaseKey(t, "v1"), newReleaseKey(t, "v2"), newReleaseKey(t, "v3")
+
+	revoking := compromise()
+	revoking.Revoke = []Revocation{{Fingerprint: v1.fingerprint}}
+	revoking.Add = []KeyFile{{Armored: v2.armored}}
+	prevManifest, prevSig := issue(t, a, revoking)
+
+	for name, run := range map[string]func(r *Request){
+		"adding a key":                 func(r *Request) { r.Add = []KeyFile{{Armored: v3.armored}} },
+		"repeating the carried revoke": func(r *Request) { r.Revoke = []Revocation{{Fingerprint: strings.ToLower(v1.fingerprint)}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			req := scheduled()
+			req.Previous = &Previous{Manifest: prevManifest, Signature: prevSig}
+			run(&req)
+
+			m, carried, err := Build(req, a.public)
+			require.NoError(t, err)
+			assert.Equal(t, verify.RotationReasonScheduled, m.Reason)
+			require.Len(t, m.Revoke, 1)
+			assert.Equal(t, v1.fingerprint, m.Revoke[0].Fingerprint)
+			assert.True(t, carried[v1.fingerprint])
+		})
+	}
+}
+
+func TestBuild_AScheduledManifestCannotAddARevoke(t *testing.T) {
+	t.Parallel()
+
+	a := newAuthority(t)
+	v1, v2 := newReleaseKey(t, "v1"), newReleaseKey(t, "v2")
+
+	revoking := compromise()
+	revoking.Revoke = []Revocation{{Fingerprint: v1.fingerprint}}
+	revoking.Add = []KeyFile{{Armored: v2.armored}}
+	prevManifest, prevSig := issue(t, a, revoking)
+
+	req := scheduled()
+	req.Previous = &Previous{Manifest: prevManifest, Signature: prevSig}
+	req.Revoke = []Revocation{{Fingerprint: v2.fingerprint}}
+
+	_, _, err := Build(req, a.public)
+	require.ErrorIs(t, err, ErrScheduledRevoke)
+}
+
 func TestBuild_Refusals(t *testing.T) {
 	t.Parallel()
 
@@ -200,12 +253,6 @@ func TestBuild_Refusals(t *testing.T) {
 		"a revoke on a scheduled manifest": {func() Request {
 			r := scheduled()
 			r.Revoke = []Revocation{{Fingerprint: v1.fingerprint}}
-
-			return r
-		}, ErrScheduledRevoke},
-		"a carried revoke on a scheduled manifest": {func() Request {
-			r := scheduled()
-			r.Previous = &Previous{Manifest: prevManifest, Signature: prevSig}
 
 			return r
 		}, ErrScheduledRevoke},

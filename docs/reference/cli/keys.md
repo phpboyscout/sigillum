@@ -391,7 +391,7 @@ the flags and refusals below are
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--reason` | *(required)* | `scheduled` or `compromise`. Only a `compromise` manifest may revoke. |
+| `--reason` | *(required)* | `scheduled` or `compromise`. Only a `compromise` manifest may revoke a key the previous manifest doesn't already revoke. |
 | `--not-after` | *(required)* | RFC 3339 time after which an updater no longer applies the manifest for the first time. |
 | `--epoch` | 1, or the previous epoch plus one | The manifest's epoch, at least 1. Without `--previous` only 1 is accepted. With it, a value past the next epoch needs `--allow-epoch-gap`, and one at or below the previous epoch is refused. |
 | `--allow-epoch-gap` | `false` | Accept an `--epoch` that skips past the previous manifest's next epoch. |
@@ -425,8 +425,8 @@ ID or a backup export, and that key is sound. Check which case you have, then
 build on the last clean manifest: see
 [When the previous manifest is refused for an added key](../../how-to/issue-a-rotation-manifest.md#when-the-previous-manifest-is-refused-for-an-added-key).
 
-Once a manifest revokes a key, every later one carries the revoke, so every later
-one must be `--reason compromise`.
+Once a manifest revokes a key, every later one carries the revoke, under either
+reason.
 
 ### What it writes and prints
 
@@ -468,8 +468,7 @@ Every refusal exits non-zero and writes nothing.
 | `--epoch` at or below the previous | `epoch 1, previous is 1: epoch is not above the previous manifest's` |
 | `--epoch` more than 1024 above the previous | `epoch is further above the previous manifest's than an updater accepts` |
 | `--previous` does not verify | `the previous manifest: ...` with the verification error |
-| `--revoke` with `--reason scheduled` | `pass --reason compromise: a manifest that revokes must have reason compromise` |
-| A carried revoke with `--reason scheduled` | `the previous manifest revokes keys, and every later manifest must carry them, so pass --reason compromise: ...` |
+| `--revoke` of a key the previous manifest doesn't revoke, with `--reason scheduled` | `pass --reason compromise: a manifest that revokes a key afresh must have reason compromise` |
 | One key in both `--add` and `--revoke` | `<fingerprint>: a key is both added and revoked` |
 | Revokes and no adds, with no `--anchor` | `pass --anchor with the release keys the binaries embed: a manifest that revokes and adds nothing needs the anchors to prove a release key remains` |
 | An updater would refuse it against the anchors | the updater's own refusal: the reason, then `rotation manifest refused` |

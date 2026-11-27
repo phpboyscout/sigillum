@@ -24,7 +24,7 @@ var (
 	ErrEpochGap              = errors.NewSentinel("sigillum.rotate_epoch_gap", "epoch skips past the previous manifest's next epoch")
 	ErrEpochNotAfterPrevious = errors.NewSentinel("sigillum.rotate_epoch_replayed", "epoch is not above the previous manifest's")
 	ErrEpochTooFar           = errors.NewSentinel("sigillum.rotate_epoch_too_far", "epoch is further above the previous manifest's than an updater accepts")
-	ErrScheduledRevoke       = errors.NewSentinel("sigillum.rotate_scheduled_revoke", "a manifest that revokes must have reason compromise")
+	ErrScheduledRevoke       = errors.NewSentinel("sigillum.rotate_scheduled_revoke", "a manifest that revokes a key afresh must have reason compromise")
 	ErrAddedAndRevoked       = errors.NewSentinel("sigillum.rotate_added_and_revoked", "a key is both added and revoked")
 	ErrNeedsAnchors          = errors.NewSentinel("sigillum.rotate_needs_anchors", "a manifest that revokes and adds nothing needs the anchors to prove a release key remains")
 	ErrBadKey                = errors.NewSentinel("sigillum.rotate_bad_key", "not exactly one armored OpenPGP public key")
@@ -108,8 +108,8 @@ func Build(req Request, authority string) (verify.RotationManifest, Carried, err
 		return m, nil, err
 	}
 
-	if len(m.Revoke) > 0 && m.Reason != verify.RotationReasonCompromise {
-		return m, nil, scheduledRevoke(req)
+	if m.Reason != verify.RotationReasonCompromise && revokesAKeyAfresh(m, carried) {
+		return m, nil, errors.Wrap(ErrScheduledRevoke, "pass --reason compromise")
 	}
 
 	if err := checkAgainstAnchors(m, req); err != nil {
@@ -214,13 +214,11 @@ func applyRun(m *verify.RotationManifest, req Request, carried Carried) error {
 	return nil
 }
 
-func scheduledRevoke(req Request) error {
-	if len(req.Revoke) == 0 {
-		return errors.Wrap(ErrScheduledRevoke,
-			"the previous manifest revokes keys, and every later manifest must carry them, so pass --reason compromise")
-	}
-
-	return errors.Wrap(ErrScheduledRevoke, "pass --reason compromise")
+// revokesAKeyAfresh reports a revoke the previous manifest did not carry. Only
+// that one needs reason compromise: a carried revoke stays in every later
+// manifest whatever its reason (go-tool-base spec 0101 D13).
+func revokesAKeyAfresh(m verify.RotationManifest, carried Carried) bool {
+	return slices.ContainsFunc(m.Revoke, func(r verify.RotationRevoke) bool { return !carried[r.Fingerprint] })
 }
 
 func checkAgainstAnchors(m verify.RotationManifest, req Request) error {
