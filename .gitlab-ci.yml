@@ -210,6 +210,8 @@ variables:
 # go-tool-base); the v2 signer role trusts this project's tag pipelines via
 # ci_subject_filters in infra/src/main.signing-kms.tf.
 goreleaser:
+  # Signing and notarisation run only on runners trusted with signing work (sigillum#27).
+  tags: [secure]
   id_tokens:
     AWS_WEB_IDENTITY_TOKEN:
       # Must equal the IAM OIDC provider's client_id_list entry
