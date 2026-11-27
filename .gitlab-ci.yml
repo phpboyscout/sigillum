@@ -1,31 +1,28 @@
 # .gitlab-ci.yml — pipeline assembled from phpboyscout/cicd components.
 #
 #   merge_request_event → lint, test, security        (the merge gate)
-#   tag v*.*.*          → goreleaser, pages docs       (the release fan-out)
+#   tag v*.*.*          → goreleaser, colophon-release (the release fan-out)
 #   default branch      → colophon (publish then propose), zensical-pages deploy
 #
-# Quality gates live exclusively at the MR level — pushing to the default
-# branch runs nothing except colophon (which itself opens an MR that
-# gets the full gate), so by the time anything lands it has already been
-# vetted. Goreleaser and the zensical-pages deploy both fire from the tag
-# colophon cuts when its Release MR merges, which means the docs site
-# always corresponds to a real tagged release.
+# Quality gates live at the MR level. A push to the default branch runs
+# colophon and the docs deploy, and nothing lands there without passing the
+# gate first. Goreleaser fires from the tag colophon cuts when its Release MR
+# merges. The docs site deploys from every default-branch pipeline, so it
+# tracks main rather than the last tagged release.
 #
 # Project setting prerequisites (configure these on the GitLab project before
 # the pipeline can function):
-#   • RELEASER_PLEASER_TOKEN — a project access token with the Maintainer
-#     role and the api, read_repository, write_repository scopes, set as a
-#     CI/CD variable. colophon uses it to open/update the Release MR
-#     and cut the tag. The component does not support floating tags.
-#   • Merge method: fast-forward + squash (so the tested commit is what lands
-#     on the default branch).
+#   • COLOPHON_TOKEN — a group-level CI/CD variable holding a token with the
+#     api and write_repository scopes. colophon uses it to open and update the
+#     Release MR and to push the tag. It must not be CI_JOB_TOKEN, because a tag
+#     pushed with the job token fires no tag pipeline.
+#   • Merge method: fast-forward, squash default off (so the tested commits are what
+#     lands on the default branch).
 #   • Pipelines must succeed (so the MR gates actually block merge).
 #
-# The phpboyscout/cicd components are version-pinned below. Renovate keeps the
-# pins current via the cicd preset extended in renovate.json — driven by the
-# group-wide autodiscover bot in phpboyscout/cicd, so this repo needs neither a
-# renovate-self include nor its own pipeline schedule. Bump deliberately
-# through the Renovate MRs rather than floating the tags.
+# The phpboyscout/cicd components are included at @main, so each pipeline
+# takes the components' current default branch. Nothing pins them, and
+# Renovate has no component version to bump here.
 
 include:
   # Quality gates — MR-only by default. Toolchain images are left at the
@@ -86,8 +83,8 @@ stages:
   - pages
 
 # Pipeline-source gating: MR pipelines are primary; tag pipelines run the
-# release fan-out; default-branch pipelines exist only so releaser-pleaser can
-# maintain its MR. The `never` rule suppresses duplicate branch pipelines when
+# release fan-out; default-branch pipelines run colophon and the docs
+# deploy. The `never` rule suppresses duplicate branch pipelines when
 # a feature branch already has an open MR (otherwise every push to a branch
 # with an open MR would build twice).
 workflow:
@@ -200,7 +197,7 @@ go-cross-arch:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 variables:
-  # releaser-pleaser + goreleaser walk the full commit history.
+  # colophon and goreleaser walk the full commit history.
   GIT_DEPTH: "0"
 
 # Release signing (OIDC). The goreleaser `signs:` block calls

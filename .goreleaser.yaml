@@ -101,10 +101,9 @@ gitlab_urls:
   use_job_token: true
   skip_tls_verify: false
 
-# Release signing: gtb enable signing wired this. The signature over
-# checksums.txt is what the self-updater's embedded trust anchor verifies.
-# gtb is called directly (no shim); AWS credentials come from the CI OIDC
-# context, and goreleaser runs with --skip=sign when there isn't one.
+# Release signing. The signature over checksums.txt is what the self-updater's
+# embedded trust anchor verifies. AWS credentials come from the tag pipeline's
+# OIDC context.
 signs:
   # sigillum dogfoods its own sign command (backends blank-imported in
   # cmd/sigillum/signing.go). `go run` builds a throwaway signer at release
